@@ -16,6 +16,7 @@ Future<void> main() async {
       .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
 
   runApp(const MyApp());
+  //야야야야야야야야야야야야야
 }
 
 class MyApp extends StatelessWidget {
