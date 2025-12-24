@@ -32,6 +32,7 @@ dependencies:
     sdk: flutter
   cloud_functions:
   intl:
+  cloud_firestore:
   firebase_core:
   geolocator:
   geocoding:
