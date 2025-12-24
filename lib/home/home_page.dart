@@ -177,12 +177,12 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _locationLabel = label;
       _airAddr = addr;
-      _locationName = [admin, locality, _umdName].where((e) => e.isNotEmpty).join(' ');
+      // _locationName = [admin, locality, _umdName].where((e) => e.isNotEmpty).join(' ');
       // 2025-12-23 jgh251223---S
       _transitFuture = _transitService.fetchRoute(
         startLat: _lat!,
         startLon: _lon!,
-        startName: _locationName,
+        startName: _locationLabel,
       );
       // 2025-12-23 jgh251223---E
     });
