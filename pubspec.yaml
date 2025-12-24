@@ -69,6 +69,7 @@ flutter:
   # 2025-12-23 jgh251223---S
   assets:
     - .env
+    - assets/
   # 2025-12-23 jgh251223---E
 
   # To add assets to your application, add an assets section, like this:
