@@ -2,11 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 import 'firebase_options.dart';
 import 'home/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env'); // 2025-12-23 jgh251223---E
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -16,6 +18,7 @@ Future<void> main() async {
       .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
 
   runApp(const MyApp());
+  //야야야야야야야야야야야야야
 }
 
 class MyApp extends StatelessWidget {

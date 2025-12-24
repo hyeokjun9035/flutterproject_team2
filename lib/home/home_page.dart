@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../data/dashboard_service.dart';
 import '../data/models.dart';
+// 2025-12-23 jgh251223---S
+import '../data/transit_service.dart';
+// 2025-12-23 jgh251223---E
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
+// 2025-12-23 jgh251223---E
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 
@@ -14,6 +19,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final DashboardService _service;
+  // 2025-12-23 jgh251223---S
+  late final TransitService _transitService;
+  Future<TransitRouteResult>? _transitFuture;
+  // 2025-12-23 jgh251223---E
   Future<DashboardData>? _future;
 
   // TODO: GPS/행정동 매핑 붙이면 여기 값이 동적으로 바뀜
@@ -22,10 +31,26 @@ class _HomePageState extends State<HomePage> {
   String _locationLabel = '위치 확인 중...'; // 화면 표시용 (부평역)
   String _airAddr = '';                      // 에어코리아 검색용 (인천광역시 부평구)
 
+  // 2025-12-23 jgh251223 상수 하드코딩---S
+  static const TransitDestination _defaultDestination = TransitDestination(
+    name: '서울시청',
+    lat: 37.5665,
+    lon: 126.9780,
+  );
+  // 2025-12-23 jgh251223 상수 하드코딩---E
+
   @override
   void initState() {
     super.initState();
     _service = DashboardService(region: 'asia-northeast3');
+    // 2025-12-23 jgh251223---S
+    final apiKey = dotenv.env['TMAP_API_KEY'] ??
+        const String.fromEnvironment('TMAP_API_KEY', defaultValue: '');
+    _transitService = TransitService(
+      apiKey: apiKey,
+      destination: _defaultDestination,
+    );
+    // 2025-12-23 jgh251223---E
     _future = _initLocationAndFetch();
   }
 
@@ -152,6 +177,14 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _locationLabel = label;
       _airAddr = addr;
+      _locationName = [admin, locality, _umdName].where((e) => e.isNotEmpty).join(' ');
+      // 2025-12-23 jgh251223---S
+      _transitFuture = _transitService.fetchRoute(
+        startLat: _lat!,
+        startLon: _lon!,
+        startName: _locationName,
+      );
+      // 2025-12-23 jgh251223---E
     });
 
     // ✅ Functions 호출 (lat/lon/umdName)
@@ -253,6 +286,32 @@ class _HomePageState extends State<HomePage> {
                               ? const _Skeleton(height: 90)
                               : _HourlyStrip(items: data!.hourly),
                         ),
+                        const SizedBox(height: 24),
+
+                        // 2025-12-23 jgh251223---S
+                        _Card(
+                          child: FutureBuilder<TransitRouteResult>(
+                            future: _transitFuture,
+                            builder: (context, transitSnap) {
+                              final isTransitLoading =
+                                  transitSnap.connectionState != ConnectionState.done;
+                              if (isTransitLoading) {
+                                return const _Skeleton(height: 120);
+                              }
+                              if (transitSnap.hasError || !transitSnap.hasData) {
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text(
+                                    '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                );
+                              }
+                              return _TransitCard(data: transitSnap.data!);
+                            },
+                          ),
+                        ),
+                        // 2025-12-23 jgh251223---E
                         const SizedBox(height: 24),
                       ]),
                     ),
@@ -588,3 +647,96 @@ class _Skeleton extends StatelessWidget {
     );
   }
 }
+
+// 2025-12-23 jgh251223---S
+class _TransitCard extends StatelessWidget {
+  const _TransitCard({required this.data});
+  final TransitRouteResult data;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    Widget badge(String label) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          style: textTheme.labelSmall?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    final arrivalText = [data.firstArrivalText, data.secondArrivalText]
+        .where((e) => e.isNotEmpty)
+        .join(' / ');
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            data.title,
+            style: textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              badge('최소 도보'),
+              const SizedBox(width: 8),
+              badge('최소 시간'),
+              const SizedBox(width: 8),
+              badge('최소 환승'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            data.summary,
+            style: textTheme.bodyMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            arrivalText.isEmpty ? '도착 정보 없음' : arrivalText,
+            style: textTheme.bodySmall?.copyWith(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: () {
+                  // TODO: 경로 상세 보기(외부 브라우저/지도) 연결
+                },
+                child: const Text('[경로 보기]'),
+              ),
+              TextButton(
+                onPressed: () {
+                  // TODO: 즐겨찾기 저장/삭제 로직 연결
+                },
+                child: const Text('[즐겨찾기]'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+// 2025-12-23 jgh251223---E
