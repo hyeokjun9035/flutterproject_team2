@@ -9,6 +9,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 // 2025-12-23 jgh251223---E
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../tmaprouteview/routeview.dart'; //jgh251224
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,10 +33,16 @@ class _HomePageState extends State<HomePage> {
   String _airAddr = '';                      // 에어코리아 검색용 (인천광역시 부평구)
 
   // 2025-12-23 jgh251223 상수 하드코딩---S
+  // static const TransitDestination _defaultDestination = TransitDestination(
+  //   name: '서울시청',
+  //   lat: 37.5665,
+  //   lon: 126.9780,
+  // );
+
   static const TransitDestination _defaultDestination = TransitDestination(
-    name: '서울시청',
-    lat: 37.5665,
-    lon: 126.9780,
+    name: '강동구청',
+    lat: 37.530020,
+    lon: 127.123920,
   );
   // 2025-12-23 jgh251223 상수 하드코딩---E
 
@@ -722,7 +729,15 @@ class _TransitCard extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: () {
-                  // TODO: 경로 상세 보기(외부 브라우저/지도) 연결
+                  // 경로 눈으로 보기
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Routeview(raw: data.raw),
+                      // builder: (_) => Routeview(raw: data.raw),
+
+                    ),
+                  );
                 },
                 child: const Text('[경로 보기]'),
               ),
