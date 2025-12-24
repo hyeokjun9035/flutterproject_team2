@@ -87,6 +87,149 @@ async function callKmaUltraNcst(nx, ny) {
   return { items, base_date, base_time };
 }
 
+function kmaFcstBase(dt) {
+    const d = new Date(dt);
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    let hh = kst.getUTCHours();
+    const mm = kst.getUTCMinutes();
+
+    // 초단기예보는 보통 30분 발표 + 실제 반영 지연이 있으니
+    // 45분 전이면 한 시간 전 회차(…30)로 잡는 게 안정적
+    if (mm < 45) hh -= 1;
+    if (hh < 0) {
+      hh = 23;
+      kst.setUTCDate(kst.getUTCDate() - 1);
+    }
+    const y = kst.getUTCFullYear();
+    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(kst.getUTCDate()).padStart(2, "0");
+    const base_date = `${y}${m}${day}`;
+    const base_time = `${String(hh).padStart(2, "0")}30`;
+    return { base_date, base_time };
+  }
+
+  async function callKmaUltraFcst(nx, ny) {
+    const { base_date, base_time } = kmaFcstBase(new Date());
+    const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";
+    const params = {
+      ServiceKey: process.env.KMA_SERVICE_KEY,
+      pageNo: 1,
+      numOfRows: 1000,
+      dataType: "JSON",
+      base_date,
+      base_time,
+      nx,
+      ny,
+    };
+    const res = await axios.get(url, { params, timeout: 8000 });
+    const items = res.data?.response?.body?.items?.item ?? [];
+    return { items, base_date, base_time };
+  }
+
+  function buildHourlyFcst(items) {
+    // fcstDate+fcstTime별로 SKY/PTY/T1H(or TMP) 묶기
+    const byKey = new Map();
+    for (const it of items) {
+      const key = `${it.fcstDate}${it.fcstTime}`;
+      if (!byKey.has(key)) byKey.set(key, { fcstDate: it.fcstDate, fcstTime: it.fcstTime });
+      byKey.get(key)[it.category] = it.fcstValue;
+    }
+
+    const list = [...byKey.values()]
+      .map((v, idx) => {
+        const hh = Number(String(v.fcstTime).slice(0, 2));
+        return {
+          timeLabel: idx === 0 ? "NOW" : `${hh}시`,
+          sky: v.SKY != null ? Number(v.SKY) : null,
+          pty: v.PTY != null ? Number(v.PTY) : null,
+          temp: v.T1H != null ? Number(v.T1H) : (v.TMP != null ? Number(v.TMP) : null),
+          _k: `${v.fcstDate}${v.fcstTime}`,
+        };
+      })
+      .filter(x => x.temp !== null)          // temp 없는 슬롯 제거
+      .sort((a, b) => (a._k < b._k ? -1 : 1))
+      .slice(0, 8)                           // 6~8개 정도만 UI에 충분
+      .map(({ _k, ...rest }) => rest);
+
+    return list;
+  }
+
+  function gradeTextFromKhai(grade) {
+    const g = String(grade ?? "");
+    if (g === "1") return "좋음";
+    if (g === "2") return "보통";
+    if (g === "3") return "나쁨";
+    if (g === "4") return "매우나쁨";
+    return "정보없음";
+  }
+
+  async function callAirMsrstnListByAddr(addr) {
+    const url = "http://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList";
+    const params = {
+      serviceKey: process.env.AIRKOREA_SERVICE_KEY, // ⚠️ 소문자
+      returnType: "json",
+      numOfRows: 10,
+      pageNo: 1,
+      addr, // 예: "인천광역시 부평구"
+    };
+    const res = await axios.get(url, { params, timeout: 8000 });
+    return res.data?.response?.body?.items ?? [];
+  }
+
+  async function callAirRltmByStation(stationName) {
+    const url = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
+    const params = {
+      serviceKey: process.env.AIRKOREA_SERVICE_KEY,
+      returnType: "json",
+      numOfRows: 1,
+      pageNo: 1,
+      stationName,
+      dataTerm: "DAILY",
+      ver: "1.3",
+    };
+    const res = await axios.get(url, { params, timeout: 8000 });
+    return res.data?.response?.body?.items ?? [];
+  }
+
+  function toNum(v) {
+    const s = String(v ?? "").trim();
+    if (!s || s === "-" ) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function buildAir(addr) {
+    if (!addr) return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+
+    const stations = await callAirMsrstnListByAddr(addr);
+    for (const st of stations) {
+      const stationName = st?.stationName;
+      if (!stationName) continue;
+
+      const msr = await callAirRltmByStation(stationName);
+      const row = msr?.[0];
+      if (!row) continue;
+
+      const pm10 = toNum(row.pm10Value);
+      const pm25 = toNum(row.pm25Value);
+      const grade = String(row.khaiGrade ?? "").trim();
+
+      // ✅ 데이터가 하나라도 있으면 채택
+      if (pm10 != null || pm25 != null || (grade && grade !== "-")) {
+        return {
+          air: {
+            gradeText: gradeTextFromKhai(grade),
+            pm10,
+            pm25,
+          },
+          meta: { stationName, dataTime: row.dataTime ?? null },
+        };
+      }
+    }
+
+    return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+  }
+
 exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => {
   const { lat, lon, locationName } = request.data || {};
   if (typeof lat !== "number" || typeof lon !== "number") {
@@ -95,26 +238,42 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
   const { nx, ny } = latLonToGrid(lat, lon);
 
-  logger.info("getDashboard", { lat, lon, nx, ny, locationName });
+  // ✅ Flutter에서 locationName을 "인천광역시 부평구" 같은 addr로 쓰고 있다면 이걸 그대로 사용 가능
+  const addr = (request.data?.addr ?? request.data?.locationName ?? "").toString();
 
-  // 1) 기상청: 초단기실황
-  const kma = await callKmaUltraNcst(nx, ny);
+  logger.info("getDashboard", { lat, lon, nx, ny, locationName, addr });
 
-  // TODO) 2) 초단기예보(getUltraSrtFcst), 3) 단기예보(getVilageFcst), 4) 기상특보 API도 같은 방식으로 추가
+  // 1) 실황
+  const kmaNcst = await callKmaUltraNcst(nx, ny);
 
-  // 2) 에어코리아: (권장) getTMStdrCrdnt -> getNearbyMsrstnList -> getMsrstnAcctoRltmMesureDnsty
-  // 여기서는 구조만 두고, 먼저 기상청부터 붙인 다음 단계적으로 추가 추천
+  // 2) 시간대별 예보
+  const kmaFcst = await callKmaUltraFcst(nx, ny);
+  const hourlyFcst = buildHourlyFcst(kmaFcst.items);
+
+  // 3) 대기질
+  const airRes = await buildAir(addr);
 
   return {
     updatedAt: new Date().toISOString(),
-    locationName: locationName || "",
-    nx, ny,
-    weatherNow: kma.items,      // 지금 네 파서가 기대하는 [{category, obsrValue}] 형태
-    hourlyFcst: [],             // 다음 단계에서 채우기
+
+    // ✅ Flutter 파서가 기대하는 형태로 반환
+    weatherNow: kmaNcst.items,   // [{category, obsrValue}, ...]
+    hourlyFcst: hourlyFcst,      // [{timeLabel, sky, pty, temp}, ...]
     alerts: [],
-    air: { gradeText: "정보없음", pm10: null, pm25: null },
+    air: airRes.air,             // {gradeText, pm10, pm25}
+
+    // (선택) 디버그용: 지금 실제로 뭐가 잡혔는지 확인하기 좋음
+    meta: {
+      nx,
+      ny,
+      addr,
+      kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
+      kmaFcstBase: { base_date: kmaFcst.base_date, base_time: kmaFcst.base_time },
+      air: airRes.meta, // stationName, dataTime
+    },
   };
 });
+
 
 
 // For cost control, you can set the maximum number of containers that can be

@@ -28,8 +28,8 @@ class _HomePageState extends State<HomePage> {
   // TODO: GPS/행정동 매핑 붙이면 여기 값이 동적으로 바뀜
   double? _lat;
   double? _lon;
-  String _umdName = '';        // 예: 역삼동
-  String _locationName = '위치 확인 중...';
+  String _locationLabel = '위치 확인 중...'; // 화면 표시용 (부평역)
+  String _airAddr = '';                      // 에어코리아 검색용 (인천광역시 부평구)
 
   // 2025-12-23 jgh251223 상수 하드코딩---S
   static const TransitDestination _defaultDestination = TransitDestination(
@@ -54,11 +54,101 @@ class _HomePageState extends State<HomePage> {
     _future = _initLocationAndFetch();
   }
 
+  bool _hasKorean(String s) => RegExp(r'[가-힣]').hasMatch(s.trim());
+  bool _looksLikeOnlyNumberOrLot(String s) => RegExp(r'^[0-9\s\-]+$').hasMatch(s.trim());
+
+  String _t(String? s) => (s ?? '').trim().replaceFirst(RegExp(r'^KR\s+'), '');
+
+  /// ✅ 화면 표시용: "부평역/부산역/속초역" 같이 보기 좋은 이름을 고름
+  String pickDisplayLabel(List<Placemark> pms) {
+    // 1) 문자열들에서 "OO역" 패턴이 보이면 그걸 최우선
+    final stationReg = RegExp(r'([가-힣0-9]+역)');
+    for (final p in pms) {
+      final blob = [
+        _t(p.name),
+        _t(p.thoroughfare),
+        _t(p.subLocality),
+        _t(p.locality),
+        _t(p.subAdministrativeArea),
+        _t(p.administrativeArea),
+      ].where((e) => e.isNotEmpty).join(' ');
+
+      final words = blob.split(RegExp(r'\s+'));
+      for (final w0 in words) {
+        final w = w0.replaceAll(RegExp(r'[^0-9A-Za-z가-힣]'), ''); // 괄호/쉼표 제거
+        if (w.isEmpty || _looksLikeOnlyNumberOrLot(w)) continue;
+
+        // ✅ "부산역" 같은 토큰만 잡고, "광역"은 제외
+        if (w.endsWith('역') && w != '광역') {
+          return w; // 예: 부산역, 부평역, 속초역
+        }
+      }
+    }
+
+    // 2) 역이 아예 없으면: 구/동/시 순으로 fallback
+    for (final p in pms) {
+      final candidates = <String>[
+        _t(p.subAdministrativeArea), // 구가 여기로 오는 기기 있음
+        _t(p.locality),
+        _t(p.subLocality),
+        _t(p.thoroughfare),
+        _t(p.administrativeArea),
+      ].where((s) => s.isNotEmpty && !_looksLikeOnlyNumberOrLot(s)).toList();
+
+      final gu = candidates.firstWhere((s) => s.endsWith('구'), orElse: () => '');
+      if (gu.isNotEmpty) return gu;
+
+      final dong = candidates.firstWhere((s) => s.endsWith('동'), orElse: () => '');
+      if (dong.isNotEmpty) return dong;
+
+      final si = candidates.firstWhere((s) => s.endsWith('시'), orElse: () => '');
+      if (si.isNotEmpty) return si;
+
+      if (candidates.isNotEmpty) return candidates.first;
+    }
+
+    return '현재 위치';
+  }
+
+  /// ✅ 대기질 검색용 addr: "인천광역시 부평구" 같이 시/구까지만
+  String pickAirAddr(List<Placemark> pms) {
+    // 한글 주소가 섞인 경우 blob에서 시/구를 정규식으로 뽑기
+    final reg = RegExp(
+      r'(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원특별자치도|충청북도|충청남도|전북특별자치도|전라남도|경상북도|경상남도|제주특별자치도)\s*'
+      r'([가-힣]+구|[가-힣]+시|[가-힣]+군)',
+    );
+
+    for (final p in pms) {
+      final blob = [
+        _t(p.name),
+        _t(p.thoroughfare),
+        _t(p.subLocality),
+        _t(p.locality),
+        _t(p.subAdministrativeArea),
+        _t(p.administrativeArea),
+      ].where((e) => e.isNotEmpty).join(' ');
+
+      final m = reg.firstMatch(blob);
+      if (m != null) return '${m.group(1)} ${m.group(2)}';
+    }
+
+    // 정규식 실패 시: 가능한 필드 조합으로
+    for (final p in pms) {
+      final admin = _t(p.administrativeArea);
+      final district = _t(p.locality).isNotEmpty ? _t(p.locality) : _t(p.subAdministrativeArea);
+      final addr = [admin, district].where((e) => e.isNotEmpty).join(' ');
+      if (addr.isNotEmpty) return addr;
+    }
+
+    return '';
+  }
+
+
   Future<DashboardData> _initLocationAndFetch() async {
     // 권한/서비스 체크
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
-      setState(() => _locationName = '위치 서비스 OFF');
+      setState(() => _locationLabel = '위치 서비스 OFF');
       throw Exception('Location service disabled');
     }
 
@@ -67,7 +157,7 @@ class _HomePageState extends State<HomePage> {
       perm = await Geolocator.requestPermission();
     }
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-      setState(() => _locationName = '위치 권한 필요');
+      setState(() => _locationLabel = '위치 권한 필요');
       throw Exception('Location permission denied');
     }
 
@@ -80,13 +170,13 @@ class _HomePageState extends State<HomePage> {
 
     // 역지오코딩(동 이름/구 이름)
     final placemarks = await placemarkFromCoordinates(_lat!, _lon!);
-    final p = placemarks.first;
 
-    _umdName = (p.subLocality ?? '').replaceAll(' ', ''); // 역삼동
-    final admin = (p.administrativeArea ?? '').replaceAll(' ', ''); // 서울특별시
-    final locality = (p.locality ?? '').replaceAll(' ', ''); // 강남구
+    final label = pickDisplayLabel(placemarks); // ✅ 부평역/부산역/속초역 같은 표시용
+    final addr = pickAirAddr(placemarks);       // ✅ 인천광역시 부평구 같은 대기질용
 
     setState(() {
+      _locationLabel = label;
+      _airAddr = addr;
       _locationName = [admin, locality, _umdName].where((e) => e.isNotEmpty).join(' ');
       // 2025-12-23 jgh251223---S
       _transitFuture = _transitService.fetchRoute(
@@ -101,8 +191,8 @@ class _HomePageState extends State<HomePage> {
     return _service.fetchDashboardByLatLon(
       lat: _lat!,
       lon: _lon!,
-      umdName: _umdName,
-      locationName: _locationName,
+      locationName: _locationLabel,
+      airAddr: _airAddr
     );
   }
 
@@ -151,7 +241,7 @@ class _HomePageState extends State<HomePage> {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                       child: _TopBar(
-                        locationName: _locationName,
+                        locationName: _locationLabel,
                         updatedAt: data?.updatedAt,
                         onRefresh: _reload,
                       ),
