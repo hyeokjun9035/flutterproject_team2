@@ -241,7 +241,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
   // ✅ Flutter에서 locationName을 "인천광역시 부평구" 같은 addr로 쓰고 있다면 이걸 그대로 사용 가능
   const addr = (request.data?.addr ?? request.data?.locationName ?? "").toString();
 
-  logger.info("getDashboard", { lat, lon, nx, ny, locationName, addr });
+//  logger.info("getDashboard", { lat, lon, nx, ny, locationName, addr });
 
   // 1) 실황
   const kmaNcst = await callKmaUltraNcst(nx, ny);
