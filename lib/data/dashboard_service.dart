@@ -114,15 +114,15 @@ class DashboardService {
     required double lat,
     required double lon,
     required String locationName,
-    required String umdName, // "역삼동" 같은 값(없으면 '' 보내도 됨)
+    required String airAddr
   }) async {
     final callable = _functions.httpsCallable('getDashboard');
 
     final res = await callable.call({
       'lat': lat,
       'lon': lon,
-      'umdName': umdName,
       'locationName': locationName,
+      'addr': airAddr
     });
 
     final data = Map<String, dynamic>.from(res.data as Map);
