@@ -53,6 +53,8 @@ class DashboardData {
   final List<HourlyForecast> hourly;
   final List<WeatherAlert> alerts;
   final AirQuality air;
+  final List<DailyForecast> weekly;
+
 
   const DashboardData({
     required this.locationName,
@@ -61,5 +63,26 @@ class DashboardData {
     required this.hourly,
     required this.alerts,
     required this.air,
+    this.weekly = const [],
+  });
+}
+
+class DailyForecast {
+  final String date; // "yyyyMMdd"
+  final double? min;
+  final double? max;
+  final int? pop;
+  final int? sky;
+  final int? pty;
+  final String? wfText;
+
+  const DailyForecast({
+    required this.date,
+    this.min,
+    this.max,
+    this.pop,
+    this.sky,
+    this.pty,
+    this.wfText,
   });
 }

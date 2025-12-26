@@ -42,6 +42,7 @@ dependencies:
   flutter_dotenv: ^5.1.0
   # 2025-12-23 jgh251223---E
   google_maps_flutter: #jgh251224
+  sunrise_sunset_calc:
   video_player: ^2.9.2 #jgh251226
   webview_flutter: ^4.10.0 #jgh251226
 
