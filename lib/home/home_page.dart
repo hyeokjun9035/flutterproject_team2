@@ -282,6 +282,11 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(height: 12),
 
                         _Card(
+                          child: const _CarryCardHardcoded(),
+                        ),
+                        const SizedBox(height: 12),
+
+                        _Card(
                           child: isLoading
                               ? const _Skeleton(height: 90)
                               : _AirCard(air: data!.air),
@@ -320,6 +325,13 @@ class _HomePageState extends State<HomePage> {
                         ),
                         // 2025-12-23 jgh251223---E
                         const SizedBox(height: 24),
+
+                        // ✅ (추가) 내 주변 1km 카드 (하드코딩)
+                        _Card(
+                          child: const _NearbyIssuesCardHardcoded(),
+                        ),
+                        const SizedBox(height: 12),
+
                       ]),
                     ),
                   ),
@@ -755,3 +767,111 @@ class _TransitCard extends StatelessWidget {
   }
 }
 // 2025-12-23 jgh251223---E
+
+class _CarryCardHardcoded extends StatelessWidget {
+  const _CarryCardHardcoded();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+
+    // ✅ 하드코딩: 나중에 Functions/DB로 교체
+    final items = const [
+      (Icons.umbrella, '우산'),
+      (Icons.checkroom, '칼퇴'),
+      (Icons.masks, '마스크'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('오늘 챙길 것',
+                  style: t.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  )),
+              const Spacer(),
+              Switch(
+                value: true,
+                onChanged: (_) {},
+                activeColor: Colors.white,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: items.map((e) {
+              final icon = e.$1;
+              final label = e.$2;
+              return Expanded(
+                child: Column(
+                  children: [
+                    Icon(icon, color: Colors.white, size: 26),
+                    const SizedBox(height: 6),
+                    Text(label, style: t.bodySmall?.copyWith(color: Colors.white70)),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10),
+          Text('09 ~ 11시 강수확률 70%',
+              style: t.bodySmall?.copyWith(color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+}
+
+class _NearbyIssuesCardHardcoded extends StatelessWidget {
+  const _NearbyIssuesCardHardcoded();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+
+    // ✅ 하드코딩: 나중에 Firestore + 반경 1km로 교체
+    final issues = const [
+      ('역 출구 침수 심함', 7),
+      ('사거리 교통사고 발생', 3),
+      ('인도 결빙 구간 있음', 2),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('내 주변 1km · 최신 3건',
+              style: t.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              )),
+          const SizedBox(height: 10),
+          ...List.generate(issues.length, (i) {
+            final (title, up) = issues[i];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '${i + 1}. $title (확인 $up)',
+                style: t.bodySmall?.copyWith(color: Colors.white70),
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(onPressed: () {}, child: const Text('[지도 보기]')),
+              TextButton(onPressed: () {}, child: const Text('[제보]')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
