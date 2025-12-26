@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../headandputter/putter.dart'; //jgh251226
 
 class Routeview extends StatefulWidget {
   final Map<String, dynamic> raw;
@@ -338,115 +339,118 @@ class _RouteviewState extends State<Routeview> {
 
     markers.addAll(_cctvMarkers); //jgh251226
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('경로 보기'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '경로에 맞추기',
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: _fitToRoute,
+    return PutterScaffold(
+      currentIndex: 0,
+      body: Scaffold(
+        appBar: AppBar(
+          title: const Text('경로 보기'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
           ),
-        ],
-      ),
+          actions: [
+            IconButton(
+              tooltip: '경로에 맞추기',
+              icon: const Icon(Icons.center_focus_strong),
+              onPressed: _fitToRoute,
+            ),
+          ],
+        ),
 
-      // ✅ 부모 스크롤은 기본 ON, 지도 조작 중에만 OFF
-      body: SingleChildScrollView(
-        physics: _isMapInteracting
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  height: 520, // 지도를 크게 보이게
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        // ✅ 지도 터치 시작하면 부모 스크롤 OFF
-                        child: Listener(
-                          onPointerDown: (_) => setState(() => _isMapInteracting = true),
-                          onPointerUp: (_) => setState(() => _isMapInteracting = false),
-                          onPointerCancel: (_) => setState(() => _isMapInteracting = false),
-                          child: allPoints.isEmpty
-                              ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                '지도 표시 불가\n$debugMsg',
-                                textAlign: TextAlign.center,
+        // ✅ 부모 스크롤은 기본 ON, 지도 조작 중에만 OFF
+        body: SingleChildScrollView(
+          physics: _isMapInteracting
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    height: 520, // 지도를 크게 보이게
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          // ✅ 지도 터치 시작하면 부모 스크롤 OFF
+                          child: Listener(
+                            onPointerDown: (_) => setState(() => _isMapInteracting = true),
+                            onPointerUp: (_) => setState(() => _isMapInteracting = false),
+                            onPointerCancel: (_) => setState(() => _isMapInteracting = false),
+                            child: allPoints.isEmpty
+                                ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  '지도 표시 불가\n$debugMsg',
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
+                            )
+                                : GoogleMap(
+                              initialCameraPosition: CameraPosition(
+                                target: allPoints.first,
+                                zoom: 13,
+                              ),
+                              polylines: polylines,
+                              markers: markers,
+                              onMapCreated: (c) async {
+                                _mapCtrl = c;
+                                await _fitToRoute();
+                                await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
+                              },
+
+                              // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
+                              scrollGesturesEnabled: true,
+                              zoomGesturesEnabled: true,
+                              rotateGesturesEnabled: true,
+                              tiltGesturesEnabled: true,
+
+                              // ✅ + / - 버튼 (Android에서 표시)
+                              zoomControlsEnabled: true,
+
+                              myLocationButtonEnabled: false,
                             ),
-                          )
-                              : GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: allPoints.first,
-                              zoom: 13,
-                            ),
-                            polylines: polylines,
-                            markers: markers,
-                            onMapCreated: (c) async {
-                              _mapCtrl = c;
-                              await _fitToRoute();
-                              await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
-                            },
-
-                            // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
-                            scrollGesturesEnabled: true,
-                            zoomGesturesEnabled: true,
-                            rotateGesturesEnabled: true,
-                            tiltGesturesEnabled: true,
-
-                            // ✅ + / - 버튼 (Android에서 표시)
-                            zoomControlsEnabled: true,
-
-                            myLocationButtonEnabled: false,
                           ),
                         ),
-                      ),
 
-                      // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
-                      Positioned(
-                        left: 10,
-                        right: 10,
-                        top: 55,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.45),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _cctvDebug,
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                        // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
+                        Positioned(
+                          left: 10,
+                          right: 10,
+                          top: 55,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.45),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _cctvDebug,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // ✅ 아래 구간 리스트 (페이지 스크롤로 내려서 보는 방식)
-            _LegListPage(
-              segments: segments,
-              onTapSegment: (seg) => _focusSegment(seg),
-            ),
+              // ✅ 아래 구간 리스트 (페이지 스크롤로 내려서 보는 방식)
+              _LegListPage(
+                segments: segments,
+                onTapSegment: (seg) => _focusSegment(seg),
+              ),
 
-            const SizedBox(height: 18),
-          ],
+              const SizedBox(height: 18),
+            ],
+          ),
         ),
       ),
     );
@@ -861,7 +865,7 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
       if (!mounted) return;
       setState(() {
         _useWebView = true;
-        _msg = 'video_player 재생 실패 → WebView로 전환\n$e';
+        _msg = 'WebView로 재생 중...'; // ✅ reloading... 덮어쓰기
       });
     }
   }
@@ -882,34 +886,68 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Expanded(
-              child: _useWebView
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: WebViewWidget(
-                  controller: WebViewController()
-                    ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                    ..loadRequest(Uri.parse(widget.item.url)),
-                ),
-              )
-                  : (c != null && c.value.isInitialized)
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: c.value.aspectRatio,
-                  child: VideoPlayer(c),
-                ),
-              )
-                  : Center(child: Text(_msg)),
+
+            // ✅ 영상 영역 높이를 고정(16:9)해서 위/아래 검은 여백 줄이기
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Builder(
+                builder: (context) {
+                  final w = MediaQuery.sizeOf(context).width;
+                  final h = w * 9 / 16; // 16:9
+
+                  return SizedBox(
+                    width: double.infinity,
+                    height: h,
+                    child: _useWebView
+                        ? WebViewWidget(
+                      controller: WebViewController()
+                        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                        ..loadRequest(Uri.parse(widget.item.url)),
+                    )
+                        : (c != null && c.value.isInitialized)
+                        ? FittedBox(
+                      fit: BoxFit.cover, // 꽉 채움(검은 여백 거의 없음)
+                      child: SizedBox(
+                        width: c.value.size.width,
+                        height: c.value.size.height,
+                        child: VideoPlayer(c),
+                      ),
+                    )
+                        : Center(child: Text(_msg)),
+                  );
+                },
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              widget.item.url,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
+
+            // Expanded(
+            //   child: _useWebView
+            //       ? ClipRRect(
+            //     borderRadius: BorderRadius.circular(12),
+            //     child: WebViewWidget(
+            //       controller: WebViewController()
+            //         ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            //         ..loadRequest(Uri.parse(widget.item.url)),
+            //     ),
+            //   )
+            //       : (c != null && c.value.isInitialized)
+            //       ? ClipRRect(
+            //     borderRadius: BorderRadius.circular(12),
+            //     child: AspectRatio(
+            //       aspectRatio: c.value.aspectRatio,
+            //       child: VideoPlayer(c),
+            //     ),
+            //   )
+            //       : Center(child: Text(_msg)),
+            // ),
+
+            // const SizedBox(height: 12),
+            // Text(
+            //   widget.item.url,
+            //   maxLines: 2,
+            //   overflow: TextOverflow.ellipsis,
+            //   style: const TextStyle(fontSize: 12),
+            // ),
+            // const SizedBox(height: 12),
             Row(
               children: [
                 ElevatedButton(

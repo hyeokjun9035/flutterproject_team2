@@ -1299,36 +1299,41 @@ class _TransitCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+              ElevatedButton.icon(
+                icon: const Icon(Icons.route, size: 15),
+                label: const Text('경로 보기'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
+                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
                 ),
                 onPressed: () {
-                  // 경로 눈으로 보기
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => Routeview(raw: data.raw),
-
-                    ),
+                    MaterialPageRoute(builder: (_) => Routeview(raw: data.raw)),
                   );
                 },
-                child: const Text('[경로 보기]'),
               ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.bookmark_border, size: 15),
+                label: const Text('즐겨찾기'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
+                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
+                  side: BorderSide(color: Colors.white.withOpacity(0.7)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () {
                   // TODO: 즐겨찾기 저장/삭제 로직 연결
                 },
-                child: const Text('[즐겨찾기]'),
               ),
             ],
           ),
