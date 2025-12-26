@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
-import 'package:flutter_project/community/Community.dart';
 import 'firebase_options.dart';
 import 'home/home_page.dart';
 
@@ -29,15 +28,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Weather Dashboard',
       debugShowCheckedModeBanner: false,
-      //jgh251226---------------------S
-      initialRoute: '/home',
-      routes: {
-        '/home': (context) => const HomePage(),
-        '/community': (context) => const CommunityPage(),
-        // '/mypage': (context) => const MyPage(), //없넹?
-        // '/notice': (context) => const NoticePage(), //없넹?
-      },
-      //jgh251226---------------------E
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1976D2)),

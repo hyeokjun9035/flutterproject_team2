@@ -17,6 +17,8 @@ import '../carry/checklist_service.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 enum DustGrade { good, normal, bad, veryBad, unknown }
+import '../headandputter/putter.dart'; //jgh251226
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
