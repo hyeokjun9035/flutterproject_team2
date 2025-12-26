@@ -36,10 +36,11 @@ class _JoinPage2State extends State<JoinPage2>{
   final TextEditingController _password = TextEditingController();
   final TextEditingController _nickName = TextEditingController();
 
-  Future<void> _login() async{
-    await fs.collection("join").add({
+  Future<void> _join() async{
+    await fs.collection("users").add({
       "email" : _email.text,
       "password" : _password.text,
+      "nickName" : _nickName.text
     });
 
   }
@@ -86,7 +87,8 @@ class _JoinPage2State extends State<JoinPage2>{
             ),
             const SizedBox(height: 24,),
             ElevatedButton(
-                onPressed: (){
+                onPressed: () async {
+                  await _join();
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage3(

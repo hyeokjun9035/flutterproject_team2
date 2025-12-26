@@ -35,7 +35,7 @@ class _JoinPage1State extends State<JoinPage1>{
   final TextEditingController _name = TextEditingController();
   final TextEditingController _age = TextEditingController();
   final TextEditingController _phone = TextEditingController();
-  final TextEditingController _email = TextEditingController();
+
 
   Future<void> _join() async{
     print("===============================  tests");
@@ -46,7 +46,6 @@ class _JoinPage1State extends State<JoinPage1>{
       "name" : _name.text,
       "age" : _age.text,
       "phone" : _phone.text,
-      "email" : _email.text,
     });
 
   }
@@ -97,13 +96,13 @@ class _JoinPage1State extends State<JoinPage1>{
 
           ElevatedButton(
               onPressed: () async{
-                await _join();
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(builder: (_)=>JoinPage2(
-                //
-                //   ))
-                // );
+                await _join(); //firebase에 저장실행
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_)=>JoinPage2(
+
+                  ))
+                );
               },
               child: Text("다음")
           )

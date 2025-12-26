@@ -38,8 +38,11 @@ class _JoinPage4State extends State<JoinPage4>{
  bool isAlramChecked = false;
 
 
-  Future<void> _JoinPage4() async{
-    await fs.collection("join").add({
+  Future<void> _join() async{
+    await fs.collection("users").add({
+      "isLocationChecked" : isLocationChecked,
+      "isCameraChecked" : isCameraChecked,
+      "isAlramChecked" :  isAlramChecked
 
     });
 
@@ -91,7 +94,8 @@ class _JoinPage4State extends State<JoinPage4>{
             ),
 
             ElevatedButton(
-                onPressed: (){
+                onPressed: () async{
+                  await _join();
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage5(
