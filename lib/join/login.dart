@@ -9,6 +9,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform, // firebase_options.dart에서 불러옴
   );
+  //아무거나함
   runApp(const MyApp());
 }
 
