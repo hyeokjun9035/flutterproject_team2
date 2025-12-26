@@ -10,8 +10,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
-import '../headandputter/putter.dart'; //jgh251226
-
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -215,123 +213,120 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF1E88E5);
 
-    return PutterScaffold(
-      currentIndex: 0, // ✅ 홈 탭 선택
-      body: Scaffold(
-        backgroundColor: bg,
-        body: SafeArea(
-          child: FutureBuilder<DashboardData>(
-            future: _future,
-            builder: (context, snapshot) {
-              // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
-              if (snapshot.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      '데이터 로드 실패:\n${snapshot.error}',
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: FutureBuilder<DashboardData>(
+          future: _future,
+          builder: (context, snapshot) {
+            // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '데이터 로드 실패:\n${snapshot.error}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
                   ),
-                );
-              }
-      
-              final data = snapshot.data;
-      
-              // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
-              final isLoading =
-                  snapshot.connectionState != ConnectionState.done || data == null;
-      
-              return RefreshIndicator(
-                onRefresh: () async => _reload(),
-                child: CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                        child: _TopBar(
-                          locationName: _locationLabel,
-                          updatedAt: data?.updatedAt,
-                          onRefresh: _reload,
-                        ),
-                      ),
-                    ),
-      
-                    if (!isLoading && data!.alerts.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _AlertBanner(alert: data.alerts.first),
-                        ),
-                      ),
-      
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate.fixed([
-                          _Card(
-                            child: isLoading
-                                ? const _Skeleton(height: 120)
-                                : _WeatherHero(now: data!.now),
-                          ),
-                          const SizedBox(height: 12),
-      
-                          _Card(
-                            child: isLoading
-                                ? const _Skeleton(height: 90)
-                                : _RainCard(now: data!.now),
-                          ),
-                          const SizedBox(height: 12),
-      
-                          _Card(
-                            child: isLoading
-                                ? const _Skeleton(height: 90)
-                                : _AirCard(air: data!.air),
-                          ),
-                          const SizedBox(height: 12),
-      
-                          _Card(
-                            child: isLoading
-                                ? const _Skeleton(height: 90)
-                                : _HourlyStrip(items: data!.hourly),
-                          ),
-                          const SizedBox(height: 24),
-      
-                          // 2025-12-23 jgh251223---S
-                          _Card(
-                            child: FutureBuilder<TransitRouteResult>(
-                              future: _transitFuture,
-                              builder: (context, transitSnap) {
-                                final isTransitLoading =
-                                    transitSnap.connectionState != ConnectionState.done;
-                                if (isTransitLoading) {
-                                  return const _Skeleton(height: 120);
-                                }
-                                if (transitSnap.hasError || !transitSnap.hasData) {
-                                  return Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Text(
-                                      '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                  );
-                                }
-                                return _TransitCard(data: transitSnap.data!);
-                              },
-                            ),
-                          ),
-                          // 2025-12-23 jgh251223---E
-                          const SizedBox(height: 24),
-                        ]),
-                      ),
-                    ),
-                  ],
                 ),
               );
-            },
-          ),
+            }
+
+            final data = snapshot.data;
+
+            // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
+            final isLoading =
+                snapshot.connectionState != ConnectionState.done || data == null;
+
+            return RefreshIndicator(
+              onRefresh: () async => _reload(),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: _TopBar(
+                        locationName: _locationLabel,
+                        updatedAt: data?.updatedAt,
+                        onRefresh: _reload,
+                      ),
+                    ),
+                  ),
+
+                  if (!isLoading && data!.alerts.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _AlertBanner(alert: data.alerts.first),
+                      ),
+                    ),
+
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate.fixed([
+                        _Card(
+                          child: isLoading
+                              ? const _Skeleton(height: 120)
+                              : _WeatherHero(now: data!.now),
+                        ),
+                        const SizedBox(height: 12),
+
+                        _Card(
+                          child: isLoading
+                              ? const _Skeleton(height: 90)
+                              : _RainCard(now: data!.now),
+                        ),
+                        const SizedBox(height: 12),
+
+                        _Card(
+                          child: isLoading
+                              ? const _Skeleton(height: 90)
+                              : _AirCard(air: data!.air),
+                        ),
+                        const SizedBox(height: 12),
+
+                        _Card(
+                          child: isLoading
+                              ? const _Skeleton(height: 90)
+                              : _HourlyStrip(items: data!.hourly),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // 2025-12-23 jgh251223---S
+                        _Card(
+                          child: FutureBuilder<TransitRouteResult>(
+                            future: _transitFuture,
+                            builder: (context, transitSnap) {
+                              final isTransitLoading =
+                                  transitSnap.connectionState != ConnectionState.done;
+                              if (isTransitLoading) {
+                                return const _Skeleton(height: 120);
+                              }
+                              if (transitSnap.hasError || !transitSnap.hasData) {
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text(
+                                    '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                );
+                              }
+                              return _TransitCard(data: transitSnap.data!);
+                            },
+                          ),
+                        ),
+                        // 2025-12-23 jgh251223---E
+                        const SizedBox(height: 24),
+                      ]),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
