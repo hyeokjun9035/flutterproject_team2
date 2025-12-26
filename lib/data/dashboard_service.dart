@@ -1,7 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'models.dart';
 import 'dart:io';
-import 'package:cloud_functions/cloud_functions.dart';
 
 class DashboardService {
   DashboardService({required this.region});
@@ -114,7 +113,8 @@ class DashboardService {
     required double lat,
     required double lon,
     required String locationName,
-    required String airAddr
+    required String airAddr,
+    required String administrativeArea
   }) async {
     final callable = _functions.httpsCallable('getDashboard');
 
@@ -122,7 +122,8 @@ class DashboardService {
       'lat': lat,
       'lon': lon,
       'locationName': locationName,
-      'addr': airAddr
+      'addr': airAddr,
+      'administrativeArea': administrativeArea,
     });
 
     final data = Map<String, dynamic>.from(res.data as Map);
@@ -170,6 +171,21 @@ class DashboardService {
       );
     }).toList();
 
+    final weeklyRaw = (data['weekly'] ?? []) as List;
+    final weekly = weeklyRaw.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      return DailyForecast(
+        date: (m['date'] ?? '').toString(),
+        min: m['min'] is num ? (m['min'] as num).toDouble() : double.tryParse('${m['min']}'),
+        max: m['max'] is num ? (m['max'] as num).toDouble() : double.tryParse('${m['max']}'),
+        pop: m['pop'] is int ? m['pop'] as int : int.tryParse('${m['pop']}'),
+        sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
+        pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
+        wfText: m['wfText']?.toString(),
+      );
+    }).toList();
+
+
     final airRaw = Map<String, dynamic>.from((data['air'] ?? {}) as Map);
     final air = AirQuality(
       gradeText: (airRaw['gradeText'] ?? '정보없음').toString(),
@@ -186,6 +202,7 @@ class DashboardService {
       hourly: hourly,
       alerts: alerts,
       air: air,
+      weekly: weekly,
     );
   }
 

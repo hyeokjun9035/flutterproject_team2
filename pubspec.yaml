@@ -32,13 +32,20 @@ dependencies:
     sdk: flutter
   cloud_functions:
   intl:
-  firebase_core: ^4.3.0
+  cloud_firestore:
+  firebase_core:
   geolocator:
   geocoding:
+  cloud_firestore:
   # 2025-12-23 jgh251223---S
   http: ^1.2.1
   flutter_dotenv: ^5.1.0
   # 2025-12-23 jgh251223---E
+  google_maps_flutter: #jgh251224
+  sunrise_sunset_calc:
+  video_player: ^2.9.2 #jgh251226
+  webview_flutter: ^4.10.0 #jgh251226
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -46,6 +53,8 @@ dependencies:
   cloud_firestore: ^6.1.1
   image_picker:
   firebase_storage:
+  firebase_functions:
+
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +81,7 @@ flutter:
   # 2025-12-23 jgh251223---S
   assets:
     - .env
+    - assets/
   # 2025-12-23 jgh251223---E
 
   # To add assets to your application, add an assets section, like this:

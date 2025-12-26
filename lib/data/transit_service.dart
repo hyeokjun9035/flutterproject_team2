@@ -25,6 +25,7 @@ class TransitRouteResult {
     required this.transfers,
     required this.firstArrivalText,
     required this.secondArrivalText,
+    required this.raw,
   });
 
   final String title;
@@ -33,6 +34,8 @@ class TransitRouteResult {
   final int transfers;
   final String firstArrivalText;
   final String secondArrivalText;
+
+  final Map<String, dynamic> raw;
 
   String get summary =>
       '총 ${totalMinutes}분 · 도보 ${walkMinutes}분 · 환승 $transfers';
@@ -44,8 +47,9 @@ class TransitRouteResult {
       totalMinutes: 42,
       walkMinutes: 4,
       transfers: 1,
-      firstArrivalText: '버스 3분 후',
-      secondArrivalText: '지하철 5분 후',
+      firstArrivalText: '버스 ???분 후',
+      secondArrivalText: '지하철 ???분 후',
+      raw: const {},
     );
   }
 
@@ -103,6 +107,7 @@ class TransitRouteResult {
       firstArrivalText:
           legTexts.isNotEmpty ? legTexts.first : '도착 정보 없음',
       secondArrivalText: legTexts.length >= 2 ? legTexts[1] : '',
+      raw: json, // 여기 !
     );
   }
 }
@@ -155,20 +160,20 @@ class TransitService {
       'format': 'json',
       'searchDttm': _fmt(effectiveSearchTime),
     };
-    
+
     // JSON 인코딩 (Postman과 동일)
     final bodyJson = jsonEncode(bodyMap);
 
     // Postman과 동일: URL 끝에 슬래시 포함
     final uri = Uri.https('apis.openapi.sk.com', '/transit/routes/');
-    
+
     // Postman과 동일한 헤더 (순서도 동일)
     final headers = {
       'Accept': 'application/json',
       'appKey': apiKey,
       'Content-Type': 'application/json',
     };
-    
+
     final res = await _client.post(
       uri,
       headers: headers,
@@ -182,9 +187,9 @@ class TransitService {
         final errorJson = jsonDecode(errorBody) as Map<String, dynamic>;
         // TMAP은 result.message 형태로 에러 반환
         final result = errorJson['result'] as Map<String, dynamic>?;
-        final errorMsg = result?['message'] ?? 
-                        errorJson['errorMessage'] ?? 
-                        errorJson['message'] ?? 
+        final errorMsg = result?['message'] ??
+                        errorJson['errorMessage'] ??
+                        errorJson['message'] ??
                         errorBody;
         throw Exception('TMAP 응답 오류(${res.statusCode}): $errorBody');
       } catch (e) {

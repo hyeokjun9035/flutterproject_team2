@@ -29,6 +29,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- ✅ 여기에 추가 (Google Maps 키) jgh251224-->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBi6-xais7rn3QW3fH9A5xVz7zHK4FqHV4" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
