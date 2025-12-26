@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
-import 'userMypage.dart'; // 같은 폴더에 있는 userMypage.dart 파일을 가져옵니다.
+import 'package:firebase_core/firebase_core.dart';
+import 'loginPageTest.dart';
+import 'package:flutter_project/firebase_options.dart'; // 생성된 옵션 파일
 
-void main() {
+void main() async {
+  // 1. Flutter 엔진과 비동기 서비스 연결
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Firebase 초기화 (옵션 설정 추가 필수!)
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const MyTestApp());
 }
 
@@ -11,15 +21,13 @@ class MyTestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      // 디버그 배너 제거
       debugShowCheckedModeBanner: false,
       title: 'My Page Test',
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
         useMaterial3: true,
       ),
-      // 시작 페이지를 우리가 만든 UserMypage로 설정
-      home: const UserMypage(),
+      home: const LoginPage(), // 로그인 페이지로 시작
     );
   }
 }

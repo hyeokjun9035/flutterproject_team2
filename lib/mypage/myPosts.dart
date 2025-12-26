@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'postCreate.dart';
+import 'DetailMypost.dart';
 class MyPosts extends StatelessWidget {
   const MyPosts({super.key});
 
@@ -91,11 +92,24 @@ class MyPosts extends StatelessWidget {
               ),
               itemCount: 6, // 예시 이미지 6개
               itemBuilder: (context, index) {
-                return Container(
-                  color: Colors.grey[300],
-                  child: Image.network(
-                    'https://picsum.photos/200?random=$index', // 테스트용 랜덤 이미지
-                    fit: BoxFit.cover,
+                final String currentImageUrl = 'https://picsum.photos/200?random=$index';
+
+                return GestureDetector(
+                  onTap: () {
+                    // 클릭 시 상세 페이지로 이동하며 이미지 URL 전달
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => Detailmypost(imageUrl: currentImageUrl),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    color: Colors.grey[300],
+                    child: Image.network(
+                      currentImageUrl,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 );
               },
