@@ -15,10 +15,8 @@ class _RouteviewState extends State<Routeview> {
   _LegSummary summary = const _LegSummary.empty();
   String debugMsg = 'init...';
 
+  // 지도 카메라를 경로에 맞춰주기 위해
   GoogleMapController? _mapCtrl;
-
-  // ✅ 지도 조작 중에는 부모 스크롤을 잠깐 막기 위한 플래그
-  bool _isMapInteracting = false;
 
   @override
   void initState() {
@@ -105,20 +103,9 @@ class _RouteviewState extends State<Routeview> {
     final allPts = segments.expand((e) => e.points).toList();
     if (allPts.isEmpty) return;
 
+    // 패딩 여유
     final bounds = _boundsForPoints(allPts);
     await _mapCtrl!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60));
-  }
-
-  Future<void> _focusSegment(_LegSegment seg) async {
-    if (_mapCtrl == null || seg.points.isEmpty) return;
-
-    if (seg.points.length == 1) {
-      await _mapCtrl!.animateCamera(CameraUpdate.newLatLngZoom(seg.points.first, 16));
-      return;
-    }
-
-    final b = _boundsForPoints(seg.points);
-    await _mapCtrl!.animateCamera(CameraUpdate.newLatLngBounds(b, 80));
   }
 
   @override
@@ -134,7 +121,7 @@ class _RouteviewState extends State<Routeview> {
           width: seg.mode == _LegMode.walk ? 5 : 7,
           color: seg.color,
           patterns: seg.mode == _LegMode.walk
-              ? <PatternItem>[PatternItem.dash(18), PatternItem.gap(10)]
+              ? <PatternItem>[PatternItem.dash(18), PatternItem.gap(10)] // 도보는 점선
               : const <PatternItem>[],
         ),
       );
@@ -161,98 +148,88 @@ class _RouteviewState extends State<Routeview> {
           ),
         ],
       ),
-
-      // ✅ 부모 스크롤은 기본 ON, 지도 조작 중에만 OFF
-      body: SingleChildScrollView(
-        physics: _isMapInteracting
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  height: 520, // 지도를 크게 보이게
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        // ✅ 지도 터치 시작하면 부모 스크롤 OFF
-                        child: Listener(
-                          onPointerDown: (_) => setState(() => _isMapInteracting = true),
-                          onPointerUp: (_) => setState(() => _isMapInteracting = false),
-                          onPointerCancel: (_) => setState(() => _isMapInteracting = false),
-                          child: allPoints.isEmpty
-                              ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                '지도 표시 불가\n$debugMsg',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          )
-                              : GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: allPoints.first,
-                              zoom: 13,
-                            ),
-                            polylines: polylines,
-                            markers: markers,
-                            onMapCreated: (c) async {
-                              _mapCtrl = c;
-                              await _fitToRoute();
-                            },
-
-                            // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
-                            scrollGesturesEnabled: true,
-                            zoomGesturesEnabled: true,
-                            rotateGesturesEnabled: true,
-                            tiltGesturesEnabled: true,
-
-                            // ✅ + / - 버튼 (Android에서 표시)
-                            zoomControlsEnabled: true,
-
-                            myLocationButtonEnabled: false,
-                          ),
-                        ),
-                      ),
-
-                      // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
-                      Positioned(
-                        left: 10,
-                        right: 10,
-                        top: 10,
-                        child: _FloatingSummary(summary: summary),
-                      ),
-                    ],
-                  ),
-                ),
+      body: Stack(
+        children: [
+          // 1) 지도(전체 배경)
+          Positioned.fill(
+            child: allPoints.isEmpty
+                ? const Center(child: Text('지도 표시 불가 (위 메시지 확인)'))
+                : GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: allPoints.first,
+                zoom: 13,
               ),
+              polylines: polylines,
+              markers: markers,
+              onMapCreated: (c) async {
+                _mapCtrl = c;
+                await _fitToRoute();
+              },
             ),
+          ),
 
-            // ✅ 아래 구간 리스트 (페이지 스크롤로 내려서 보는 방식)
-            _LegListPage(
-              segments: segments,
-              onTapSegment: (seg) => _focusSegment(seg),
+          // 2) 상단 요약바(고정)
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: _SummaryBar(summary: summary),
             ),
+          ),
 
-            const SizedBox(height: 18),
-          ],
-        ),
+          // 3) 아래 드래그 가능한 시트(리스트)
+          DraggableScrollableSheet(
+            initialChildSize: 0.22, // 처음엔 조금만
+            minChildSize: 0.12,     // 최소
+            maxChildSize: 0.75,     // 최대로 올리면 75%까지
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 12,
+                      color: Colors.black.withOpacity(0.12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 핵심: ListView에 scrollController를 연결해야 "드래그=스크롤"이 됨
+                    Expanded(
+                      child: _LegList(
+                        segments: segments,
+                        controller: scrollController,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
+
     );
   }
 }
 
 /* -------------------- UI: 요약/리스트 -------------------- */
 
-class _FloatingSummary extends StatelessWidget {
+class _SummaryBar extends StatelessWidget {
   final _LegSummary summary;
-  const _FloatingSummary({required this.summary});
+  const _SummaryBar({required this.summary});
 
   @override
   Widget build(BuildContext context) {
@@ -260,23 +237,22 @@ class _FloatingSummary extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.92),
+          color: Colors.black.withOpacity(0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.black.withOpacity(0.08)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 16),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
       );
     }
 
-    return Material(
-      color: Colors.transparent,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -291,11 +267,10 @@ class _FloatingSummary extends StatelessWidget {
   }
 }
 
-/// ✅ 페이지 스크롤 방식용 리스트(리스트 자체는 스크롤 안 함)
-class _LegListPage extends StatelessWidget {
+class _LegList extends StatelessWidget {
   final List<_LegSegment> segments;
-  final void Function(_LegSegment seg) onTapSegment;
-  const _LegListPage({required this.segments, required this.onTapSegment});
+  final ScrollController? controller; // ✅ 추가
+  const _LegList({required this.segments, this.controller});// 추가
 
   @override
   Widget build(BuildContext context) {
@@ -314,55 +289,98 @@ class _LegListPage extends StatelessWidget {
       }
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: segments.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, i) {
-          final s = segments[i];
-          return InkWell(
+    // return Container(
+    //   height: 160,
+    //   decoration: BoxDecoration(
+    //     border: Border(top: BorderSide(color: Colors.black.withOpacity(0.08))),
+    //   ),
+    //   child: ListView.separated(
+    //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    //     itemCount: segments.length,
+    //     separatorBuilder: (_, __) => const SizedBox(height: 8),
+    //     itemBuilder: (context, i) {
+    //       final s = segments[i];
+    //       return Container(
+    //         padding: const EdgeInsets.all(10),
+    //         decoration: BoxDecoration(
+    //           color: Colors.black.withOpacity(0.04),
+    //           borderRadius: BorderRadius.circular(12),
+    //           border: Border.all(color: s.color.withOpacity(0.35)),
+    //         ),
+    //         child: Row(
+    //           children: [
+    //             Container(
+    //               width: 10,
+    //               height: 42,
+    //               decoration: BoxDecoration(
+    //                 color: s.color,
+    //                 borderRadius: BorderRadius.circular(8),
+    //               ),
+    //             ),
+    //             const SizedBox(width: 10),
+    //             Icon(iconFor(s.mode), size: 20),
+    //             const SizedBox(width: 10),
+    //             Expanded(
+    //               child: Text(
+    //                 s.label,
+    //                 style: const TextStyle(fontWeight: FontWeight.w700),
+    //                 maxLines: 2,
+    //                 overflow: TextOverflow.ellipsis,
+    //               ),
+    //             ),
+    //             const SizedBox(width: 10),
+    //             Text('${s.minutes}분', style: const TextStyle(fontWeight: FontWeight.w800)),
+    //           ],
+    //         ),
+    //       );
+    //     },
+    //   ),
+    // );
+
+    return ListView.separated(
+      controller: controller, // ✅ 이 줄이 핵심(네 코드에 빠져있음)
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      itemCount: segments.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final s = segments[i];
+        return Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.04),
             borderRadius: BorderRadius.circular(12),
-            onTap: () => onTapSegment(s),
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.04),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: s.color.withOpacity(0.35)),
+            border: Border.all(color: s.color.withOpacity(0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: s.color,
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: s.color,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Icon(iconFor(s.mode), size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      s.label,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text('${s.minutes}분', style: const TextStyle(fontWeight: FontWeight.w900)),
-                ],
+              const SizedBox(width: 10),
+              Icon(iconFor(s.mode), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  s.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          );
-        },
-      ),
+              const SizedBox(width: 10),
+              Text('${s.minutes}분', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ],
+          ),
+        );
+      },
     );
+
+
   }
 }
 
@@ -438,6 +456,7 @@ _LegMode _modeFromLeg(Map leg) {
 }
 
 Color _colorFromLeg(Map leg, _LegMode mode) {
+  // routeColor가 있으면 그걸 우선 사용 (버스/지하철)
   String? rc = leg['routeColor']?.toString();
   if (rc != null && rc.isNotEmpty) {
     rc = rc.replaceAll('#', '');
@@ -447,6 +466,7 @@ Color _colorFromLeg(Map leg, _LegMode mode) {
     }
   }
 
+  // 기본색
   switch (mode) {
     case _LegMode.walk:
       return Colors.grey.shade700;
@@ -561,6 +581,8 @@ _LegSummary buildSummaryFromLegs(List legs) {
     if (mode == 'SUBWAY') subway += min;
   }
 
+  // transferCount는 itinerary의 transferCount가 제일 정확하지만,
+  // 여기서는 legs 기반으로 "대중교통 구간 수 - 1"로 근사
   int transitLegs = 0;
   for (final leg in legs) {
     if (leg is! Map) continue;

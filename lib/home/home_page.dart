@@ -723,18 +723,23 @@ class _TransitCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 5),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
                 onPressed: () {
                   // 경로 눈으로 보기
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => Routeview(raw: data.raw),
-                      // builder: (_) => Routeview(raw: data.raw),
 
                     ),
                   );
@@ -742,6 +747,12 @@ class _TransitCard extends StatelessWidget {
                 child: const Text('[경로 보기]'),
               ),
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
                 onPressed: () {
                   // TODO: 즐겨찾기 저장/삭제 로직 연결
                 },
