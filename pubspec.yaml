@@ -41,6 +41,7 @@ dependencies:
   flutter_dotenv: ^5.1.0
   # 2025-12-23 jgh251223---E
   google_maps_flutter: #jgh251224
+  sunrise_sunset_calc:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

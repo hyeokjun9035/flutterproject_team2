@@ -1,19 +1,39 @@
 /**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
+ * functions/index.js
  */
-
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const { onCall } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const axios = require("axios");
 
-// (1) 위경도 -> 기상청 격자(nx, ny) 변환 (널리 쓰는 LCC 변환)
+setGlobalOptions({ maxInstances: 10 });
+
+/** -----------------------------
+ *  공통 유틸
+ * ------------------------------ */
+function toNum(v) {
+  const s = String(v ?? "").trim();
+  if (!s || s === "-") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function addDaysYmd(ymd, addDays) {
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(4, 6)) - 1;
+  const d = Number(ymd.slice(6, 8));
+  const dt = new Date(Date.UTC(y, m, d));
+  dt.setUTCDate(dt.getUTCDate() + addDays);
+  const yy = dt.getUTCFullYear();
+  const mm = pad2(dt.getUTCMonth() + 1);
+  const dd = pad2(dt.getUTCDate());
+  return `${yy}${mm}${dd}`;
+}
+
+/** -----------------------------
+ *  (1) 위경도 -> 기상청 격자(nx, ny) (LCC)
+ * ------------------------------ */
 function latLonToGrid(lat, lon) {
   const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0, OLON = 126.0, OLAT = 38.0;
   const XO = 43, YO = 136;
@@ -34,7 +54,7 @@ function latLonToGrid(lat, lon) {
   let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
   ro = re * sf / Math.pow(ro, sn);
 
-  let ra = Math.tan(Math.PI * 0.25 + (lat) * DEGRAD * 0.5);
+  let ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
   ra = re * sf / Math.pow(ra, sn);
 
   let theta = lon * DEGRAD - olon;
@@ -47,31 +67,76 @@ function latLonToGrid(lat, lon) {
   return { nx: x, ny: y };
 }
 
-// (2) 기상청 base_time 간단 규칙(실황: 매시 40분쯤 이후 데이터가 안정적)
-// 실제 운영하면서 30~60분 정도 오프셋 튜닝해도 됨
+/** -----------------------------
+ *  (2) 기상청: 초단기실황 base_date/base_time
+ *  - mm<40이면 1시간 전
+ * ------------------------------ */
 function kmaNcstBase(dt) {
   const d = new Date(dt);
   const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
   let hh = kst.getUTCHours();
   const mm = kst.getUTCMinutes();
-
-  // mm < 40이면 한 시간 전 데이터로
   if (mm < 40) hh -= 1;
   if (hh < 0) {
     hh = 23;
     kst.setUTCDate(kst.getUTCDate() - 1);
   }
   const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(kst.getUTCDate()).padStart(2, "0");
-  const base_date = `${y}${m}${day}`;
-  const base_time = `${String(hh).padStart(2, "0")}00`;
-  return { base_date, base_time };
+  const m = pad2(kst.getUTCMonth() + 1);
+  const day = pad2(kst.getUTCDate());
+  return { base_date: `${y}${m}${day}`, base_time: `${pad2(hh)}00` };
 }
 
+/** -----------------------------
+ *  (3) 기상청: 초단기예보 base_date/base_time
+ *  - 보통 30분 발표, mm<45면 1시간 전 회차로
+ * ------------------------------ */
+function kmaUltraFcstBase(dt) {
+  const d = new Date(dt);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  let hh = kst.getUTCHours();
+  const mm = kst.getUTCMinutes();
+  if (mm < 45) hh -= 1;
+  if (hh < 0) {
+    hh = 23;
+    kst.setUTCDate(kst.getUTCDate() - 1);
+  }
+  const y = kst.getUTCFullYear();
+  const m = pad2(kst.getUTCMonth() + 1);
+  const day = pad2(kst.getUTCDate());
+  return { base_date: `${y}${m}${day}`, base_time: `${pad2(hh)}30` };
+}
+
+/** -----------------------------
+ *  (4) 기상청: 단기예보 base_date/base_time
+ *  - 02/05/08/11/14/17/20/23 중 최신 회차
+ * ------------------------------ */
+function kmaVilageBase(dt) {
+  const d = new Date(dt);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const hh = kst.getUTCHours();
+  const mm = kst.getUTCMinutes();
+
+  const baseHours = [23, 20, 17, 14, 11, 8, 5, 2];
+  let baseH = baseHours.find(h => hh > h || (hh === h && mm >= 10));
+
+  if (baseH == null) {
+    baseH = 23;
+    kst.setUTCDate(kst.getUTCDate() - 1);
+  }
+
+  const y = kst.getUTCFullYear();
+  const m = pad2(kst.getUTCMonth() + 1);
+  const day = pad2(kst.getUTCDate());
+  return { base_date: `${y}${m}${day}`, base_time: `${pad2(baseH)}00` };
+}
+
+/** -----------------------------
+ *  기상청 호출들
+ * ------------------------------ */
 async function callKmaUltraNcst(nx, ny) {
   const { base_date, base_time } = kmaNcstBase(new Date());
-  const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"; // :contentReference[oaicite:8]{index=8}
+  const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";
   const params = {
     ServiceKey: process.env.KMA_SERVICE_KEY,
     pageNo: 1,
@@ -83,215 +148,367 @@ async function callKmaUltraNcst(nx, ny) {
     ny,
   };
   const res = await axios.get(url, { params, timeout: 8000 });
-  const items = res.data?.response?.body?.items?.item ?? [];
-  return { items, base_date, base_time };
+  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
 }
 
-function kmaFcstBase(dt) {
-    const d = new Date(dt);
-    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-    let hh = kst.getUTCHours();
-    const mm = kst.getUTCMinutes();
-
-    // 초단기예보는 보통 30분 발표 + 실제 반영 지연이 있으니
-    // 45분 전이면 한 시간 전 회차(…30)로 잡는 게 안정적
-    if (mm < 45) hh -= 1;
-    if (hh < 0) {
-      hh = 23;
-      kst.setUTCDate(kst.getUTCDate() - 1);
-    }
-    const y = kst.getUTCFullYear();
-    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(kst.getUTCDate()).padStart(2, "0");
-    const base_date = `${y}${m}${day}`;
-    const base_time = `${String(hh).padStart(2, "0")}30`;
-    return { base_date, base_time };
-  }
-
-  async function callKmaUltraFcst(nx, ny) {
-    const { base_date, base_time } = kmaFcstBase(new Date());
-    const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";
-    const params = {
-      ServiceKey: process.env.KMA_SERVICE_KEY,
-      pageNo: 1,
-      numOfRows: 1000,
-      dataType: "JSON",
-      base_date,
-      base_time,
-      nx,
-      ny,
-    };
-    const res = await axios.get(url, { params, timeout: 8000 });
-    const items = res.data?.response?.body?.items?.item ?? [];
-    return { items, base_date, base_time };
-  }
-
-  function buildHourlyFcst(items) {
-    // fcstDate+fcstTime별로 SKY/PTY/T1H(or TMP) 묶기
-    const byKey = new Map();
-    for (const it of items) {
-      const key = `${it.fcstDate}${it.fcstTime}`;
-      if (!byKey.has(key)) byKey.set(key, { fcstDate: it.fcstDate, fcstTime: it.fcstTime });
-      byKey.get(key)[it.category] = it.fcstValue;
-    }
-
-    const list = [...byKey.values()]
-      .map((v, idx) => {
-        const hh = Number(String(v.fcstTime).slice(0, 2));
-        return {
-          timeLabel: idx === 0 ? "NOW" : `${hh}시`,
-          sky: v.SKY != null ? Number(v.SKY) : null,
-          pty: v.PTY != null ? Number(v.PTY) : null,
-          temp: v.T1H != null ? Number(v.T1H) : (v.TMP != null ? Number(v.TMP) : null),
-          _k: `${v.fcstDate}${v.fcstTime}`,
-        };
-      })
-      .filter(x => x.temp !== null)          // temp 없는 슬롯 제거
-      .sort((a, b) => (a._k < b._k ? -1 : 1))
-      .slice(0, 8)                           // 6~8개 정도만 UI에 충분
-      .map(({ _k, ...rest }) => rest);
-
-    return list;
-  }
-
-  function gradeTextFromKhai(grade) {
-    const g = String(grade ?? "");
-    if (g === "1") return "좋음";
-    if (g === "2") return "보통";
-    if (g === "3") return "나쁨";
-    if (g === "4") return "매우나쁨";
-    return "정보없음";
-  }
-
-  async function callAirMsrstnListByAddr(addr) {
-    const url = "http://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList";
-    const params = {
-      serviceKey: process.env.AIRKOREA_SERVICE_KEY, // ⚠️ 소문자
-      returnType: "json",
-      numOfRows: 10,
-      pageNo: 1,
-      addr, // 예: "인천광역시 부평구"
-    };
-    const res = await axios.get(url, { params, timeout: 8000 });
-    return res.data?.response?.body?.items ?? [];
-  }
-
-  async function callAirRltmByStation(stationName) {
-    const url = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
-    const params = {
-      serviceKey: process.env.AIRKOREA_SERVICE_KEY,
-      returnType: "json",
-      numOfRows: 1,
-      pageNo: 1,
-      stationName,
-      dataTerm: "DAILY",
-      ver: "1.3",
-    };
-    const res = await axios.get(url, { params, timeout: 8000 });
-    return res.data?.response?.body?.items ?? [];
-  }
-
-  function toNum(v) {
-    const s = String(v ?? "").trim();
-    if (!s || s === "-" ) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  async function buildAir(addr) {
-    if (!addr) return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
-
-    const stations = await callAirMsrstnListByAddr(addr);
-    for (const st of stations) {
-      const stationName = st?.stationName;
-      if (!stationName) continue;
-
-      const msr = await callAirRltmByStation(stationName);
-      const row = msr?.[0];
-      if (!row) continue;
-
-      const pm10 = toNum(row.pm10Value);
-      const pm25 = toNum(row.pm25Value);
-      const grade = String(row.khaiGrade ?? "").trim();
-
-      // ✅ 데이터가 하나라도 있으면 채택
-      if (pm10 != null || pm25 != null || (grade && grade !== "-")) {
-        return {
-          air: {
-            gradeText: gradeTextFromKhai(grade),
-            pm10,
-            pm25,
-          },
-          meta: { stationName, dataTime: row.dataTime ?? null },
-        };
-      }
-    }
-
-    return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
-  }
-
-exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => {
-  const { lat, lon, locationName } = request.data || {};
-  if (typeof lat !== "number" || typeof lon !== "number") {
-    throw new Error("lat/lon is required");
-  }
-
-  const { nx, ny } = latLonToGrid(lat, lon);
-
-  // ✅ Flutter에서 locationName을 "인천광역시 부평구" 같은 addr로 쓰고 있다면 이걸 그대로 사용 가능
-  const addr = (request.data?.addr ?? request.data?.locationName ?? "").toString();
-
-//  logger.info("getDashboard", { lat, lon, nx, ny, locationName, addr });
-
-  // 1) 실황
-  const kmaNcst = await callKmaUltraNcst(nx, ny);
-
-  // 2) 시간대별 예보
-  const kmaFcst = await callKmaUltraFcst(nx, ny);
-  const hourlyFcst = buildHourlyFcst(kmaFcst.items);
-
-  // 3) 대기질
-  const airRes = await buildAir(addr);
-
-  return {
-    updatedAt: new Date().toISOString(),
-
-    // ✅ Flutter 파서가 기대하는 형태로 반환
-    weatherNow: kmaNcst.items,   // [{category, obsrValue}, ...]
-    hourlyFcst: hourlyFcst,      // [{timeLabel, sky, pty, temp}, ...]
-    alerts: [],
-    air: airRes.air,             // {gradeText, pm10, pm25}
-
-    // (선택) 디버그용: 지금 실제로 뭐가 잡혔는지 확인하기 좋음
-    meta: {
-      nx,
-      ny,
-      addr,
-      kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
-      kmaFcstBase: { base_date: kmaFcst.base_date, base_time: kmaFcst.base_time },
-      air: airRes.meta, // stationName, dataTime
-    },
+async function callKmaUltraFcst(nx, ny) {
+  const { base_date, base_time } = kmaUltraFcstBase(new Date());
+  const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";
+  const params = {
+    ServiceKey: process.env.KMA_SERVICE_KEY,
+    pageNo: 1,
+    numOfRows: 1000,
+    dataType: "JSON",
+    base_date,
+    base_time,
+    nx,
+    ny,
   };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+}
+
+async function callKmaVilageFcst(nx, ny) {
+  const { base_date, base_time } = kmaVilageBase(new Date());
+  const url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
+  const params = {
+    ServiceKey: process.env.KMA_SERVICE_KEY,
+    pageNo: 1,
+    numOfRows: 1000,
+    dataType: "JSON",
+    base_date,
+    base_time,
+    nx,
+    ny,
+  };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+}
+
+/** -----------------------------
+ *  시간대별: 초단기(ultra) + 단기(vilage) 합치기
+ * ------------------------------ */
+function buildHourlyUltraRaw(items) {
+  const byKey = new Map();
+  for (const it of items) {
+    const key = `${it.fcstDate}${it.fcstTime}`;
+    if (!byKey.has(key)) byKey.set(key, { fcstDate: it.fcstDate, fcstTime: it.fcstTime });
+    byKey.get(key)[it.category] = it.fcstValue;
+  }
+
+  return [...byKey.values()]
+    .map((v) => {
+      const hh = Number(String(v.fcstTime).slice(0, 2));
+      return {
+        _k: `${v.fcstDate}${v.fcstTime}`,
+        timeLabel: `${hh}시`,
+        sky: v.SKY != null ? Number(v.SKY) : null,
+        pty: v.PTY != null ? Number(v.PTY) : null,
+        temp: v.T1H != null ? Number(v.T1H) : (v.TMP != null ? Number(v.TMP) : null),
+      };
+    })
+    .filter(x => x.temp !== null)
+    .sort((a, b) => (a._k < b._k ? -1 : 1));
+}
+
+function buildHourlyFromVilage(items) {
+  const byKey = new Map();
+  for (const it of items) {
+    const key = `${it.fcstDate}${it.fcstTime}`;
+    if (!byKey.has(key)) byKey.set(key, { fcstDate: it.fcstDate, fcstTime: it.fcstTime });
+    byKey.get(key)[it.category] = it.fcstValue;
+  }
+
+  return [...byKey.values()]
+    .map((v) => {
+      const hh = Number(String(v.fcstTime).slice(0, 2));
+      return {
+        _k: `${v.fcstDate}${v.fcstTime}`,
+        timeLabel: `${hh}시`,
+        sky: v.SKY != null ? Number(v.SKY) : null,
+        pty: v.PTY != null ? Number(v.PTY) : null,
+        temp: v.TMP != null ? Number(v.TMP) : null, // 단기예보는 TMP
+      };
+    })
+    .filter(x => x.temp !== null)
+    .sort((a, b) => (a._k < b._k ? -1 : 1));
+}
+
+function mergeHourly(ultra, vilage, take = 24) {
+  const seen = new Set();
+  const out = [];
+
+  for (const x of ultra) {
+    if (!x._k || seen.has(x._k)) continue;
+    seen.add(x._k);
+    out.push(x);
+  }
+  for (const x of vilage) {
+    if (!x._k || seen.has(x._k)) continue;
+    seen.add(x._k);
+    out.push(x);
+  }
+
+  out.sort((a, b) => (a._k < b._k ? -1 : 1));
+  if (out.length > 0) out[0].timeLabel = "NOW";
+
+  return out.slice(0, take).map(({ _k, ...rest }) => rest);
+}
+
+/** -----------------------------
+ *  주간(7일): 단기에서 3일 요약 + 중기(나머지) 덧붙이기
+ * ------------------------------ */
+function buildDailyFromVilage(items) {
+  const byDate = new Map();
+
+  for (const it of items) {
+    const d = it.fcstDate;
+    if (!byDate.has(d)) byDate.set(d, { date: d, min: null, max: null, pop: 0, sky12: null, pty: 0 });
+    const row = byDate.get(d);
+
+    if (it.category === "TMN") row.min = toNum(it.fcstValue);
+    if (it.category === "TMX") row.max = toNum(it.fcstValue);
+
+    if (it.category === "POP") row.pop = Math.max(row.pop, Number(it.fcstValue ?? 0));
+    if (it.category === "PTY") row.pty = Math.max(row.pty, Number(it.fcstValue ?? 0));
+
+    if (it.category === "SKY") {
+      if (it.fcstTime === "1200") row.sky12 = toNum(it.fcstValue);
+      if (row.sky12 == null) row.sky12 = toNum(it.fcstValue);
+    }
+  }
+
+  return [...byDate.values()]
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .slice(0, 3)
+    .map(d => ({
+      date: d.date,
+      min: d.min,
+      max: d.max,
+      pop: d.pop,
+      sky: d.sky12,
+      pty: d.pty,
+      wfText: null, // 단기 기반은 sky/pty로 아이콘 가능
+    }));
+}
+
+// 중기예보는 일 2회(06/18시) 발표라는 설명이 공식 페이지에 있음. :contentReference[oaicite:2]{index=2}
+function midTmFc(dt) {
+  const d = new Date(dt);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const hh = kst.getUTCHours();
+  let baseH = hh >= 18 ? 18 : (hh >= 6 ? 6 : 18);
+  if (hh < 6) kst.setUTCDate(kst.getUTCDate() - 1);
+
+  const y = kst.getUTCFullYear();
+  const m = pad2(kst.getUTCMonth() + 1);
+  const day = pad2(kst.getUTCDate());
+  return `${y}${m}${day}${pad2(baseH)}00`;
+}
+
+// regId 대표 코드(예: 11B00000 수도권, 11H20000 경남권 등) 목록 예시는 아래처럼 널리 쓰임. :contentReference[oaicite:3]{index=3}
+function regIdFromAdmin(adminArea) {
+  const s = String(adminArea ?? "").replace(/\s/g, "");
+  if (s.includes("서울") || s.includes("인천") || s.includes("경기")) return "11B00000";
+  if (s.includes("강원")) return "11D10000"; // 영서/영동 세분은 나중에 개선 가능
+  if (s.includes("충북")) return "11C10000";
+  if (s.includes("대전") || s.includes("세종") || s.includes("충남")) return "11C20000";
+  if (s.includes("전북")) return "11F10000";
+  if (s.includes("광주") || s.includes("전남")) return "11F20000";
+  if (s.includes("대구") || s.includes("경북")) return "11H10000";
+  if (s.includes("부산") || s.includes("울산") || s.includes("경남")) return "11H20000";
+  if (s.includes("제주")) return "11G00000";
+  return null;
+}
+
+async function callMidLand(regId, tmFc) {
+  const url = "http://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst";
+  const params = {
+    ServiceKey: process.env.KMA_SERVICE_KEY,
+    pageNo: 1,
+    numOfRows: 10,
+    dataType: "JSON",
+    regId,
+    tmFc,
+  };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return res.data?.response?.body?.items?.item?.[0] ?? null;
+}
+
+async function callMidTa(regId, tmFc) {
+  const url = "http://apis.data.go.kr/1360000/MidFcstInfoService/getMidTa";
+  const params = {
+    ServiceKey: process.env.KMA_SERVICE_KEY,
+    pageNo: 1,
+    numOfRows: 10,
+    dataType: "JSON",
+    regId,
+    tmFc,
+  };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return res.data?.response?.body?.items?.item?.[0] ?? null;
+}
+
+function appendMidToWeekly(short3, midLand, midTa) {
+  const base = short3[0]?.date;
+  if (!base) return short3;
+
+  const out = [...short3];
+
+  // 오늘~모레(3일) 이후를 4~7일차 정도로 채워서 7일 카드 만들기
+  for (let d = 3; d <= 7; d++) {
+    out.push({
+      date: addDaysYmd(base, d),
+      min: midTa?.[`taMin${d}`] != null ? toNum(midTa[`taMin${d}`]) : null,
+      max: midTa?.[`taMax${d}`] != null ? toNum(midTa[`taMax${d}`]) : null,
+      pop: midLand?.[`rnSt${d}Pm`] != null ? toNum(midLand[`rnSt${d}Pm`]) : null,
+      wfText: midLand?.[`wf${d}Pm`] ?? null, // "맑음" "구름많음" "비" 등 텍스트
+      sky: null,
+      pty: null,
+    });
+  }
+
+  return out.slice(0, 7);
+}
+
+/** -----------------------------
+ *  에어코리아(지금 네 로직 유지)
+ * ------------------------------ */
+function gradeTextFromKhai(grade) {
+  const g = String(grade ?? "");
+  if (g === "1") return "좋음";
+  if (g === "2") return "보통";
+  if (g === "3") return "나쁨";
+  if (g === "4") return "매우나쁨";
+  return "정보없음";
+}
+
+async function callAirMsrstnListByAddr(addr) {
+  const url = "http://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList";
+  const params = {
+    serviceKey: process.env.AIRKOREA_SERVICE_KEY, // ⚠️ 소문자
+    returnType: "json",
+    numOfRows: 10,
+    pageNo: 1,
+    addr,
+  };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return res.data?.response?.body?.items ?? [];
+}
+
+async function callAirRltmByStation(stationName) {
+  const url = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
+  const params = {
+    serviceKey: process.env.AIRKOREA_SERVICE_KEY,
+    returnType: "json",
+    numOfRows: 1,
+    pageNo: 1,
+    stationName,
+    dataTerm: "DAILY",
+    ver: "1.3",
+  };
+  const res = await axios.get(url, { params, timeout: 8000 });
+  return res.data?.response?.body?.items ?? [];
+}
+
+async function buildAir(addr) {
+  if (!addr) return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+
+  const stations = await callAirMsrstnListByAddr(addr);
+  for (const st of stations) {
+    const stationName = st?.stationName;
+    if (!stationName) continue;
+
+    const msr = await callAirRltmByStation(stationName);
+    const row = msr?.[0];
+    if (!row) continue;
+
+    const pm10 = toNum(row.pm10Value);
+    const pm25 = toNum(row.pm25Value);
+    const grade = String(row.khaiGrade ?? "").trim();
+
+    if (pm10 != null || pm25 != null || (grade && grade !== "-")) {
+      return {
+        air: { gradeText: gradeTextFromKhai(grade), pm10, pm25 },
+        meta: { stationName, dataTime: row.dataTime ?? null },
+      };
+    }
+  }
+
+  return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+}
+
+/** -----------------------------
+ *  메인: getDashboard
+ * ------------------------------ */
+exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => {
+  try {
+    const { lat, lon, locationName } = request.data || {};
+    if (typeof lat !== "number" || typeof lon !== "number") {
+      throw new HttpsError("invalid-argument", "lat/lon is required");
+    }
+
+    const { nx, ny } = latLonToGrid(lat, lon);
+
+    // addr: 에어코리아 조회용 ("인천광역시 부평구" 같은 형태가 안정적)
+    const addr = String(request.data?.addr ?? request.data?.locationName ?? "");
+    const administrativeArea = String(request.data?.administrativeArea ?? "");
+
+    // 1) 기상청: 초단기실황(현재값)
+    const kmaNcst = await callKmaUltraNcst(nx, ny);
+
+    // 2) 기상청: 시간대별 (초단기 + 단기 merge)
+    const kmaUltra = await callKmaUltraFcst(nx, ny);
+    const kmaVilage = await callKmaVilageFcst(nx, ny);
+
+    const hourlyFcst = mergeHourly(
+      buildHourlyUltraRaw(kmaUltra.items),
+      buildHourlyFromVilage(kmaVilage.items),
+      24
+    );
+
+    // 3) 주간: 단기 3일 + 중기 덧붙이기(가능하면)
+    const weeklyShort3 = buildDailyFromVilage(kmaVilage.items);
+    let weekly = weeklyShort3;
+
+    const regId = regIdFromAdmin(administrativeArea);
+    if (regId) {
+      const tmFc = midTmFc(new Date());
+      const [midLand, midTa] = await Promise.all([
+        callMidLand(regId, tmFc),
+        callMidTa(regId, tmFc),
+      ]);
+      weekly = appendMidToWeekly(weeklyShort3, midLand, midTa);
+    }
+
+    // 4) 대기질
+    const airRes = await buildAir(addr);
+
+    // logger.info("getDashboard", { lat, lon, nx, ny, addr, administrativeArea, regId });
+
+    return {
+      updatedAt: new Date().toISOString(),
+      locationName: String(locationName ?? ""),
+      weatherNow: kmaNcst.items,
+      hourlyFcst,
+      weekly,
+      alerts: [],
+      air: airRes.air,
+      meta: {
+        nx,
+        ny,
+        addr,
+        administrativeArea,
+        regId: regId ?? null,
+        kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
+        kmaUltraBase: { base_date: kmaUltra.base_date, base_time: kmaUltra.base_time },
+        kmaVilageBase: { base_date: kmaVilage.base_date, base_time: kmaVilage.base_time },
+        air: airRes.meta,
+      },
+    };
+  } catch (e) {
+    logger.error("getDashboard failed", e);
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError("internal", `getDashboard failed: ${String(e?.message ?? e)}`);
+  }
 });
-
-
-
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
-
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
