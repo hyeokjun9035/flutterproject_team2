@@ -32,11 +32,9 @@ dependencies:
     sdk: flutter
   cloud_functions:
   intl:
-  cloud_firestore:
   firebase_core:
   geolocator:
   geocoding:
-  cloud_firestore:
   # 2025-12-23 jgh251223---S
   http: ^1.2.1
   flutter_dotenv: ^5.1.0

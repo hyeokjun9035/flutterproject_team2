@@ -16,8 +16,8 @@ import 'package:geocoding/geocoding.dart';
 import '../carry/checklist_service.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
-enum DustGrade { good, normal, bad, veryBad, unknown }
 import '../headandputter/putter.dart'; //jgh251226
+enum DustGrade { good, normal, bad, veryBad, unknown }
 
 
 class HomePage extends StatefulWidget {
@@ -237,170 +237,173 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF1E88E5);
 
-    return Scaffold(
-      body: FutureBuilder<DashboardData>(
-        future: _future,
-        builder: (context, snapshot) {
-          // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  '데이터 로드 실패:\n${snapshot.error}',
-                  style: const TextStyle(color: Colors.white),
-                  textAlign: TextAlign.center,
+    return PutterScaffold(
+      currentIndex: 0,
+      body: Scaffold(
+        body: FutureBuilder<DashboardData>(
+          future: _future,
+          builder: (context, snapshot) {
+            // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '데이터 로드 실패:\n${snapshot.error}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              ),
-            );
-          }
-
-          final data = snapshot.data;
-          final now = data?.now;
-
-          // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
-          final isLoading =
-              snapshot.connectionState != ConnectionState.done || data == null;
-
-          return Stack(
-            children: [
-              // ✅ 1) 배경 (낮/밤/구름/맑음)
-              WeatherBackground(now: now, lat: _lat, lon: _lon),
-
-              // ✅ 2) 비/눈 효과(PTY 기반)
-              if (now != null) PrecipitationLayer(now: now),
-
-              // ✅ 3) 기존 UI
-              SafeArea(
-                child: RefreshIndicator(
-                  onRefresh: () async => _reload(),
-                  child: CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                          child: _TopBar(
-                            locationName: _locationLabel,
-                            updatedAt: data?.updatedAt,
-                            onRefresh: _reload,
-                          ),
-                        ),
-                      ),
-
-                      if (!isLoading && data!.alerts.isNotEmpty)
+              );
+            }
+      
+            final data = snapshot.data;
+            final now = data?.now;
+      
+            // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
+            final isLoading =
+                snapshot.connectionState != ConnectionState.done || data == null;
+      
+            return Stack(
+              children: [
+                // ✅ 1) 배경 (낮/밤/구름/맑음)
+                WeatherBackground(now: now, lat: _lat, lon: _lon),
+      
+                // ✅ 2) 비/눈 효과(PTY 기반)
+                if (now != null) PrecipitationLayer(now: now),
+      
+                // ✅ 3) 기존 UI
+                SafeArea(
+                  child: RefreshIndicator(
+                    onRefresh: () async => _reload(),
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: _AlertBanner(alert: data.alerts.first),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: _TopBar(
+                              locationName: _locationLabel,
+                              updatedAt: data?.updatedAt,
+                              onRefresh: _reload,
+                            ),
                           ),
                         ),
-
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                        sliver: SliverList(
-                          delegate: SliverChildListDelegate.fixed([
-                            _Card(
-                              child: isLoading
-                                  ? const _Skeleton(height: 120)
-                                  : _WeatherHero(
-                                  now: data!.now, sunrise: _sunrise, sunset: _sunset),
+      
+                        if (!isLoading && data!.alerts.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: _AlertBanner(alert: data.alerts.first),
                             ),
-                            const SizedBox(height: 12),
-
-                            _Card(
-                              child: FutureBuilder<List<ChecklistItem>>(
-                                future: _checkFuture,
-                                builder: (context, snap) {
-                                  if (snap.connectionState == ConnectionState.waiting) {
-                                    return const _Skeleton(height: 90);
-                                  }
-                                  if (snap.hasError) {
-                                    return Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Text(
-                                        '체크리스트 로드 실패: ${snap.error}',
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                                      ),
-                                    );
-                                  }
-
-                                  final all = snap.data ?? const <ChecklistItem>[];
-
-                                  // ✅ 오늘 날씨(DashboardData) 기준으로 필터
-                                  final list = all.where((it) => matchesRule(it, data!)).toList()
-                                    ..sort((a, b) => b.priority.compareTo(a.priority));
-
-                                  return _CarryCardFromFirestore(items: list, data: data!);
-                                },
+                          ),
+      
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate.fixed([
+                              _Card(
+                                child: isLoading
+                                    ? const _Skeleton(height: 120)
+                                    : _WeatherHero(
+                                    now: data!.now, sunrise: _sunrise, sunset: _sunset),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            _Card(
-                              child: isLoading
-                                  ? const _Skeleton(height: 90)
-                                  : _AirCard(air: data!.air),
-                            ),
-                            const SizedBox(height: 12),
-
-                            _Card(
-                              child: isLoading
-                                  ? const _Skeleton(height: 90)
-                                  : _HourlyStrip(items: data!.hourly),
-                            ),
-                            const SizedBox(height: 24),
-
-                            _Card(
-                              child: isLoading
-                                  ? const _Skeleton(height: 120)
-                                  : _WeeklyStrip(items: data!.weekly),
-                            ),
-                            const SizedBox(height: 12),
-
-
-                            // 2025-12-23 jgh251223---S
-                            _Card(
-                              child: FutureBuilder<TransitRouteResult>(
-                                future: _transitFuture,
-                                builder: (context, transitSnap) {
-                                  final isTransitLoading =
-                                      transitSnap.connectionState != ConnectionState.done;
-                                  if (isTransitLoading) {
-                                    return const _Skeleton(height: 120);
-                                  }
-                                  if (transitSnap.hasError || !transitSnap.hasData) {
-                                    return Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Text(
-                                        '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
-                                        style: const TextStyle(color: Colors.white),
-                                      ),
-                                    );
-                                  }
-                                  return _TransitCard(data: transitSnap.data!);
-                                },
+                              const SizedBox(height: 12),
+      
+                              _Card(
+                                child: FutureBuilder<List<ChecklistItem>>(
+                                  future: _checkFuture,
+                                  builder: (context, snap) {
+                                    if (snap.connectionState == ConnectionState.waiting) {
+                                      return const _Skeleton(height: 90);
+                                    }
+                                    if (snap.hasError) {
+                                      return Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Text(
+                                          '체크리스트 로드 실패: ${snap.error}',
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                                        ),
+                                      );
+                                    }
+      
+                                    final all = snap.data ?? const <ChecklistItem>[];
+      
+                                    // ✅ 오늘 날씨(DashboardData) 기준으로 필터
+                                    final list = all.where((it) => matchesRule(it, data!)).toList()
+                                      ..sort((a, b) => b.priority.compareTo(a.priority));
+      
+                                    return _CarryCardFromFirestore(items: list, data: data!);
+                                  },
+                                ),
                               ),
-                            ),
-                            // 2025-12-23 jgh251223---E
-                            const SizedBox(height: 24),
-
-                            // ✅ (추가) 내 주변 1km 카드 (하드코딩)
-                            _Card(
-                              child: const _NearbyIssuesCardHardcoded(),
-                            ),
-                            const SizedBox(height: 12),
-
-                          ]),
+                              const SizedBox(height: 12),
+      
+                              _Card(
+                                child: isLoading
+                                    ? const _Skeleton(height: 90)
+                                    : _AirCard(air: data!.air),
+                              ),
+                              const SizedBox(height: 12),
+      
+                              _Card(
+                                child: isLoading
+                                    ? const _Skeleton(height: 90)
+                                    : _HourlyStrip(items: data!.hourly),
+                              ),
+                              const SizedBox(height: 24),
+      
+                              _Card(
+                                child: isLoading
+                                    ? const _Skeleton(height: 120)
+                                    : _WeeklyStrip(items: data!.weekly),
+                              ),
+                              const SizedBox(height: 12),
+      
+      
+                              // 2025-12-23 jgh251223---S
+                              _Card(
+                                child: FutureBuilder<TransitRouteResult>(
+                                  future: _transitFuture,
+                                  builder: (context, transitSnap) {
+                                    final isTransitLoading =
+                                        transitSnap.connectionState != ConnectionState.done;
+                                    if (isTransitLoading) {
+                                      return const _Skeleton(height: 120);
+                                    }
+                                    if (transitSnap.hasError || !transitSnap.hasData) {
+                                      return Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Text(
+                                          '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
+                                          style: const TextStyle(color: Colors.white),
+                                        ),
+                                      );
+                                    }
+                                    return _TransitCard(data: transitSnap.data!);
+                                  },
+                                ),
+                              ),
+                              // 2025-12-23 jgh251223---E
+                              const SizedBox(height: 24),
+      
+                              // ✅ (추가) 내 주변 1km 카드 (하드코딩)
+                              _Card(
+                                child: const _NearbyIssuesCardHardcoded(),
+                              ),
+                              const SizedBox(height: 12),
+      
+                            ]),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                )
-              ),
-            ],
-          );
-        },
+                      ],
+                    ),
+                  )
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
