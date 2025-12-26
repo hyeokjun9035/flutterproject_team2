@@ -199,7 +199,7 @@ class _HomePageState extends State<HomePage> {
       lat: _lat!,
       lon: _lon!,
       locationName: _locationLabel,
-      airAddr: _airAddr, administrativeArea: ''
+      airAddr: _airAddr
     );
   }
 
