@@ -1,10 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:video_player/video_player.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 class Routeview extends StatefulWidget {
   final Map<String, dynamic> raw;
@@ -18,15 +14,6 @@ class _RouteviewState extends State<Routeview> {
   List<_LegSegment> segments = const [];
   _LegSummary summary = const _LegSummary.empty();
   String debugMsg = 'init...';
-
-  // ✅ CCTV  jgh251226
-  final Set<Marker> _cctvMarkers = {};
-  // final Map<String, _CctvItem> _cctvByMarkerId = {};
-  // TODO: 네가 발급받은 ITS apiKey 넣을꺼임 언젠가.... 아직은 안넣음
-  static const String _itsApiKey = 'a721e634ba9643cda7a97bf7af8b52c6';
-  bool _loadingCctv = false;
-  String _cctvDebug = '';
-
 
   GoogleMapController? _mapCtrl;
 
@@ -134,183 +121,6 @@ class _RouteviewState extends State<Routeview> {
     await _mapCtrl!.animateCamera(CameraUpdate.newLatLngBounds(b, 80));
   }
 
-  //jgh251226-----------------------------------------S
-  // ✅ bounds를 조금 넓혀서 CCTV 조회 범위를 확장
-  LatLngBounds _expandBounds(LatLngBounds b, double padLat, double padLng) {
-    return LatLngBounds(
-      southwest: LatLng(b.southwest.latitude - padLat, b.southwest.longitude - padLng),
-      northeast: LatLng(b.northeast.latitude + padLat, b.northeast.longitude + padLng),
-    );
-  }
-
-  // ✅ ITS 응답 구조가 달라도 data 리스트를 최대한 찾아 반환
-  List<Map<String, dynamic>> _extractCctvDataList(dynamic root) {
-    dynamic node = root;
-
-    // 케이스1: {"response": {"data": [...]}}
-    if (node is Map && node['response'] != null) node = node['response'];
-
-    final data = (node is Map) ? node['data'] : null;
-    if (data is List) {
-      return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    }
-
-    // 케이스2: {"data": [...]}
-    if (root is Map && root['data'] is List) {
-      return (root['data'] as List)
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    }
-
-    // 케이스3: 아예 리스트만 오는 경우
-    if (root is List) {
-      return root.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    }
-
-    return const [];
-  }
-
-  // ✅ 경로 주변 CCTV 로딩 → 마커 생성
-  Future<void> _loadCctvNearRoute() async {
-    if (_loadingCctv) return;
-    if (segments.isEmpty) return;
-
-    if (_itsApiKey == 'YOUR_ITS_API_KEY') {
-      setState(() => _cctvDebug = 'ITS apiKey를 넣어야 CCTV 조회가 됩니다.');
-      return;
-    }
-
-    final allPts = segments.expand((e) => e.points).toList();
-    if (allPts.isEmpty) return;
-
-    setState(() {
-      _loadingCctv = true;
-      _cctvDebug = 'CCTV 조회중...';
-    });
-
-    try {
-      final base = _boundsForPoints(allPts);
-
-      // ✅ 너무 타이트하면 CCTV가 안 잡힐 수 있어서 약간 확장 (0.01 ≒ 1km 내외)
-      final b = _expandBounds(base, 0.01, 0.01);
-
-      final uri = Uri.parse('https://openapi.its.go.kr:9443/cctvInfo').replace(
-        queryParameters: {
-          'apiKey': _itsApiKey,
-          'type': 'all',
-          'cctvType': '4', // ✅ HTTPS HLS
-          'minX': b.southwest.longitude.toString(),
-          'maxX': b.northeast.longitude.toString(),
-          'minY': b.southwest.latitude.toString(),
-          'maxY': b.northeast.latitude.toString(),
-          'getType': 'json',
-        },
-      );
-
-      final res = await http.get(uri, headers: {'Accept': 'application/json'});
-
-      if (res.statusCode != 200) {
-        throw Exception('HTTP ${res.statusCode}\n${res.body}');
-      }
-
-      final jsonMap = json.decode(res.body);
-      final dataList = _extractCctvDataList(jsonMap);
-
-      final newMarkers = <Marker>{};
-
-      int idx = 0;
-      for (final m in dataList) {
-        final item = _CctvItem.fromMap(m);
-        if (item == null) continue;
-
-        final markerId = 'cctv_${idx++}_${item.coordY}_${item.coordX}';
-
-        newMarkers.add(
-          Marker(
-            markerId: MarkerId(markerId),
-            position: LatLng(item.coordY, item.coordX),
-            infoWindow: InfoWindow(title: item.name, snippet: item.format),
-            onTap: () async {
-              final fresh = await _refreshOneCctvUrl(item) ?? item;
-              _openCctvPlayer(fresh);
-            },
-          ),
-        );
-      }
-
-      setState(() {
-        _cctvMarkers
-          ..clear()
-          ..addAll(newMarkers);
-
-        _cctvDebug = 'CCTV ${newMarkers.length}개 표시됨';
-      });
-    } catch (e) {
-      setState(() => _cctvDebug = 'CCTV 조회 실패: $e');
-    } finally {
-      setState(() => _loadingCctv = false);
-    }
-  }
-
-  // ✅ CCTV 탭 → 플레이어 페이지로 이동
-  void _openCctvPlayer(_CctvItem item) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => _CctvPlayerPage(item: item)),
-    );
-  }
-
-  // ✅ (중요) 마커 탭 순간에 URL을 새로 받아오기 (토큰 만료/세션 만료 대응)
-  Future<_CctvItem?> _refreshOneCctvUrl(_CctvItem old) async {
-    // old 좌표 주변만 좁게 다시 조회해서 "최신 URL" 받기
-    final b = LatLngBounds(
-      southwest: LatLng(old.coordY - 0.002, old.coordX - 0.002),
-      northeast: LatLng(old.coordY + 0.002, old.coordX + 0.002),
-    );
-
-    final uri = Uri.parse('https://openapi.its.go.kr:9443/cctvInfo').replace(
-      queryParameters: {
-        'apiKey': _itsApiKey,
-        'type': 'all',
-        'cctvType': '4',
-        'minX': b.southwest.longitude.toString(),
-        'maxX': b.northeast.longitude.toString(),
-        'minY': b.southwest.latitude.toString(),
-        'maxY': b.northeast.latitude.toString(),
-        'getType': 'json',
-      },
-    );
-
-    final res = await http.get(uri, headers: {'Accept': 'application/json'});
-    if (res.statusCode != 200) return null;
-
-    final jsonMap = json.decode(res.body);
-    final dataList = _extractCctvDataList(jsonMap);
-
-    // 좌표가 가장 가까운 CCTV를 선택(이름이 같지 않을 수 있어 좌표 기준이 안전)
-    _CctvItem? best;
-    double bestD = 1e18;
-
-    for (final m in dataList) {
-      final it = _CctvItem.fromMap(m);
-      if (it == null) continue;
-      final dx = it.coordX - old.coordX;
-      final dy = it.coordY - old.coordY;
-      final d = dx * dx + dy * dy;
-      if (d < bestD) {
-        bestD = d;
-        best = it;
-      }
-    }
-
-    return best;
-  }
-
-
-  //jgh251226-----------------------------------------E
-
-
   @override
   Widget build(BuildContext context) {
     final allPoints = segments.expand((e) => e.points).toList();
@@ -335,8 +145,6 @@ class _RouteviewState extends State<Routeview> {
       markers.add(Marker(markerId: const MarkerId('start'), position: allPoints.first));
       markers.add(Marker(markerId: const MarkerId('end'), position: allPoints.last));
     }
-
-    markers.addAll(_cctvMarkers); //jgh251226
 
     return Scaffold(
       appBar: AppBar(
@@ -397,7 +205,6 @@ class _RouteviewState extends State<Routeview> {
                             onMapCreated: (c) async {
                               _mapCtrl = c;
                               await _fitToRoute();
-                              await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
                             },
 
                             // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
@@ -418,20 +225,8 @@ class _RouteviewState extends State<Routeview> {
                       Positioned(
                         left: 10,
                         right: 10,
-                        top: 55,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.45),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _cctvDebug,
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                        top: 10,
+                        child: _FloatingSummary(summary: summary),
                       ),
                     ],
                   ),
@@ -781,164 +576,3 @@ _LegSummary buildSummaryFromLegs(List legs) {
     transferCount: transfers,
   );
 }
-class _CctvItem {
-  final String name;
-  final String url;
-  final String format; // HLS / mp4 / jpg 등
-  final double coordX;
-  final double coordY;
-
-  _CctvItem({
-    required this.name,
-    required this.url,
-    required this.format,
-    required this.coordX,
-    required this.coordY,
-  });
-
-  static _CctvItem? fromMap(Map<String, dynamic> m) {
-    String s(dynamic v) => (v ?? '').toString().trim().replaceAll(';', '');
-    double d(dynamic v) => double.tryParse(s(v)) ?? 0;
-
-    final url = s(m['cctvurl'] ?? m['cctvUrl']);
-    if (url.isEmpty) return null;
-
-    final name = s(m['cctvname'] ?? m['cctvName'] ?? 'CCTV');
-    final format = s(m['cctvformat'] ?? m['cctvFormat'] ?? '');
-    final x = d(m['coordx'] ?? m['coordX']);
-    final y = d(m['coordy'] ?? m['coordY']);
-    if (x == 0 || y == 0) return null;
-
-    return _CctvItem(name: name, url: url, format: format, coordX: x, coordY: y);
-  }
-}
-
-class _CctvPlayerPage extends StatefulWidget {
-  final _CctvItem item;
-  const _CctvPlayerPage({super.key, required this.item});
-
-  @override
-  State<_CctvPlayerPage> createState() => _CctvPlayerPageState();
-}
-
-class _CctvPlayerPageState extends State<_CctvPlayerPage> {
-  VideoPlayerController? _ctrl;
-  bool _useWebView = false;
-  String _msg = 'loading...';
-
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    // 1) 먼저 video_player로 시도
-    try {
-      final c = VideoPlayerController.networkUrl(
-        Uri.parse(widget.item.url),
-        httpHeaders: {
-          // 일부 CCTV 서버는 UA/Referer 없으면 막는 경우가 있어 넣어둠
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': '*/*',
-          'Referer': 'https://cctvsec.ktict.co.kr/',
-        },
-      );
-
-      await c.initialize();
-      await c.setLooping(true);
-      await c.play();
-
-      if (!mounted) return;
-      setState(() {
-        _ctrl = c;
-        _useWebView = false;
-        _msg = 'OK';
-      });
-      return;
-    } catch (e) {
-      // 2) 실패하면 WebView로 fallback
-      if (!mounted) return;
-      setState(() {
-        _useWebView = true;
-        _msg = 'video_player 재생 실패 → WebView로 전환\n$e';
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _ctrl;
-
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.item.name)),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Expanded(
-              child: _useWebView
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: WebViewWidget(
-                  controller: WebViewController()
-                    ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                    ..loadRequest(Uri.parse(widget.item.url)),
-                ),
-              )
-                  : (c != null && c.value.isInitialized)
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: c.value.aspectRatio,
-                  child: VideoPlayer(c),
-                ),
-              )
-                  : Center(child: Text(_msg)),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              widget.item.url,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: (_useWebView || c == null) ? null : () => c.value.isPlaying ? c.pause() : c.play(),
-                  child: Text((!_useWebView && c != null && c.value.isPlaying) ? '일시정지' : '재생'),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: () async {
-                    final old = _ctrl;
-                    _ctrl = null;
-                    if (mounted) setState(() => _msg = 'reloading...');
-                    await old?.dispose();
-                    if (mounted) setState(() => _useWebView = false);
-                    await _init();
-                  },
-                  child: const Text('새로고침'),
-                ),
-              ],
-            ),
-            if (_useWebView) ...[
-              const SizedBox(height: 8),
-              Text(_msg, style: const TextStyle(fontSize: 11)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
