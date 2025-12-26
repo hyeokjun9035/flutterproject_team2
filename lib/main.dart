@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
-import 'comunity/Comunity.dart';
+import 'package:flutter_project/community/Community.dart';
 import 'firebase_options.dart';
 import 'home/home_page.dart';
 
