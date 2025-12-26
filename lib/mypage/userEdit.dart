@@ -1,13 +1,100 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
-class UserEdit extends StatelessWidget {
+class UserEdit extends StatefulWidget {
   const UserEdit({super.key});
+
+  @override
+  State<UserEdit> createState() => _UserEditState();
+}
+
+class _UserEditState extends State<UserEdit> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _nicknameController = TextEditingController();
+  final TextEditingController _introController = TextEditingController();
+  final user = FirebaseAuth.instance.currentUser;
+
+  File? _image;
+  String? _profileImageUrl;
+  final picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    var snapshot = await FirebaseFirestore.instance.collection('users').doc(user?.uid).get();
+    if (snapshot.exists) {
+      setState(() {
+        _nameController.text = snapshot['name'] ?? "";
+        _nicknameController.text = snapshot['nickname'] ?? "";
+        _introController.text = snapshot['intro'] ?? "";
+        _profileImageUrl = snapshot['profile_image_url'];
+      });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    try {
+      String? finalImageUrl = _profileImageUrl;
+      if (_image != null) {
+        Reference ref = FirebaseStorage.instance.ref().child('profiles/${user?.uid}.jpg');
+        await ref.putFile(_image!);
+        finalImageUrl = await ref.getDownloadURL();
+      }
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(user?.uid);
+      var oldSnapshot = await userDoc.get();
+      String oldNickname = oldSnapshot['nickname'] ?? "";
+      String newNickname = _nicknameController.text.trim();
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      batch.update(userDoc, {
+        'name': _nameController.text,
+        'nickname': newNickname,
+        'intro': _introController.text,
+        'profile_image_url': finalImageUrl,
+
+
+      });
+      if (oldNickname != newNickname && newNickname.isNotEmpty) {
+        if (oldNickname.isNotEmpty) {
+          batch.delete(FirebaseFirestore.instance.collection('usernames').doc(oldNickname));
+        }
+        batch.set(FirebaseFirestore.instance.collection('usernames').doc(newNickname), {
+          'uid': user?.uid
+        });
+      }
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("프로필이 저장되었습니다.")));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      print("업데이트 에러: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      // 1. 상단 앱바 (취소, 저장 버튼)
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -17,10 +104,7 @@ class UserEdit extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              // 저장 로직 추가
-              Navigator.pop(context);
-            },
+            onPressed: _updateProfile, // 수정한 부분: 함수 직접 연결
             child: const Text("저장", style: TextStyle(color: Colors.black, fontSize: 16)),
           ),
         ],
@@ -29,17 +113,22 @@ class UserEdit extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            // 2. 프로필 이미지 영역
             Center(
               child: Column(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 60,
-                    backgroundImage: NetworkImage('https://placedog.net/500/500'), // 테스트용 강아지 이미지
+                    backgroundColor: Colors.grey[300],
+                    // backgroundImage에는 조건문 결과만 전달
+                    backgroundImage: _getProfileImage(),
+                    child: (_image == null && _profileImageUrl == null)
+                        ? const Icon(Icons.person, size: 60, color: Colors.white)
+                        : null,
                   ),
+
                   const SizedBox(height: 10),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: _pickImage, // 함수만 바로 연결하거나 () => _pickImage() 형식으로 써야 합니다.
                     child: const Text(
                       "프로필 수정 하기",
                       style: TextStyle(color: Colors.deepPurple, fontSize: 16),
@@ -49,8 +138,6 @@ class UserEdit extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-
-            // 3. 유저 정보 입력 리스트 (둥근 테두리 박스)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
@@ -60,13 +147,11 @@ class UserEdit extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _buildInputField("이름 : ", "홍길동"),
+                    _buildInputField("이름 : ", _nameController),
                     const Divider(height: 1, color: Colors.black),
-                    _buildInputField("이메일 : ", "TEST@gmail.com"),
+                    _buildNicknameField("닉네임: ", _nicknameController),
                     const Divider(height: 1, color: Colors.black),
-                    _buildNicknameField("닉네임: ", "도로위 고라니"),
-                    const Divider(height: 1, color: Colors.black),
-                    _buildInputField("소개 : ", "안녕하세요!!", isLast: true),
+                    _buildInputField("소개 : ", _introController, isLast: true),
                   ],
                 ),
               ),
@@ -77,8 +162,7 @@ class UserEdit extends StatelessWidget {
     );
   }
 
-  // 일반 입력 필드 (이름, 이메일, 소개)
-  Widget _buildInputField(String label, String initialValue, {bool isLast = false}) {
+  Widget _buildInputField(String label, TextEditingController controller, {bool isLast = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
       child: Row(
@@ -86,7 +170,7 @@ class UserEdit extends StatelessWidget {
           Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
           Expanded(
             child: TextField(
-              controller: TextEditingController(text: initialValue),
+              controller: controller,
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -98,10 +182,9 @@ class UserEdit extends StatelessWidget {
         ],
       ),
     );
-  }
+  } // 수정한 부분: 여기서 클래스를 닫았던 잘못된 중괄호를 제거했습니다.
 
-  // 닉네임 입력 필드 (중복확인 버튼 포함)
-  Widget _buildNicknameField(String label, String initialValue) {
+  Widget _buildNicknameField(String label, TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
@@ -109,7 +192,7 @@ class UserEdit extends StatelessWidget {
           Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
           Expanded(
             child: TextField(
-              controller: TextEditingController(text: initialValue),
+              controller: controller,
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -119,7 +202,25 @@ class UserEdit extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () async {
+              String inputNickname = controller.text.trim(); // _nicknameController 대신 인자로 받은 controller 사용
+              if (inputNickname.isEmpty) return;
+
+              var doc = await FirebaseFirestore.instance
+                  .collection('usernames')
+                  .doc(inputNickname)
+                  .get();
+
+              if (doc.exists) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("이미 사용 중인 닉네임입니다."))
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("사용 가능한 닉네임입니다."))
+                );
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.grey[300],
               foregroundColor: Colors.black,
@@ -135,5 +236,14 @@ class UserEdit extends StatelessWidget {
         ],
       ),
     );
+  }
+  ImageProvider? _getProfileImage() {
+    if (_image != null) {
+      return FileImage(_image!);
+    }
+    if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+      return NetworkImage(_profileImageUrl!);
+    }
+    return null;
   }
 }
