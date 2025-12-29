@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'Location.dart';
+import 'place_result.dart';
 
 class Communityadd extends StatefulWidget {
   const Communityadd({super.key});
@@ -7,7 +10,35 @@ class Communityadd extends StatefulWidget {
   State<Communityadd> createState() => _CommunityaddState();
 }
 
+class _GoogleMapPreview extends StatelessWidget {
+  final PlaceResult place;
+  const _GoogleMapPreview({required this.place});
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = LatLng(place.lat, place.lng);
+
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: pos,
+        zoom: 15,
+      ),
+      markers: {
+        Marker(
+          markerId: const MarkerId("selected"),
+          position: pos,
+        ),
+      },
+      zoomControlsEnabled: false,
+      myLocationButtonEnabled: false,
+      mapToolbarEnabled: false,
+      liteModeEnabled: true, // 🔥 미리보기 최적화
+    );
+  }
+}
+
 class _CommunityaddState extends State<Communityadd> {
+  PlaceResult? selectedPlace;
   final List<String> categories = ["사건/이슈", "수다", "패션"];
   String selectedCategory = "사건/이슈";
 
@@ -161,11 +192,76 @@ class _CommunityaddState extends State<Communityadd> {
 
             const SizedBox(height: 0),
 
-            const ListTile(
-              leading: Icon(Icons.location_on_outlined),
-              title: Text("위치추가"),
-              trailing: Icon(Icons.chevron_right),
-            ),
+            if (selectedPlace != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                  color: Colors.white,
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                selectedPlace!.name,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (selectedPlace!.distanceM != null)
+                                Text(
+                                  "${(selectedPlace!.distanceM! / 1000).toStringAsFixed(1)}km",
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() => selectedPlace = null),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 160,
+                      width: double.infinity,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: _GoogleMapPreview(place: selectedPlace!), // ✅ 구글맵 미리보기
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            if (selectedPlace == null)
+              ListTile(
+                leading: const Icon(Icons.location_on_outlined),
+                title: const Text("위치추가"),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final result = await Navigator.push<PlaceResult>(
+                    context,
+                    MaterialPageRoute(builder: (_) => const Location()),
+                  );
+
+                  if (result != null) {
+                    setState(() => selectedPlace = result);
+                  }
+                },
+              ),
 
             SizedBox(
               width: double.infinity,
