@@ -522,6 +522,58 @@ async function buildAir(addr, administrativeArea) {
   return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null, reason: "no_station_or_no_valid_rows" } };
 }
 
+/** -----------------------------
+ *  (특보) 기상청 기상특보목록 getWthrWrnList
+ *  - fromTmFc / toTmFc: YYYYMMDD
+ * ------------------------------ */
+async function callKmaWthrWrnList({ fromTmFc, toTmFc, stnId }) {
+  const url = "http://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList";
+  const params = {
+    ServiceKey: process.env.KMA_SERVICE_KEY,
+    pageNo: 1,
+    numOfRows: 200,      // 넉넉히 받고(범위는 짧게), 서버에서 필터링
+    dataType: "JSON",
+    fromTmFc,            // YYYYMMDD
+    toTmFc,              // YYYYMMDD
+  };
+  if (stnId) params.stnId = stnId; // 옵션
+
+  const res = await axios.get(url, { params, timeout: 8000 });
+  const items = res.data?.response?.body?.items?.item ?? [];
+  return items;
+}
+
+// title에 지역 키워드가 들어오는 경우가 많아서(예: “... 인천 ...”), 간단 필터
+function buildAlertsFromWrnList(items, { keywords = [] } = {}) {
+  const kw = keywords
+    .map(s => String(s ?? "").trim())
+    .filter(Boolean)
+    .map(s => s.replace(/\s/g, ""));
+
+  const norm = (s) => String(s ?? "").replace(/\s/g, "");
+
+  const out = items
+    .map((it) => ({
+      title: String(it.title ?? "").trim(),
+      region: "",                 // 필요하면 여기서 파싱해서 넣어도 됨
+      timeText: String(it.tmFc ?? ""), // YYYYMMDDHHmm 형태로 내려오는 경우가 많음
+      // 나중에 “통보문 상세” 붙일 때 쓰라고 같이 내려둠(선택)
+      tmSeq: it.tmSeq ?? null,
+      stnId: it.stnId ?? null,
+    }))
+    .filter(a => a.title) // title 없는 건 제거
+    .filter(a => {
+      if (kw.length === 0) return true;
+      const t = norm(a.title);
+      return kw.some(k => t.includes(k));
+    })
+    // 최신순
+    .sort((a, b) => String(b.timeText).localeCompare(String(a.timeText)));
+
+  // 배너/상세에 너무 많으면 UI 부담 → 상위 20개만
+  return out.slice(0, 20);
+}
+
 
 /** -----------------------------
  *  메인: getDashboard
@@ -572,13 +624,33 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     const airRes = await buildAir(addr, administrativeArea);
 
+    // 5) 특보(목록): 최근 2~3일만 조회해서 title 키워드로 필터
+    let alerts = [];
+    try {
+      const todayYmd = ymdKst(new Date());           // 너 파일에 이미 있음 :contentReference[oaicite:3]{index=3}
+      const fromYmd = addDaysYmd(todayYmd, -3);      // 너 파일에 이미 있음 :contentReference[oaicite:4]{index=4}
+
+      const wrnItems = await callKmaWthrWrnList({
+        fromTmFc: fromYmd,
+        toTmFc: todayYmd,
+        // stnId: 필요하면 나중에 매핑해서 넣기
+      });
+
+      // keywords: 광역시/도 + (가능하면) addr(“인천광역시 부평구”) 같이 보내면 매칭률↑
+      const keywords = [administrativeArea, addr];
+      alerts = buildAlertsFromWrnList(wrnItems, { keywords });
+    } catch (err) {
+      logger.warn("alerts fetch failed", err);
+      alerts = [];
+    }
+
     return {
       updatedAt: new Date().toISOString(),
         locationName: String(locationName ?? ""),
         weatherNow: kmaNcst.items,
         hourlyFcst,
         weekly,
-        alerts: [],
+        alerts,
         air: airRes.air,
         meta: {
           nx,
