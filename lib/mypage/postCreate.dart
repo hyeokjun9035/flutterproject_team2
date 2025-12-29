@@ -104,7 +104,7 @@ class _PostCreateState extends State<PostCreate> {
                 ? Container(
               height: 100,
               alignment: Alignment.center,
-              child: const Text("선택된 사진이 없습니다.", style: TextStyle(color: Colors.grey)),
+              child: const Text("-사진이 보이지않으면 카메라 아이콘을 눌러주세요-", style: TextStyle(color: Colors.grey)),
             )
                 : GridView.builder(
               shrinkWrap: true,
