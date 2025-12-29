@@ -79,6 +79,10 @@ class DailyForecast {
   final int? sky;
   final int? pty;
   final String? wfText;
+  final String? wfAm;
+  final String? wfPm;
+  final int? popAm;
+  final int? popPm;
 
   const DailyForecast({
     required this.date,
@@ -88,5 +92,9 @@ class DailyForecast {
     this.sky,
     this.pty,
     this.wfText,
+    this.wfAm,
+    this.wfPm,
+    this.popAm,
+    this.popPm,
   });
 }

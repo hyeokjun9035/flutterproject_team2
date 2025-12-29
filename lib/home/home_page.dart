@@ -1,7 +1,12 @@
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_project/home/ui_helpers.dart';
+import 'package:flutter_project/utils/launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/dashboard_cache.dart';
 import '../carry/checklist_models.dart';
 import '../carry/checklist_rules.dart';
@@ -18,7 +23,6 @@ import '../carry/checklist_service.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart'; //jgh251226
-enum DustGrade { good, normal, bad, veryBad, unknown }
 
 
 class HomePage extends StatefulWidget {
@@ -303,6 +307,7 @@ class _HomePageState extends State<HomePage> {
 
   void _reload() {
     setState(() {
+      _checkFuture = _checklistService.fetchEnabledItems();
       _future = _initLocationAndFetch(
         forceFreshPosition: true,
         ignoreDashboardCache: true,
@@ -429,6 +434,7 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 12),
       
                               _Card(
+                                onTap: () => openUrl('https://www.airkorea.or.kr/'),
                                 child: isLoading
                                     ? const _Skeleton(height: 90)
                                     : _AirCard(air: data!.air),
@@ -755,35 +761,44 @@ class _PrecipPainter extends CustomPainter {
 
 
 class _Card extends StatelessWidget {
-  const _Card({required this.child});
+  const _Card({required this.child, this.onTap});
   final Widget child;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1976D2),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1220).withOpacity(0.22), // ✅ 살짝 어두운 반투명
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.10)), // ✅ 얇은 테두리
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: child,
       ),
-      child: child,
     );
   }
 }
 
 class _WeatherHero extends StatelessWidget {
-  const _WeatherHero({required this.now, this.sunrise, this.sunset});
+  const _WeatherHero({
+    required this.now,
+    required this.sunrise,
+    required this.sunset,
+  });
+
   final WeatherNow now;
   final DateTime? sunrise;
   final DateTime? sunset;
-
-  String _ptyText(int pty) => switch (pty) {
-    1 => '비',
-    2 => '비/눈',
-    3 => '눈',
-    4 => '소나기',
-    _ => '강수 없음',
-  };
 
   String _hhmm(DateTime? dt) {
     if (dt == null) return '--:--';
@@ -796,118 +811,122 @@ class _WeatherHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    final temp = now.temp;
-    final tempRound = temp?.round();
+    final temp = now.temp?.round();
     final feel = (now.temp != null && now.wind != null)
-        ? (now.temp! - (now.wind! * 0.7))
+        ? (now.temp! - (now.wind! * 0.7)).round()
         : null;
-    final feelRound = feel?.round();
+
+    final summary = weatherSummary(sky: now.sky, pty: now.pty);
 
     final hum = now.humidity?.round();
     final wind = now.wind;
-    final rn1 = now.rn1;
-    final pty = now.pty ?? 0;
 
-    String mmText(num? v) => v == null ? '--' : v.toStringAsFixed(1);
-    String msText(num? v) => v == null ? '--' : v.toStringAsFixed(1);
-
-    final topLine = [
-      '현재 ${tempRound ?? '--'}°',
-      '체감 ${feelRound ?? '--'}°',
-      '일출 ${_hhmm(sunrise)}',
-      '일몰 ${_hhmm(sunset)}',
-    ].join(' · ');
-
-    // ✅ 한 줄 요약(최대한 짧게)
-    final summary = [
-      '습도 ${hum ?? '--'}%',
-      '바람 ${msText(wind)}m/s',
-      '강수 ${rn1 == null ? '--' : rn1 <= 0 ? '0.0' : mmText(rn1)}mm',
-      _ptyText(pty),
-    ].join(' · ');
+    final chips = <Widget>[
+      valueChip(icon: Icons.water_drop, text: '습도 ${hum ?? '--'}%'),
+      valueChip(icon: Icons.air, text: '바람 ${wind?.toStringAsFixed(1) ?? '--'}m/s'),
+      if (now.rn1 != null) valueChip(icon: Icons.umbrella, text: '강수 1h ${now.rn1!.toStringAsFixed(1)}mm'),
+      valueChip(icon: Icons.wb_twilight, text: '일출 ${_hhmm(sunrise)}'),
+      valueChip(icon: Icons.nightlight_round, text: '일몰 ${_hhmm(sunset)}'),
+    ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // ✅ 아이콘은 그대로 유지
-          _WeatherIcon(sky: now.sky, pty: now.pty, size: 58),
+          // ✅ 왼쪽: 아이콘 + 요약 멘트
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _WeatherIcon(sky: now.sky, pty: now.pty, size: 56),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withOpacity(0.14)),
+                ),
+                child: Text(
+                  summary,
+                  style: t.labelSmall?.copyWith(
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(width: 14),
 
+          // ✅ 오른쪽: 온도/체감 + 칩들
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min, // ✅ 불필요하게 늘어나지 않게
               children: [
-                // ✅ 온도 위 텍스트(일출/일몰 포함) — 길면 ... 처리해서 줄수 안 늘어남
-                Text(
-                  topLine,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodySmall?.copyWith(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
-                  ),
+                // 상단: 현재/체감 (두 줄 방지로 구조화)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('현재',
+                            style: t.labelSmall?.copyWith(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w800,
+                            )),
+                        Text(
+                          '${temp ?? '--'}°',
+                          style: const TextStyle(
+                            fontSize: 56,        // ✅ 크게
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('체감',
+                            style: t.labelSmall?.copyWith(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w800,
+                            )),
+                        Text(
+                          '${feel ?? '--'}°',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
 
-                const SizedBox(height: 6),
+                const SizedBox(height: 10),
 
-                // ✅ 큰 온도 (중앙 1줄)
-                Text(
-                  '${tempRound ?? '--'}°',
-                  style: t.displayMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    height: 0.95,
-                    letterSpacing: -1.0,
-                  ) ??
-                      const TextStyle(
-                        color: Colors.white,
-                        fontSize: 56,
-                        fontWeight: FontWeight.w900,
-                        height: 0.95,
-                        letterSpacing: -1.0,
-                      ),
+                // ✅ 칩: 습도/바람/강수/일출/일몰
+                SizedBox(
+                height: 34, // ✅ 칩 높이에 맞춰 조절
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: chips.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => chips[i],
                 ),
-
-                const SizedBox(height: 8),
-
-                // ✅ 하단 1줄 요약 (2줄 넘어가면 ellipsis)
-                Text(
-                  summary,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodySmall?.copyWith(color: Colors.white70, height: 1.1),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-
-class _MiniPill extends StatelessWidget {
-  const _MiniPill({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$label $value',
-        style: t.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -917,65 +936,51 @@ class _AirCard extends StatelessWidget {
   const _AirCard({required this.air});
   final AirQuality air;
 
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-
-    final pm10Val = air.pm10;
-    final pm25Val = air.pm25;
-
-    final pm10Grade = gradePm10(pm10Val);
-    final pm25Grade = gradePm25(pm25Val);
-
-    final mask = maskMessage(pm10Grade, pm25Grade);
-
-    String vText(num? v) => v == null ? '--' : v.round().toString();
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _gradeChip({
+    required String title,
+    required int? value,
+    required DustGrade grade,
+  }) {
+    final c = gradeColor(grade);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: c.withOpacity(0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('대기질', style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-
-          // ✅ 미세먼지/초미세먼지 각각 표시
-          Row(
-            children: [
-              Expanded(
-                child: _DustTile(
-                  title: '미세먼지',
-                  value: '${vText(pm10Val)}',
-                  grade: dustGradeText(pm10Grade),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _DustTile(
-                  title: '초미세먼지',
-                  value: '${vText(pm25Val)}',
-                  grade: dustGradeText(pm25Grade),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // ✅ 마스크 추천
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+          Text(title,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              )),
+          const SizedBox(width: 8),
+          Text(
+            value == null ? '--' : '$value',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.masks, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Text(mask, style: t.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-              ],
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: c.withOpacity(0.22),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              gradeLabel(grade),
+              style: TextStyle(
+                color: c,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -983,75 +988,87 @@ class _AirCard extends StatelessWidget {
     );
   }
 
-  String maskMessage(DustGrade pm10, DustGrade pm25) {
-    if (pm10 == DustGrade.unknown && pm25 == DustGrade.unknown) return '대기질 정보 없음';
-    return recommendMask(pm10: pm10, pm25: pm25) ? '마스크 착용 권장' : '마스크는 선택';
-  }
-
-  bool recommendMask({required DustGrade pm10, required DustGrade pm25}) {
-    bool isBadOrWorse(DustGrade g) => g == DustGrade.bad || g == DustGrade.veryBad;
-    return isBadOrWorse(pm10) || isBadOrWorse(pm25);
-  }
-
-  DustGrade gradePm10(num? v) {
-    if (v == null) return DustGrade.unknown;
-    if (v <= 30) return DustGrade.good;
-    if (v <= 80) return DustGrade.normal;
-    if (v <= 150) return DustGrade.bad;
-    return DustGrade.veryBad;
-  }
-
-  DustGrade gradePm25(num? v) {
-    if (v == null) return DustGrade.unknown;
-    if (v <= 15) return DustGrade.good;
-    if (v <= 35) return DustGrade.normal;
-    if (v <= 75) return DustGrade.bad;
-    return DustGrade.veryBad;
-  }
-
-  String dustGradeText(DustGrade g) {
-    switch (g) {
-      case DustGrade.good: return '좋음';
-      case DustGrade.normal: return '보통';
-      case DustGrade.bad: return '나쁨';
-      case DustGrade.veryBad: return '매우나쁨';
-      case DustGrade.unknown: return '정보없음';
-    }
-  }
-}
-
-class _DustTile extends StatelessWidget {
-  const _DustTile({
-    required this.title,
-    required this.value,
-    required this.grade,
-  });
-
-  final String title;
-  final String value;
-  final String grade;
-
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    final pm10Grade = gradePm10(air.pm10);
+    final pm25Grade = gradePm25(air.pm25);
+
+    final maskText = maskRecommendation(pm25: air.pm25);
+    final maskIcon = (pm25Grade == DustGrade.bad || pm25Grade == DustGrade.veryBad)
+        ? Icons.masks
+        : Icons.masks_outlined;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: t.bodySmall?.copyWith(color: Colors.white70)),
-          const SizedBox(height: 8),
           Row(
             children: [
-              Text('$value', style: t.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 6),
-              Text(grade, style: t.bodyMedium?.copyWith(color: Colors.white70)),
+              Text('대기질',
+                  style: t.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  )),
+              const Spacer(),
+              // (선택) gradeText가 있으면 우측 상단에 짧게 표시
+              if ((air.gradeText ?? '').isNotEmpty)
+                Text(
+                  air.gradeText!,
+                  style: t.labelSmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w800),
+                ),
             ],
+          ),
+          const SizedBox(height: 12),
+
+          // ✅ 미세/초미세 등급 칩 (가로)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _gradeChip(
+                  title: '미세먼지',
+                  value: air.pm10,
+                  grade: pm10Grade,
+                ),
+                const SizedBox(width: 10),
+                _gradeChip(
+                  title: '초미세먼지',
+                  value: air.pm25,
+                  grade: pm25Grade,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ✅ 마스크 추천 문구 (KF80/KF94)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.14)),
+            ),
+            child: Row(
+              children: [
+                Icon(maskIcon, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '마스크: $maskText',
+                    style: t.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                // (선택) 한 줄 도움말 느낌
+                if (pm25Grade == DustGrade.veryBad)
+                  Text('외출 최소화',
+                      style: t.labelSmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w800)),
+              ],
+            ),
           ),
         ],
       ),
@@ -1073,6 +1090,15 @@ class _HourlyStrip extends StatelessWidget {
     ]
         : items;
 
+    final temps = list.map((e) => e.temp).toList();
+    final rain = list.map((e) => ((e.pty ?? 0) != 0) ? 1.0 : 0.0).toList();
+
+    const tileW = 64.0;
+    const gap = 10.0;
+    final n = list.length;
+    final rowW = n * tileW + (n - 1) * gap;
+    final hasRain = rain.any((v) => v > 0);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
       child: Column(
@@ -1083,32 +1109,58 @@ class _HourlyStrip extends StatelessWidget {
             style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
+
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Row(
-              children: list.map((h) {
-                return Container(
-                  width: 64,
-                  margin: const EdgeInsets.only(right: 10),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(h.timeLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                      const SizedBox(height: 8),
-                      _WeatherIcon(sky: h.sky, pty: h.pty, size: 24),
-                      const SizedBox(height: 8),
-                      Text(
-                        h.temp == null ? '--°' : '${h.temp!.round()}°',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1) 타일 Row
+                Row(
+                  children: List.generate(n, (i) {
+                    final h = list[i];
+                    return Container(
+                      width: tileW,
+                      margin: EdgeInsets.only(right: i == n - 1 ? 0 : gap), // ✅ 마지막 gap 제거
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                      child: Column(
+                        children: [
+                          Text(h.timeLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          const SizedBox(height: 8),
+                          _WeatherIcon(sky: h.sky, pty: h.pty, size: 24),
+                          const SizedBox(height: 8),
+                          Text(
+                            h.temp == null ? '--°' : '${h.temp!.round()}°',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+
+                const SizedBox(height: 10),
+
+                // ✅ 2) 온도 텍스트 아래쪽에 “온도 라인 그래프”
+                SizedBox(
+                  width: rowW,
+                  height: 54,
+                  child: _MiniTempLine(values: temps, tileW: tileW, gap: gap),
+                ),
+
+                const SizedBox(height: 8),
+
+                // ✅ 3) 그 아래에 “강수 막대 그래프(임시: pty 기반)”
+                SizedBox(
+                  width: rowW,
+                  height: 24,
+                  child: hasRain ? _MiniRainBars(values: rain, tileW: tileW, gap: gap) : const _MiniRainEmpty(),
+                ),
+              ],
             ),
           ),
         ],
@@ -1187,7 +1239,20 @@ class _WeeklyStrip extends StatelessWidget {
                 final sub = dt == null ? '' : '${dt.month}/${dt.day}';
                 final minText = d.min == null ? '--' : d.min!.round().toString();
                 final maxText = d.max == null ? '--' : d.max!.round().toString();
-                final popText = d.pop == null ? '--' : '${d.pop}%';
+
+                final amText = d.wfAm ?? d.wfText ?? '';
+                final pmText = d.wfPm ?? d.wfText ?? '';
+                final amPop = d.popAm ?? d.pop;
+                final pmPop = d.popPm ?? d.pop;
+                Widget iconFor(String wfFallback) {
+                  if (wfFallback.trim().isNotEmpty) {
+                    return Icon(_iconFromWf(wfFallback), color: Colors.white, size: 22);
+                  }
+                  // 단기만 있는 경우(분리 데이터 없을 때) fallback
+                  return _WeatherIcon(sky: d.sky, pty: d.pty, size: 22);
+                }
+
+                String popText(int? v) => v == null ? '--' : '$v%';
 
                 return Container(
                   width: 84,
@@ -1210,16 +1275,30 @@ class _WeeklyStrip extends StatelessWidget {
                       const SizedBox(height: 8),
 
                       // ✅ 중기(wfText)면 아이콘 추정 / 단기면 SKY+PTY 아이콘
-                      if ((d.wfText ?? '').isNotEmpty)
-                        Icon(_iconFromWf(d.wfText), color: Colors.white, size: 24)
-                      else
-                        _WeatherIcon(sky: d.sky, pty: d.pty, size: 24),
-
-                      const SizedBox(height: 8),
-                      Text('$maxText° / $minText°',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
-                      const SizedBox(height: 6),
-                      Text('강수 $popText', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Column(
+                            children: [
+                              const Text('오전', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                              const SizedBox(height: 4),
+                              iconFor(amText),
+                              const SizedBox(height: 4),
+                              Text(popText(amPop), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                            ],
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            children: [
+                              const Text('오후', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                              const SizedBox(height: 4),
+                              iconFor(pmText),
+                              const SizedBox(height: 4),
+                              Text(popText(pmPop), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                            ],
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 );
@@ -1528,46 +1607,48 @@ class _TransitCard extends StatelessWidget {
 }
 // 2025-12-23 jgh251223---E
 
-class _CarryCardFromFirestore extends StatelessWidget {
+// ChecklistItem, DashboardData 타입은 너 프로젝트에 이미 있는 걸 사용
+class _CarryCardFromFirestore extends StatefulWidget {
   const _CarryCardFromFirestore({required this.items, required this.data});
 
   final List<ChecklistItem> items;
   final DashboardData data;
 
-  IconData _iconFromKey(String key) {
-    switch (key) {
-      case 'umbrella': return Icons.umbrella;
-      case 'mask': return Icons.masks;
-      case 'laundry': return Icons.local_laundry_service;
-      case 'train': return Icons.directions_subway;
-      case 'bus': return Icons.directions_bus;
-      case 'clock': return Icons.schedule;
-      case 'warning': return Icons.warning_amber_rounded;
-      case 'boots': return Icons.hiking;
-      case 'hot': return Icons.local_fire_department;
-      case 'water': return Icons.water_drop;
-      case 'jacket':
-      case 'shorts':
-      case 'socks':
-      case 'innerwear': return Icons.checkroom;
-      default: return Icons.check_circle_outline;
-    }
+  @override
+  State<_CarryCardFromFirestore> createState() => _CarryCardFromFirestoreState();
+}
+
+class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
+  static const _prefKey = 'carry_enabled'; // ✅ 로컬 저장 키
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPref();
   }
 
-  String _subtitle() {
-    final pty = data.now.pty ?? 0;
-    if (pty != 0) return '강수 가능성 있어요 · 우산/이동수단 챙기기';
-    final pm25 = data.air.pm25 ?? 0;
-    final pm10 = data.air.pm10 ?? 0;
-    if (pm25 >= 36 || pm10 >= 81) return '대기질 나쁠 수 있어요 · 마스크 권장';
-    return '현재 날씨/대기질 기준 추천';
+  Future<void> _loadPref() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(_prefKey);
+    if (!mounted) return;
+    setState(() {
+      _enabled = v ?? true; // 기본 ON
+    });
+  }
+
+  Future<void> _setEnabled(bool v) async {
+    setState(() => _enabled = v); // ✅ 즉시 반영
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefKey, v); // ✅ 로컬 저장
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    final show = items.take(4).toList(); // 카드에는 3~4개가 보기 좋음
+    // ✅ 규칙 필터된 items가 이미 들어온다고 가정(너 HomePage에서 list 만들어서 넘김)
+    final show = widget.items.take(4).toList();
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -1576,44 +1657,93 @@ class _CarryCardFromFirestore extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('오늘 챙길 것',
-                  style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+              Text(
+                '오늘 챙길 것',
+                style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
+              ),
               const Spacer(),
-              // MVP: 스위치 기능은 나중에(원하면 SharedPreferences로 저장 가능)
               Switch(
-                value: true,
-                onChanged: null, // 지금은 비활성
+                value: _enabled,
+                onChanged: (v) => _setEnabled(v),
                 activeColor: Colors.white,
               ),
             ],
           ),
           const SizedBox(height: 12),
 
-          if (show.isEmpty)
-            Text('오늘은 특별히 챙길 게 없어요 🙂', style: t.bodySmall?.copyWith(color: Colors.white70))
+          if (!_enabled)
+            Text(
+              '추천 숨김 (스위치 ON으로 다시 표시)',
+              style: t.bodySmall?.copyWith(color: Colors.white70),
+            )
+          else if (show.isEmpty)
+            Text(
+              '오늘은 특별히 챙길 게 없어요 🙂',
+              style: t.bodySmall?.copyWith(color: Colors.white70),
+            )
           else
             Row(
               children: show.map((e) {
+                final s = styleFromType(e.type);
+
                 return Expanded(
-                  child: Column(
-                    children: [
-                      Icon(_iconFromKey(e.icon), color: Colors.white, size: 26),
-                      const SizedBox(height: 6),
-                      Text(e.title, style: t.bodySmall?.copyWith(color: Colors.white70)),
-                    ],
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withOpacity(0.10)),
+                    ),
+                    child: Column(
+                      children: [
+                        Align(alignment: Alignment.centerLeft, child: typeChip(e.type)),
+                        const SizedBox(height: 8),
+
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: s.bg,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: s.border)
+                          ),
+                          child: Icon(iconFromKey(e.icon), color: s.fg, size: 22),
+                        ),
+                        const SizedBox(height: 8),
+
+                        Text(
+                            e.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // ✅ “근거 표시”는 일단 message를 보여주면 가장 간단/확실
+                        Text(
+                          e.message,
+                          textAlign: TextAlign.center,
+                          softWrap: true,
+                          maxLines: 3,                 // ✅ 2~3줄
+                          overflow: TextOverflow.ellipsis, // ✅ ... 안 찍고 그냥 보이게
+                          style: const TextStyle(
+                            color: Color(0xB3FFFFFF),
+                            fontSize: 11,
+                            height: 1.2,
+                            fontWeight: FontWeight.w700
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }).toList(),
             ),
-
-          const SizedBox(height: 10),
-          Text(_subtitle(), style: t.bodySmall?.copyWith(color: Colors.white70)),
         ],
       ),
     );
   }
 }
-
 
 class _NearbyIssuesCardHardcoded extends StatelessWidget {
   const _NearbyIssuesCardHardcoded();
@@ -1659,6 +1789,150 @@ class _NearbyIssuesCardHardcoded extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MiniTempLine extends StatelessWidget {
+  const _MiniTempLine({
+    required this.values,
+    required this.tileW,
+    required this.gap,
+  });
+
+  final List<double?> values;
+  final double tileW;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _MiniLinePainter(values, tileW, gap));
+  }
+}
+
+class _MiniLinePainter extends CustomPainter {
+  _MiniLinePainter(this.values, this.tileW, this.gap);
+
+  final List<double?> values;
+  final double tileW;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final nums = values.whereType<double>().toList();
+    if (nums.length < 2) return;
+
+    final minV = nums.reduce((a, b) => a < b ? a : b);
+    final maxV = nums.reduce((a, b) => a > b ? a : b);
+    final range = (maxV - minV).abs() < 0.001 ? 1.0 : (maxV - minV);
+
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+
+    final dot = Paint()..color = Colors.white;
+
+    final path = Path();
+    bool started = false;
+
+    for (int i = 0; i < values.length; i++) {
+      final v = values[i];
+      if (v == null) continue;
+
+      // ✅ 타일 중심 x
+      final x = i * (tileW + gap) + tileW / 2;
+      final y = size.height - ((v - minV) / range) * size.height;
+
+      if (!started) {
+        path.moveTo(x, y);
+        started = true;
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    if (!started) return;
+    canvas.drawPath(path, paint);
+
+    // 점
+    for (int i = 0; i < values.length; i++) {
+      final v = values[i];
+      if (v == null) continue;
+      final x = i * (tileW + gap) + tileW / 2;
+      final y = size.height - ((v - minV) / range) * size.height;
+      canvas.drawCircle(Offset(x, y), 4.8, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniLinePainter oldDelegate) =>
+      oldDelegate.values != values || oldDelegate.tileW != tileW || oldDelegate.gap != gap;
+}
+
+class _MiniRainBars extends StatelessWidget {
+  const _MiniRainBars({
+    required this.values,
+    required this.tileW,
+    required this.gap,
+  });
+
+  final List<double> values;
+  final double tileW;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _MiniBarsPainter(values, tileW, gap));
+  }
+}
+
+class _MiniBarsPainter extends CustomPainter {
+  _MiniBarsPainter(this.values, this.tileW, this.gap);
+
+  final List<double> values;
+  final double tileW;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = Colors.white.withOpacity(0.35);
+
+    for (int i = 0; i < values.length; i++) {
+      final v = values[i].clamp(0.0, 1.0);
+      final h = v * size.height;
+
+      // ✅ 각 타일 영역 안에 bar 배치
+      final left = i * (tileW + gap) + tileW * 0.22;
+      final w = tileW * 0.56;
+
+      final r = Rect.fromLTWH(left, size.height - h, w, h);
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(6)), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniBarsPainter oldDelegate) =>
+      oldDelegate.values != values || oldDelegate.tileW != tileW || oldDelegate.gap != gap;
+}
+
+class _MiniRainEmpty extends StatelessWidget {
+  const _MiniRainEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        '강수 없음',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Colors.white60,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
