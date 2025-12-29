@@ -3,13 +3,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firebase_options.dart';
 import 'join1.dart';
+import 'package:flutter_project/home/home_page.dart';
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();   // Flutter 엔진 준비
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform, // firebase_options.dart에서 불러옴
   );
+  //아무거나함
   runApp(const MyApp());
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -31,38 +34,45 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final FirebaseFirestore fs = FirebaseFirestore.instance;
-  final TextEditingController _idController = TextEditingController();
+
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   Future<void> _login() async {
-    String id = _idController.text.trim();
+    final FirebaseFirestore fs = FirebaseFirestore.instance;
+
+    //입력값
+    String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
-    if (id.isEmpty || password.isEmpty) {
-      _showMessage("아이디와 비밀번호를 입력해주세요");
+    //firestore에서 해당 이메일 문서 찾기
+    QuerySnapshot snapshot = await fs
+        .collection("users")
+        .where("email", isEqualTo: email)
+        .get();
+
+    if(snapshot.docs.isEmpty){
+      print("해당 이메일이 존재하지 않습니다");
       return;
     }
+    //첫번째 문서 가져오기 (문서들의 리스트에서 첫번째 문서만 가져오기)
+    var userDoc = snapshot.docs.first;
 
-    try {
-      // Firestore에서 join 컬렉션에서 아이디/비밀번호 확인
-      var snapshot = await fs
-          .collection("join")
-          .where("id", isEqualTo: id)
-          .where("password", isEqualTo: password)
-          .get();
+    //비번비교
+    if(userDoc["password"] == password){
+      print("로그인 성공!");
+      Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_)=>HomePage(
 
-      if (snapshot.docs.isNotEmpty) {
-        _showMessage("로그인 성공!");
-        // TODO: 로그인 성공 후 다음 페이지로 이동
-        // Navigator.push(context, MaterialPageRoute(builder: (_) => HomePage()));
-      } else {
-        _showMessage("아이디 또는 비밀번호가 올바르지 않습니다");
-      }
-    } catch (e) {
-      _showMessage("로그인 중 오류 발생: $e");
+          ))
+      );
+    }else{
+    print("비밀번호를 확인해주세요");
     }
   }
+
+
 
   void _showMessage(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -86,9 +96,9 @@ class _LoginPageState extends State<LoginPage> {
             ),
             const SizedBox(height: 24),
             TextField(
-              controller: _idController,
+              controller: _emailController,
               decoration: const InputDecoration(
-                labelText: "아이디",
+                labelText: "이메일",
                 border: OutlineInputBorder(),
               ),
             ),
@@ -102,17 +112,12 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
             const SizedBox(height: 24),
-            // ElevatedButton(
-            //     onPressed: (){
-            //       Navigator.push(
-            //           context,
-            //           MaterialPageRoute(builder: (_)=>(
-            //
-            //           ))
-            //       );
-            //     },
-            //     child: Text("로그인")
-            // )
+            ElevatedButton(
+                onPressed: () async{
+                  await _login();
+                },
+                child: Text("로그인")
+            ),
             ElevatedButton(
                 onPressed: (){
                   Navigator.push(

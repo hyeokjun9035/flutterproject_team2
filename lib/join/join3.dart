@@ -36,10 +36,9 @@ class _JoinPage3State extends State<JoinPage3>{
   String? _gender;
 
 
-  Future<void> _Join() async{
-    await fs.collection("join").add({
+  Future<void> _join() async{
+    await fs.collection("users").add({
       "gender" : _gender
-
     });
 
   }
@@ -63,8 +62,8 @@ class _JoinPage3State extends State<JoinPage3>{
                 border: OutlineInputBorder(),
               ),
               items: const [
-                DropdownMenuItem(value: "남", child: Text("남")),
-                DropdownMenuItem(value: "녀", child: Text("녀")),
+                DropdownMenuItem(value: "M", child: Text("남")),
+                DropdownMenuItem(value: "F", child: Text("녀")),
               ],
               onChanged: (value) {
                 setState(() {
@@ -78,7 +77,8 @@ class _JoinPage3State extends State<JoinPage3>{
 
             const SizedBox(height: 24,),
             ElevatedButton(
-                onPressed: (){
+                onPressed: () async {
+                  await _join();
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(

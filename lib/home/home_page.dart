@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../cache/dashboard_cache.dart';
 import '../carry/checklist_models.dart';
 import '../carry/checklist_rules.dart';
 import '../data/dashboard_service.dart';
@@ -72,8 +73,33 @@ class _HomePageState extends State<HomePage> {
       apiKey: apiKey,
       destination: _defaultDestination,
     );
+
     // 2025-12-23 jgh251223---E
-    _future = _initLocationAndFetch();
+    if (DashboardCache.isFresh()) {
+      // ✅ 위치 라벨도 즉시 복원(화면 상단 빨리 뜸)
+      _lat = DashboardCache.lat;
+      _lon = DashboardCache.lon;
+      _locationLabel = DashboardCache.locationLabel ?? _locationLabel;
+      _airAddr = DashboardCache.airAddr ?? _airAddr;
+
+      // ✅ 대시보드 즉시 표시
+      _future = Future.value(DashboardCache.data!);
+
+      // ✅ 뒤에서 조용히 최신화(선택: 체감 좋아짐)
+      _refreshInBackground();
+    } else {
+      _future = _initLocationAndFetch();
+    }
+  }
+
+  Future<void> _refreshInBackground() async {
+    try {
+      final fresh = await _initLocationAndFetch();
+      if (!mounted) return;
+      setState(() => _future = Future.value(fresh));
+    } catch (_) {
+      // 실패해도 캐시 화면은 이미 떠 있으니 무시
+    }
   }
 
   bool _hasKorean(String s) => RegExp(r'[가-힣]').hasMatch(s.trim());
@@ -165,7 +191,11 @@ class _HomePageState extends State<HomePage> {
     return '';
   }
 
-  Future<DashboardData> _initLocationAndFetch() async {
+  Future<DashboardData> _initLocationAndFetch({
+    bool forceFreshPosition = false, // ✅ 새로고침이면 true
+    bool ignoreDashboardCache = false,
+    bool ignoreGeocodeCache = false,
+}) async {
     // 권한/서비스 체크
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
@@ -183,9 +213,25 @@ class _HomePageState extends State<HomePage> {
     }
 
     // 위치 가져오기
-    final pos = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    Position pos;
+
+    if (forceFreshPosition) {
+      // ✅ 새로고침: lastKnown 쓰지 말고 현재 위치 강제
+      pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 8),
+        // (옵션) Android에서 위치 갱신이 느리면 아래도 도움될 때가 있음
+        // forceAndroidLocationManager: true,
+      );
+    } else {
+      // ✅ 최초 진입: 빠르게 lastKnown 먼저
+      final last = await Geolocator.getLastKnownPosition();
+      pos = last ??
+          await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 6),
+          );
+    }
     _lat = pos.latitude;
     _lon = pos.longitude;
 
@@ -195,10 +241,32 @@ class _HomePageState extends State<HomePage> {
     final ss = getSunriseSunset(_lat!, _lon!, nowTime.timeZoneOffset, today);
 
     // 역지오코딩(동 이름/구 이름)
-    final placemarks = await placemarkFromCoordinates(_lat!, _lon!);
-    final adminArea = placemarks.isNotEmpty ? (placemarks.first.administrativeArea ?? '').trim() : '';
-    final label = placemarks.isNotEmpty ? pickDisplayLabel(placemarks) : '현재 위치'; // ✅ 부평역/부산역/속초역 같은 표시용
-    final addr = placemarks.isNotEmpty ? pickAirAddr(placemarks) : '';       // ✅ 인천광역시 부평구 같은 대기질용
+    String adminArea = '';
+    String label = '현재 위치';
+    String addr = '';
+
+    final reuseGeocode = !ignoreGeocodeCache &&
+        DashboardCache.canReuseGeocode(newLat: _lat, newLon: _lon);
+
+    if (reuseGeocode) {
+      adminArea = DashboardCache.administrativeArea ?? '';
+      label = DashboardCache.locationLabel ?? '현재 위치';
+      addr = DashboardCache.airAddr ?? '';
+    } else {
+      final placemarks = await placemarkFromCoordinates(_lat!, _lon!);
+      adminArea = placemarks.isNotEmpty ? (placemarks.first.administrativeArea ?? '').trim() : '';
+      label = placemarks.isNotEmpty ? pickDisplayLabel(placemarks) : '현재 위치';
+      addr = placemarks.isNotEmpty ? pickAirAddr(placemarks) : '';
+
+      // ✅ 지오코딩 캐시 저장
+      DashboardCache.saveGeocode(
+        lat: _lat!,
+        lon: _lon!,
+        locationLabel: label,
+        airAddr: addr,
+        administrativeArea: adminArea,
+      );
+    }
 
     setState(() {
       _sunrise = ss.sunrise;
@@ -217,19 +285,29 @@ class _HomePageState extends State<HomePage> {
       // 2025-12-23 jgh251223---E
     });
 
-    // ✅ Functions 호출 (lat/lon/umdName)
-    return _service.fetchDashboardByLatLon(
+    // ✅ 3) Functions 호출: state 말고 지역 변수로 넘기기(안전)
+    final dashboard = await _service.fetchDashboardByLatLon(
       lat: _lat!,
       lon: _lon!,
-      locationName: _locationLabel,
-      airAddr: _airAddr,
+      locationName: label,
+      airAddr: addr,
       administrativeArea: adminArea,
     );
+
+    // ✅ 4) 대시보드 캐시 저장(탭 왕복 시 즉시 표시)
+    DashboardCache.saveDashboard(dashboard);
+
+    return dashboard;
+
   }
 
   void _reload() {
     setState(() {
-      _future = _initLocationAndFetch();
+      _future = _initLocationAndFetch(
+        forceFreshPosition: true,
+        ignoreDashboardCache: true,
+        ignoreGeocodeCache: true,
+      );
     });
   }
 
@@ -309,13 +387,15 @@ class _HomePageState extends State<HomePage> {
                                     now: data!.now, sunrise: _sunrise, sunset: _sunset),
                               ),
                               const SizedBox(height: 12),
-      
+
                               _Card(
-                                child: FutureBuilder<List<ChecklistItem>>(
+                                child: (isLoading || data == null)
+                                    ? const _Skeleton(height: 110)
+                                    : FutureBuilder<List<ChecklistItem>>(
                                   future: _checkFuture,
                                   builder: (context, snap) {
                                     if (snap.connectionState == ConnectionState.waiting) {
-                                      return const _Skeleton(height: 90);
+                                      return const _Skeleton(height: 110);
                                     }
                                     if (snap.hasError) {
                                       return Padding(
@@ -326,13 +406,13 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                       );
                                     }
-      
+
                                     final all = snap.data ?? const <ChecklistItem>[];
-      
-                                    // ✅ 오늘 날씨(DashboardData) 기준으로 필터
+
+                                    // ✅ 여기서부터는 data가 null 아님이 보장됨
                                     final list = all.where((it) => matchesRule(it, data!)).toList()
                                       ..sort((a, b) => b.priority.compareTo(a.priority));
-      
+
                                     return _CarryCardFromFirestore(items: list, data: data!);
                                   },
                                 ),

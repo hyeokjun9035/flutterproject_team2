@@ -12,8 +12,9 @@ setGlobalOptions({ maxInstances: 10 });
  *  공통 유틸
  * ------------------------------ */
 function toNum(v) {
-  const s = String(v ?? "").trim();
-  if (!s || s === "-") return null;
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (!s || s === "-" ) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
@@ -263,19 +264,42 @@ function buildDailyFromVilage(items) {
 
   for (const it of items) {
     const d = it.fcstDate;
-    if (!byDate.has(d)) byDate.set(d, { date: d, min: null, max: null, pop: 0, sky12: null, pty: 0 });
+    if (!byDate.has(d)) {
+        byDate.set(d, { date: d, min: null, max: null, pop: null, sky12: null, pty: null, tmpMin: null, tmpMax: null });
+    }
     const row = byDate.get(d);
 
     if (it.category === "TMN") row.min = toNum(it.fcstValue);
     if (it.category === "TMX") row.max = toNum(it.fcstValue);
 
-    if (it.category === "POP") row.pop = Math.max(row.pop, Number(it.fcstValue ?? 0));
-    if (it.category === "PTY") row.pty = Math.max(row.pty, Number(it.fcstValue ?? 0));
+    if (it.category === "TMP") {
+      const v = toNum(it.fcstValue);
+      if (v != null) {
+        row.tmpMin = row.tmpMin == null ? v : Math.min(row.tmpMin, v);
+        row.tmpMax = row.tmpMax == null ? v : Math.max(row.tmpMax, v);
+      }
+    }
+
+    if (it.category === "POP") {
+      const v = toNum(it.fcstValue);
+      if (v != null) row.pop = row.pop == null ? v : Math.max(row.pop, v);
+    }
+
+    if (it.category === "PTY") {
+      const v = toNum(it.fcstValue);
+      if (v != null) row.pty = row.pty == null ? v : Math.max(row.pty, v);
+    }
 
     if (it.category === "SKY") {
-      if (it.fcstTime === "1200") row.sky12 = toNum(it.fcstValue);
-      if (row.sky12 == null) row.sky12 = toNum(it.fcstValue);
+      const v = toNum(it.fcstValue);
+      if (it.fcstTime === "1200") row.sky12 = v;
+      if (row.sky12 == null) row.sky12 = v;
     }
+  }
+
+  for (const row of byDate.values()) {
+      if (row.min == null) row.min = row.tmpMin;
+      if (row.max == null) row.max = row.tmpMax;
   }
 
   return [...byDate.values()]
@@ -307,10 +331,10 @@ function midTmFc(dt) {
 }
 
 // regId 대표 코드(예: 11B00000 수도권, 11H20000 경남권 등) 목록 예시는 아래처럼 널리 쓰임. :contentReference[oaicite:3]{index=3}
-function regIdFromAdmin(adminArea) {
+function regIdLandFromAdmin(adminArea) {
   const s = String(adminArea ?? "").replace(/\s/g, "");
   if (s.includes("서울") || s.includes("인천") || s.includes("경기")) return "11B00000";
-  if (s.includes("강원")) return "11D10000"; // 영서/영동 세분은 나중에 개선 가능
+  if (s.includes("강원")) return "11D10000";
   if (s.includes("충북")) return "11C10000";
   if (s.includes("대전") || s.includes("세종") || s.includes("충남")) return "11C20000";
   if (s.includes("전북")) return "11F10000";
@@ -318,6 +342,17 @@ function regIdFromAdmin(adminArea) {
   if (s.includes("대구") || s.includes("경북")) return "11H10000";
   if (s.includes("부산") || s.includes("울산") || s.includes("경남")) return "11H20000";
   if (s.includes("제주")) return "11G00000";
+  return null;
+}
+
+// ✅ 기온용(regIdTa) - 최소 시작(서울/인천은 공식 예시가 많이 잡힘)
+function regIdTaFromAdmin(adminArea) {
+  const s = String(adminArea ?? "").replace(/\s/g, "");
+  if (s.includes("서울")) return "11B10101";   // 예시로 널리 사용 :contentReference[oaicite:3]{index=3}
+  if (s.includes("인천")) return "11B20201";   // 예시로 널리 사용 :contentReference[oaicite:4]{index=4}
+
+  // 아래는 지역별 대표 지점 코드가 필요해요.
+  // (일단 null로 두면 min/max는 --로 안전하게 표시됨)
   return null;
 }
 
@@ -349,20 +384,43 @@ async function callMidTa(regId, tmFc) {
   return res.data?.response?.body?.items?.item?.[0] ?? null;
 }
 
-function appendMidToWeekly(short3, midLand, midTa) {
-  const base = short3[0]?.date;
-  if (!base) return short3;
+function pickMax(a, b) {
+  const na = toNum(a);
+  const nb = toNum(b);
+  if (na == null) return nb;
+  if (nb == null) return na;
+  return Math.max(na, nb);
+}
+
+function ymdKst(dt) {
+  const d = new Date(dt);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(kst.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+function appendMidToWeekly(short3, midLand, midTa, baseYmd) {
 
   const out = [...short3];
 
   // 오늘~모레(3일) 이후를 4~7일차 정도로 채워서 7일 카드 만들기
   for (let d = 3; d <= 7; d++) {
+    const taMin = midTa?.[`taMin${d}`];
+    const taMax = midTa?.[`taMax${d}`];
+
+    const rnAm = midLand?.[`rnSt${d}Am`];
+    const rnPm = midLand?.[`rnSt${d}Pm`];
+    const wfAm = midLand?.[`wf${d}Am`];
+    const wfPm = midLand?.[`wf${d}Pm`];
+
     out.push({
-      date: addDaysYmd(base, d),
-      min: midTa?.[`taMin${d}`] != null ? toNum(midTa[`taMin${d}`]) : null,
-      max: midTa?.[`taMax${d}`] != null ? toNum(midTa[`taMax${d}`]) : null,
-      pop: midLand?.[`rnSt${d}Pm`] != null ? toNum(midLand[`rnSt${d}Pm`]) : null,
-      wfText: midLand?.[`wf${d}Pm`] ?? null, // "맑음" "구름많음" "비" 등 텍스트
+      date: addDaysYmd(baseYmd, d),
+      min: toNum(taMin),
+      max: toNum(taMax),
+      pop: pickMax(rnAm, rnPm),                 // ✅ 오전/오후 중 큰 값
+      wfText: (wfPm ?? wfAm) ?? null,           // ✅ PM 우선, 없으면 AM
       sky: null,
       pty: null,
     });
@@ -401,7 +459,7 @@ async function callAirRltmByStation(stationName) {
   const params = {
     serviceKey: process.env.AIRKOREA_SERVICE_KEY,
     returnType: "json",
-    numOfRows: 1,
+    numOfRows: 10,
     pageNo: 1,
     stationName,
     dataTerm: "DAILY",
@@ -411,32 +469,59 @@ async function callAirRltmByStation(stationName) {
   return res.data?.response?.body?.items ?? [];
 }
 
-async function buildAir(addr) {
-  if (!addr) return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+async function buildAir(addr, administrativeArea) {
+  // addr 없으면 adminArea라도 시도
+  const candidates = [addr, administrativeArea]
+    .map(s => String(s ?? "").trim())
+    .filter(s => s.length > 0);
 
-  const stations = await callAirMsrstnListByAddr(addr);
-  for (const st of stations) {
-    const stationName = st?.stationName;
-    if (!stationName) continue;
+  // addr가 "강원특별자치도 속초시" 같은 경우를 대비해 축약 후보도 추가
+  const more = [];
+  for (const a of candidates) {
+    const parts = a.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) more.push(parts.slice(0, 2).join(" ")); // "인천광역시 부평구"
+    if (parts.length >= 1) more.push(parts[0]);                    // "인천광역시"
+    more.push(a.replace("특별자치도", "도").replace("특별자치시", "시"));
+  }
+  const uniq = [...new Set([...candidates, ...more])];
 
-    const msr = await callAirRltmByStation(stationName);
-    const row = msr?.[0];
-    if (!row) continue;
+  for (const cand of uniq) {
+    const stations = await callAirMsrstnListByAddr(cand);
+    for (const st of stations) {
+      const stationName = st?.stationName;
+      if (!stationName) continue;
 
-    const pm10 = toNum(row.pm10Value);
-    const pm25 = toNum(row.pm25Value);
-    const grade = String(row.khaiGrade ?? "").trim();
+      const rows = await callAirRltmByStation(stationName);
 
-    if (pm10 != null || pm25 != null || (grade && grade !== "-")) {
+      // ✅ 10건 중에서 pm10/pm25가 숫자인 첫 행 선택
+      const hit = rows.find(r => toNum(r.pm10Value) != null || toNum(r.pm25Value) != null);
+      if (!hit) continue;
+
+      const pm10 = toNum(hit.pm10Value);
+      const pm25 = toNum(hit.pm25Value);
+
+      // (선택) pm10Grade/pm25Grade가 있으면 분리 등급도 같이 내려줌(Flutter에서 나중에 사용)
+      const pm10GradeText = gradeTextFromKhai(hit.pm10Grade ?? hit.pm10Grade1h ?? hit.khaiGrade);
+      const pm25GradeText = gradeTextFromKhai(hit.pm25Grade ?? hit.pm25Grade1h ?? hit.khaiGrade);
+
+      const grade = String(hit.khaiGrade ?? "").trim();
+
       return {
-        air: { gradeText: gradeTextFromKhai(grade), pm10, pm25 },
-        meta: { stationName, dataTime: row.dataTime ?? null },
+        air: {
+          gradeText: gradeTextFromKhai(grade), // 기존 호환
+          pm10,
+          pm25,
+          pm10GradeText,
+          pm25GradeText,
+        },
+        meta: { stationName, dataTime: hit.dataTime ?? null, addrUsed: cand },
       };
     }
   }
 
-  return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null } };
+  return { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { stationName: null, reason: "no_station_or_no_valid_rows" } };
 }
+
 
 /** -----------------------------
  *  메인: getDashboard
@@ -454,10 +539,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const addr = String(request.data?.addr ?? request.data?.locationName ?? "");
     const administrativeArea = String(request.data?.administrativeArea ?? "");
 
-    // 1) 기상청: 초단기실황(현재값)
     const kmaNcst = await callKmaUltraNcst(nx, ny);
-
-    // 2) 기상청: 시간대별 (초단기 + 단기 merge)
     const kmaUltra = await callKmaUltraFcst(nx, ny);
     const kmaVilage = await callKmaVilageFcst(nx, ny);
 
@@ -471,40 +553,48 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const weeklyShort3 = buildDailyFromVilage(kmaVilage.items);
     let weekly = weeklyShort3;
 
-    const regId = regIdFromAdmin(administrativeArea);
-    if (regId) {
-      const tmFc = midTmFc(new Date());
-      const [midLand, midTa] = await Promise.all([
-        callMidLand(regId, tmFc),
-        callMidTa(regId, tmFc),
-      ]);
-      weekly = appendMidToWeekly(weeklyShort3, midLand, midTa);
-    }
+    // ✅ 중기: tmFc(06/18) + regId 분리
+    const tmFc = midTmFc(new Date());
 
-    // 4) 대기질
-    const airRes = await buildAir(addr);
+    const landRegId = regIdLandFromAdmin(administrativeArea);      // 육상용(기존)
+    const taRegId = regIdTaFromAdmin(administrativeArea);      // ✅ 기온용(추가)
 
-    // logger.info("getDashboard", { lat, lon, nx, ny, addr, administrativeArea, regId });
+    let midLand = null;
+    let midTa = null;
+
+    if (landRegId) midLand = await callMidLand(landRegId, tmFc);
+    if (taRegId) midTa = await callMidTa(taRegId, tmFc);
+
+    // ✅ baseYmd: 단기 3일의 첫 날짜(없으면 오늘로)
+    const baseYmd = weeklyShort3[0]?.date ?? ymdKst(new Date());
+
+    weekly = appendMidToWeekly(weeklyShort3, midLand, midTa, baseYmd);
+
+    const airRes = await buildAir(addr, administrativeArea);
 
     return {
       updatedAt: new Date().toISOString(),
-      locationName: String(locationName ?? ""),
-      weatherNow: kmaNcst.items,
-      hourlyFcst,
-      weekly,
-      alerts: [],
-      air: airRes.air,
-      meta: {
-        nx,
-        ny,
-        addr,
-        administrativeArea,
-        regId: regId ?? null,
-        kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
-        kmaUltraBase: { base_date: kmaUltra.base_date, base_time: kmaUltra.base_time },
-        kmaVilageBase: { base_date: kmaVilage.base_date, base_time: kmaVilage.base_time },
-        air: airRes.meta,
-      },
+        locationName: String(locationName ?? ""),
+        weatherNow: kmaNcst.items,
+        hourlyFcst,
+        weekly,
+        alerts: [],
+        air: airRes.air,
+        meta: {
+          nx,
+          ny,
+          addr,
+          administrativeArea,
+          tmFc,
+          landRegId: landRegId ?? null,
+          taRegId: taRegId ?? null,
+          midLandOk: !!midLand,
+          midTaOk: !!midTa,
+          kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
+          kmaUltraBase: { base_date: kmaUltra.base_date, base_time: kmaUltra.base_time },
+          kmaVilageBase: { base_date: kmaVilage.base_date, base_time: kmaVilage.base_time },
+          air: airRes.meta,
+        },
     };
   } catch (e) {
     logger.error("getDashboard failed", e);
