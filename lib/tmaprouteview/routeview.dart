@@ -875,9 +875,47 @@ class _CctvPlayerPage extends StatefulWidget {
 }
 
 class _CctvPlayerPageState extends State<_CctvPlayerPage> {
+
   VideoPlayerController? _ctrl;
   bool _useWebView = false;
   String _msg = 'loading...';
+
+
+  //251229
+  Widget _miniMap() {
+    final pos = LatLng(widget.item.coordY, widget.item.coordX);
+
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: 180,
+          child: AbsorbPointer(
+            child: GoogleMap(
+              key: const ValueKey('mini_map'), // ✅ 중요: 리빌드 안정화
+              initialCameraPosition: CameraPosition(target: pos, zoom: 15),
+              markers: {
+                Marker(markerId: const MarkerId('cctv'), position: pos),
+              },
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              // ✅ 미니맵은 제스처 거의 OFF
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: true,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+
+
 
   @override
   void initState() {
@@ -929,12 +967,21 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
   Widget build(BuildContext context) {
     final c = _ctrl;
 
+    String _nowKst() {
+      final kst = DateTime.now().toUtc().add(const Duration(hours: 9));
+      return
+        '${kst.year}-${kst.month.toString().padLeft(2, '0')}-${kst.day.toString().padLeft(2, '0')} '
+            '${kst.hour.toString().padLeft(2, '0')}:${kst.minute.toString().padLeft(2, '0')}:${kst.second.toString().padLeft(2, '0')}';
+    }
+
     return PutterScaffold(
       currentIndex: 0, // ✅ 홈 탭이 선택된 상태로(원하면 다른 값)
       body: Scaffold(
         appBar: AppBar(title: Text(widget.item.name)),
         body: Padding(
+          // padding: const EdgeInsets.all(12),
           padding: const EdgeInsets.all(12),
+          // padding: const EdgeInsets.fromLTRB(12, 12, 12, 180), // ✅ bottomSheet 높이만큼 아래 여백
           child: Column(
             children: [
               ClipRRect(
@@ -942,7 +989,8 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
                 child: Builder(
                   builder: (context) {
                     final w = MediaQuery.sizeOf(context).width;
-                    final h = w * 9 / 16;
+                    // final h = w * 9 / 16;
+                    final h = MediaQuery.sizeOf(context).height * 0.35;
 
                     return SizedBox(
                       width: double.infinity,
@@ -994,11 +1042,78 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
                 const SizedBox(height: 8),
                 Text(_msg, style: const TextStyle(fontSize: 11)),
               ],
+              const SizedBox(height: 12),
+
+
+
+              Expanded(
+                child: ListView(
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.item.name,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 6),
+                            Text('형식: ${widget.item.format}'),
+                            Text('좌표: ${widget.item.coordY.toStringAsFixed(6)}, ${widget.item.coordX.toStringAsFixed(6)}'),
+                            const SizedBox(height: 8),
+                            Text('업데이트: ${_nowKst()}',
+                                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ✅ 여기로 넣어야 “카드 아래”에 뜸
+                    _miniMap(),
+
+                    const SizedBox(height: 18),
+                  ],
+                ),
+              ),
+
             ],
+
           ),
+
         ),
+
+        // bottomSheet: Container(
+        //   padding: const EdgeInsets.all(12),
+        //   decoration: BoxDecoration(
+        //     color: Colors.white,
+        //     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        //     boxShadow: [BoxShadow(blurRadius: 12, color: Colors.black26)],
+        //   ),
+        //   child: Column(
+        //     mainAxisSize: MainAxisSize.min,
+        //     crossAxisAlignment: CrossAxisAlignment.start,
+        //     children: [
+        //       Text(widget.item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+        //       const SizedBox(height: 6),
+        //       Text('좌표: ${widget.item.coordY.toStringAsFixed(6)}, ${widget.item.coordX.toStringAsFixed(6)}'),
+        //       const SizedBox(height: 10),
+        //       Row(
+        //         children: [
+        //           Expanded(child: OutlinedButton(onPressed: () {}, child: const Text('지도에서 보기'))),
+        //           const SizedBox(width: 8),
+        //           Expanded(child: ElevatedButton(onPressed: () {}, child: const Text('즐겨찾기'))),
+        //         ],
+        //       ),
+        //     ],
+        //   ),
+        // ),
+
       ),
+
     );
+
   }
 
 }
