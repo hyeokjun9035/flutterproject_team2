@@ -21,12 +21,27 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const JoinPage3(),
+
     );
   }
 }
 class JoinPage3 extends StatefulWidget {
-  const JoinPage3({super.key});
+  final String name;
+  final String age;
+  final String phone;
+  final String email;
+  final String password;
+  final String nickName;
+
+  const JoinPage3({
+    super.key,
+    required this.name,
+    required this.age,
+    required this.phone,
+    required this.email,
+    required this.password,
+    required this.nickName,
+  });
 
   @override
   State<JoinPage3> createState() => _JoinPage3State();
@@ -77,11 +92,18 @@ class _JoinPage3State extends State<JoinPage3>{
 
             const SizedBox(height: 24,),
             ElevatedButton(
-                onPressed: () async {
-                  await _join();
+                onPressed: ()  {
+
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(
+                        name: widget.name,
+                        age: widget.age,
+                        phone: widget.phone,
+                        email: widget.email,
+                        password: widget.password,
+                        nickName: widget.nickName,
+                        gender: _gender ?? "", //성별 값 전달
 
                       ))
                   );

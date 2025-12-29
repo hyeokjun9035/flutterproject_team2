@@ -31,24 +31,12 @@ class JoinPage1 extends StatefulWidget {
   State<JoinPage1> createState() => _JoinPage1State();
 }
 class _JoinPage1State extends State<JoinPage1>{
-  final FirebaseFirestore fs = FirebaseFirestore.instance;
+
   final TextEditingController _name = TextEditingController();
   final TextEditingController _age = TextEditingController();
   final TextEditingController _phone = TextEditingController();
 
 
-  Future<void> _join() async{
-    print("===============================  tests");
-    final test = await fs.collection("users").doc("zz").get();
-    print(test.data());
-
-    await fs.collection("users").add({
-      "name" : _name.text,
-      "age" : _age.text,
-      "phone" : _phone.text,
-    });
-
-  }
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -84,7 +72,7 @@ class _JoinPage1State extends State<JoinPage1>{
             const SizedBox(height: 16),
             TextField(
               controller: _phone,
-              obscureText: true,
+              // obscureText: true,//입력값을 숨김
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.phone),
                 labelText: "전화번호",
@@ -95,12 +83,13 @@ class _JoinPage1State extends State<JoinPage1>{
 
 
           ElevatedButton(
-              onPressed: () async{
-                await _join(); //firebase에 저장실행
+              onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_)=>JoinPage2(
-
+                      name: _name.text,
+                      age: _age.text,
+                      phone: _phone.text,
                   ))
                 );
               },

@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firebase_options.dart';
 import 'join1.dart';
+import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/home/home_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();   // Flutter 엔진 준비
@@ -57,9 +58,9 @@ class _LoginPageState extends State<LoginPage> {
     }
     //첫번째 문서 가져오기 (문서들의 리스트에서 첫번째 문서만 가져오기)
     var userDoc = snapshot.docs.first;
-
+    // print(userDoc["password"]);
     //비번비교
-    if(userDoc["password"] == password){
+    if(userDoc["password"] == password) {
       print("로그인 성공!");
       Navigator.push(
           context,
@@ -119,8 +120,8 @@ class _LoginPageState extends State<LoginPage> {
                 child: Text("로그인")
             ),
             ElevatedButton(
-                onPressed: (){
-                  Navigator.push(
+                onPressed: () async{
+                  await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage1(
 
