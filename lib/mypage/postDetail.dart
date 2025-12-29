@@ -1,16 +1,77 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+// 1. Firebase 관련 임포트 추가
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class PostDetail extends StatefulWidget {
-  const PostDetail({super.key});
+  final List<File> images;
+
+  const PostDetail({super.key, required this.images});
 
   @override
   State<PostDetail> createState() => _PostDetailState();
 }
 
 class _PostDetailState extends State<PostDetail> {
-  // 게시판 목록 데이터
   final List<String> _boardList = ['자유게시판', '비밀게시판', '공지사항', '필독'];
-  String? _selectedBoard; // 선택된 게시판 저장 변수
+  String? _selectedBoard;
+
+  // 2. 텍스트 입력값을 가져오기 위한 컨트롤러 추가
+  final TextEditingController _contentController = TextEditingController();
+  bool _isLoading = false; // 업로드 중 로딩 표시용
+
+  // 3. Firebase 저장 함수 작성
+  Future<void> _savePost() async {
+    if (_selectedBoard == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시판을 선택해주세요!")));
+      return;
+    }
+    if (_contentController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("내용을 입력해주세요!")));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      List<String> uploadedUrls = [];
+
+      // A. Firebase Storage에 이미지 업로드
+      for (var imageFile in widget.images) {
+        String fileName = '${DateTime.now().millisecondsSinceEpoch}_${widget.images.indexOf(imageFile)}.jpg';
+        Reference storageRef = FirebaseStorage.instance.ref().child('post_images').child(fileName);
+
+        UploadTask uploadTask = storageRef.putFile(imageFile);
+        TaskSnapshot snapshot = await uploadTask;
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+        uploadedUrls.add(downloadUrl);
+      }
+
+      // B. Firestore에 게시글 데이터 저장 (설계해주신 필드명 적용)
+      await FirebaseFirestore.instance.collection('community').add({
+        'board_type': _selectedBoard,
+        'title': '교통 제보', // 제목 필드가 UI에 따로 없어서 기본값으로 설정
+        'content': _contentController.text.trim(),
+        'user_id': user?.uid ?? '익명',
+        'image_urls': uploadedUrls,
+        'cdate': FieldValue.serverTimestamp(),
+        'report_count': 0,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시글이 등록되었습니다!")));
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      print("저장 중 에러 발생: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("저장에 실패했습니다.")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,18 +85,18 @@ class _PostDetailState extends State<PostDetail> {
           child: const Text("뒤로", style: TextStyle(color: Colors.black, fontSize: 16)),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            },
-            child: const Text("완료", style: TextStyle(color: Colors.black, fontSize: 16)),
+          // 4. 완료 버튼 클릭 시 저장 함수 호출
+          _isLoading
+              ? const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: CircularProgressIndicator(strokeWidth: 2)))
+              : TextButton(
+            onPressed: _savePost,
+            child: const Text("완료", style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 1. 이미지 및 날씨 요약 영역
             Padding(
               padding: const EdgeInsets.all(20),
               child: Row(
@@ -44,19 +105,16 @@ class _PostDetailState extends State<PostDetail> {
                   Container(
                     width: 150,
                     height: 100,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.black),
-                    ),
-                    child: Image.network(
-                      'https://picsum.photos/200/150',
-                      fit: BoxFit.cover,
-                    ),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.black)),
+                    child: widget.images.isNotEmpty
+                        ? Image.file(widget.images[0], fit: BoxFit.cover)
+                        : const Center(child: Text("이미지 없음")),
                   ),
                   const SizedBox(width: 20),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
-                      children: const [
+                      children: [
                         Text("현재 날씨", style: TextStyle(fontWeight: FontWeight.bold)),
                         Icon(Icons.wb_sunny_outlined, size: 30, color: Colors.orange),
                         Text("온도 : 5도, 미세먼지: 30ug/m^3", style: TextStyle(fontSize: 10)),
@@ -68,32 +126,26 @@ class _PostDetailState extends State<PostDetail> {
                 ],
               ),
             ),
-
-            // 2. 입력 폼 영역
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 1.2),
-                ),
+                decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 1.2)),
                 child: Column(
                   children: [
-                    // --- 수정 포인트: 게시판 선택 Dropdown ---
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedBoard,
-                          hint: Row(
-                            children: const [
+                          hint: const Row(
+                            children: [
                               Icon(Icons.bookmark_border, size: 20, color: Colors.black),
                               SizedBox(width: 10),
                               Text("올라갈 게시판을 선택해주세요.", style: TextStyle(fontSize: 14, color: Colors.black)),
                             ],
                           ),
                           isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: Colors.black),
                           items: _boardList.map((String board) {
                             return DropdownMenuItem<String>(
                               value: board,
@@ -101,19 +153,15 @@ class _PostDetailState extends State<PostDetail> {
                             );
                           }).toList(),
                           onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedBoard = newValue;
-                            });
+                            setState(() => _selectedBoard = newValue);
                           },
                         ),
                       ),
                     ),
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
-
-                    // 위치 입력
                     _buildFieldContent(
-                      child: Row(
-                        children: const [
+                      child: const Row(
+                        children: [
                           Icon(Icons.location_on_outlined, size: 20),
                           SizedBox(width: 10),
                           Text("현재 위치 클릭시 현재위치 자동 입력 혹은 검색시", style: TextStyle(fontSize: 12)),
@@ -121,8 +169,6 @@ class _PostDetailState extends State<PostDetail> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
-
-                    // 날씨 정보
                     _buildFieldContent(
                       child: const Text(
                         "현재 날씨: ☀️ 온도: 영상 5도, ☁️ 미세먼지 : 30ug/m^3, 💨 바람: 2.6m/s",
@@ -130,15 +176,14 @@ class _PostDetailState extends State<PostDetail> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
-
-                    // 내용 입력
                     Container(
                       height: 150,
                       width: double.infinity,
                       padding: const EdgeInsets.all(15),
-                      child: const TextField(
+                      child: TextField(
+                        controller: _contentController, // 컨트롤러 연결
                         maxLines: null,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           hintText: "게시글 내용을 입력해주세요.\nex) 00시 부평역 구간 정체 입니다. ㅠㅠ",
                           hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
                           border: InputBorder.none,

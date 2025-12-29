@@ -5,6 +5,7 @@ import 'locationSettings.dart';
 import 'communitySettings.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'loginPageTest.dart';
 
 class UserMypage extends StatelessWidget {
   const UserMypage({super.key});
@@ -60,11 +61,17 @@ class UserMypage extends StatelessWidget {
                         Stack(
                           alignment: Alignment.bottomRight,
                           children: [
-                            const CircleAvatar(
+                             CircleAvatar(
                               radius: 60,
                               backgroundColor: Color(0xFFE0E0E0),
-                              child: Text("프로필", style: TextStyle(
-                                  color: Colors.black54, fontSize: 16)),
+                               backgroundImage: (userData['profile_image_url'] != null &&
+                                   userData['profile_image_url'].toString().isNotEmpty)
+                                   ? NetworkImage(userData['profile_image_url'])
+                                   : null,
+                               child: (userData['profile_image_url'] == null ||
+                                   userData['profile_image_url'].toString().isEmpty)
+                                   ? const Icon(Icons.person, size: 60, color: Colors.white)
+                                   : null,
                             ),
                             GestureDetector(
                               onTap: () {
@@ -95,8 +102,8 @@ class UserMypage extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent,
-                              decoration: TextDecoration.underline),
+                              color: Colors.black,
+                             ),
                         ),
                         const SizedBox(height: 8),
                         // 5. Firestore의 'nickname' 데이터 출력
@@ -104,8 +111,8 @@ class UserMypage extends StatelessWidget {
                           userData['nickname'] ?? "닉네임 없음",
                           style: const TextStyle(
                               fontSize: 16,
-                              color: Colors.blueAccent,
-                              decoration: TextDecoration.underline),
+                              color: Colors.black,
+                             ),
                         ),
                       ],
                     ),
@@ -127,8 +134,14 @@ class UserMypage extends StatelessWidget {
 
                         TextButton(
                           onPressed: () async {
-                            await FirebaseAuth.instance.signOut(); //
-                            Navigator.pop(context); // 로그인 페이지로 돌아가기
+                            await FirebaseAuth.instance.signOut();
+                            if (context.mounted) {
+                              Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                                      (route) => false,
+                              );
+                            }
                           },
                           child: const Text(
                               "로그아웃", style: TextStyle(color: Colors.red)),
