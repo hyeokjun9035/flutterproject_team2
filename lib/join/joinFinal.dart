@@ -21,12 +21,35 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const JoinPage5(),
+
     );
   }
 }
 class JoinPage5 extends StatefulWidget {
-  const JoinPage5({super.key});
+  final String name;
+  final String age;
+  final String phone;
+  final String email;
+  final String password;
+  final String nickName;
+  final String gender;
+  final bool isLocationChecked;
+  final bool isCameraChecked;
+  final bool isAlramChecked;
+
+  const JoinPage5({
+    super.key,
+    required this.name,
+    required this.age,
+    required this.phone,
+    required this.email,
+    required this.password,
+    required this.nickName,
+    required this.gender,
+    required this.isLocationChecked,
+    required this.isCameraChecked,
+    required this.isAlramChecked
+  });
 
   @override
   State<JoinPage5> createState() => _JoinPage5State();
@@ -39,8 +62,17 @@ class _JoinPage5State extends State<JoinPage5>{
 
 
   Future<void> JoinPage5() async{
-    await fs.collection("join").add({
-
+    await fs.collection("users").add({
+      "name": widget.name,
+      "age": widget.age,
+      "phone": widget.phone,
+      "email": widget.email,
+      "password": widget.password,
+      "nickName": widget.nickName,
+      "gender": widget.gender,
+      "isLocationChecked": widget.isLocationChecked,
+      "isCameraChecked": widget.isCameraChecked,
+      "isAlramChecked": widget.isAlramChecked
     });
 
   }
@@ -56,10 +88,11 @@ class _JoinPage5State extends State<JoinPage5>{
           mainAxisAlignment: MainAxisAlignment.center,
 
           children: [
-            Text("oo님 환영합니다!"),
+            Text("${widget.nickName}님 환영합니다!"),
 
             ElevatedButton(
-                onPressed: (){
+                onPressed: () async{
+                  await JoinPage5();
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>LoginPage(
