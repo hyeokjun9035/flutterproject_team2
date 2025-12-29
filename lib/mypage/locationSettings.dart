@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'locationAdd.dart';
 
 class LocationSettings extends StatelessWidget {
@@ -6,6 +8,8 @@ class LocationSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -23,48 +27,40 @@ class LocationSettings extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. 즐겨찾기 탭 레이블
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              color: Colors.grey[300],
-              child: const Text("즐겨 찾기", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
+            const Text("즐겨 찾기", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
 
-            // 2. 위치 설정 박스 영역
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 1.2),
-              ),
-              child: Column(
-                children: [
-                  // 회색 헤더 (학원 ★)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                    color: Colors.grey[600],
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text("학원", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                        Icon(Icons.star, color: Colors.black, size: 20),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1, color: Colors.black, thickness: 1.2),
+            // 🔥 Firestore 데이터 연동 부분
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user?.uid)
+                    .collection('favorites') // 즐겨찾기 서브컬렉션
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(child: Text("등록된 즐겨찾기가 없습니다."));
+                  }
 
-                  // 출발지 입력 칸
-                  _buildLocationRow("출발지 : 부평역"),
-                  const Divider(height: 1, color: Colors.black, thickness: 1.2),
+                  final docs = snapshot.data!.docs;
 
-                  // 도착지 입력 칸
-                  _buildLocationRow("도착지 : 더조은컴퓨터아카데미학원 인천점"),
-                ],
+                  return ListView.separated(
+                    itemCount: docs.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 15),
+                    itemBuilder: (context, index) {
+                      var data = docs[index].data() as Map<String, dynamic>;
+                      return _buildFavoriteCard(data);
+                    },
+                  );
+                },
               ),
             ),
 
-            const SizedBox(height: 15),
-
-            // 3. 위치 추가 하기 버튼
+            // 위치 추가 하기 버튼
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -74,10 +70,8 @@ class LocationSettings extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => const LocationAdd()),
                   );
                 },
-                child: const Text(
-                  "위치 추가 하기",
-                  style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold, fontSize: 14),
-                ),
+                child: const Text("위치 추가 하기",
+                    style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -86,16 +80,43 @@ class LocationSettings extends StatelessWidget {
     );
   }
 
-  // 위치 텍스트 행 빌더
+  // 즐겨찾기 카드 UI 빌더
+  Widget _buildFavoriteCard(Map<String, dynamic> data) {
+    // 주소 문자열 조합 함수 (SI GUN GIL ROADNO 활용)
+    String formatAddress(Map<String, dynamic>? loc) {
+      if (loc == null) return "주소 정보 없음";
+      return "${loc['SI']} ${loc['GUN']} ${loc['GIL']} ${loc['ROADNO']}";
+    }
+
+    return Container(
+      decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 1.2)),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            color: Colors.grey[400],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(data['title'] ?? "이름 없음", style: const TextStyle(fontWeight: FontWeight.bold)),
+                const Icon(Icons.star, color: Colors.amber, size: 20),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.black, thickness: 1.2),
+          _buildLocationRow("출발지 : ${formatAddress(data['start'])}"),
+          const Divider(height: 1, color: Colors.black, thickness: 1.2),
+          _buildLocationRow("도착지 : ${formatAddress(data['end'])}"),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLocationRow(String text) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-      alignment: Alignment.centerLeft,
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-      ),
+      padding: const EdgeInsets.all(15),
+      child: Text(text, style: const TextStyle(fontSize: 13)),
     );
   }
 }
