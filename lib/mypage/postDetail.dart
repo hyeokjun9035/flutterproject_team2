@@ -16,7 +16,7 @@ class PostDetail extends StatefulWidget {
 }
 
 class _PostDetailState extends State<PostDetail> {
-  final List<String> _boardList = ['자유게시판', '비밀게시판', '공지사항', '필독'];
+  final List<String> _boardList = ['자유게시판', '비밀게시판'];
   String? _selectedBoard;
 
   final TextEditingController _contentController = TextEditingController();

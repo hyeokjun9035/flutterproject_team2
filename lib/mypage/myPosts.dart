@@ -3,14 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'postCreate.dart';
 import 'DetailMypost.dart';
+import 'weather_service.dart'; // WeatherService 임포트
 
 class MyPosts extends StatelessWidget {
   const MyPosts({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // 1. 현재 로그인한 사용자의 UID 가져오기
     final String? myUid = FirebaseAuth.instance.currentUser?.uid;
+    final weatherService = WeatherService(); // 서비스 인스턴스 생성
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -27,14 +28,9 @@ class MyPosts extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // (생략 가능) 1. 날씨 정보 영역
-            const SizedBox(height: 10),
-            const Icon(Icons.wb_sunny_outlined, size: 80, color: Colors.orangeAccent),
-            const SizedBox(height: 10),
-            const Text("온도 : 5도 (체감온도:3도)", style: TextStyle(fontSize: 15)),
-            const Text("미세먼지 : 30ug/m^3", style: TextStyle(fontSize: 15)),
-            const Text("습도:47%", style: TextStyle(fontSize: 15)),
-            const Text("바람: 2.6 m/s", style: TextStyle(fontSize: 15)),
+            // 1. 실제 기상청 API 연동 날씨 영역
+            _buildRealTimeWeather(weatherService),
+
             const SizedBox(height: 30),
 
             // 2. 게시글 작성하러 가기 버튼
@@ -86,12 +82,12 @@ class MyPosts extends StatelessWidget {
             ),
             const SizedBox(height: 10),
 
-            // 🔥 핵심: StreamBuilder를 통해 내 글만 실시간으로 가져오기
+            // 4. Firestore 내 글 목록
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('community')
-                  .where('user_id', isEqualTo: myUid) // 👈 내가 작성한 글만 필터링
-                  .orderBy('cdate', descending: true) // 최신순 정렬
+                  .where('user_id', isEqualTo: myUid)
+                  .orderBy('cdate', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -119,11 +115,10 @@ class MyPosts extends StatelessWidget {
                   itemCount: posts.length,
                   itemBuilder: (context, index) {
                     var postData = posts[index].data() as Map<String, dynamic>;
-                    // 이미지 리스트 중 첫 번째 이미지를 대표로 보여줌
                     List<dynamic> imageUrls = postData['image_urls'] ?? [];
                     String displayUrl = imageUrls.isNotEmpty
                         ? imageUrls[0]
-                        : 'https://via.placeholder.com/150'; // 이미지 없을 때 대체 이미지
+                        : 'https://via.placeholder.com/150';
 
                     return GestureDetector(
                       onTap: () {
@@ -155,5 +150,64 @@ class MyPosts extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // 기상청 데이터를 가져와서 보여주는 위젯
+  Widget _buildRealTimeWeather(WeatherService service) {
+    return FutureBuilder<dynamic>(
+      future: service.fetchWeather(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: CircularProgressIndicator(),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const Text("날씨 정보를 불러올 수 없습니다.");
+        }
+
+        final items = snapshot.data as List<dynamic>;
+
+        // 데이터 파싱 (T1H: 기온, REH: 습도, WSD: 풍속, PTY: 강수형태)
+        String temp = _getVal(items, 'T1H');
+        String humidity = _getVal(items, 'REH');
+        String wind = _getVal(items, 'WSD');
+        String pty = _getVal(items, 'PTY');
+
+        return Column(
+          children: [
+            const SizedBox(height: 10),
+            // 강수 형태에 따른 아이콘 변경
+            Icon(
+              _getWeatherIcon(pty),
+              size: 80,
+              color: Colors.orangeAccent,
+            ),
+            const SizedBox(height: 10),
+            Text("온도 : $temp°C", style: const TextStyle(fontSize: 15)),
+            const Text("미세먼지 : - (준비중)", style: TextStyle(fontSize: 15, color: Colors.grey)), // 기상청 API는 미세먼지 미제공
+            Text("습도 : $humidity%", style: const TextStyle(fontSize: 15)),
+            Text("바람 : $wind m/s", style: const TextStyle(fontSize: 15)),
+          ],
+        );
+      },
+    );
+  }
+
+  // 리스트에서 특정 카테고리의 값을 찾아주는 헬퍼 함수
+  String _getVal(List<dynamic> items, String category) {
+    return items.firstWhere((i) => i['category'] == category)['obsrValue'].toString();
+  }
+
+  // 강수 형태(PTY) 코드값에 따른 아이콘 반환
+  IconData _getWeatherIcon(String pty) {
+    switch (pty) {
+      case "1": return Icons.umbrella; // 비
+      case "2": return Icons.cloudy_snowing; // 비/눈
+      case "3": return Icons.ac_unit; // 눈
+      case "4": return Icons.flash_on; // 소나기
+      default: return Icons.wb_sunny_outlined; // 맑음
+    }
   }
 }
