@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'CommunityAdd.dart';
 
 class Event extends StatelessWidget {
   const Event({super.key});
@@ -59,8 +60,13 @@ class Event extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {
-              // 나중에 글쓰기/추가 기능 붙일 자리
+            onPressed: () async {
+              await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => Communityadd()
+                  )
+              );
             },
             icon: const Icon(Icons.add),
           ),

@@ -323,13 +323,22 @@ class _HomePageState extends State<HomePage> {
           builder: (context, snapshot) {
             // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
             if (snapshot.hasError) {
+              final err = snapshot.error;
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text(
-                    '데이터 로드 실패:\n${snapshot.error}',
-                    style: const TextStyle(color: Colors.white),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                     const Icon(Icons.error_outline, size: 36),
+                     const SizedBox(height: 12),
+                     Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
+                     const SizedBox(height: 12),
+                     ElevatedButton(
+                         onPressed: _reload,
+                         child: Text('다시시도')
+                     )
+                    ]
                   ),
                 ),
               );
@@ -368,11 +377,11 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
       
-                        if (!isLoading && data!.alerts.isNotEmpty)
+                        if (!isLoading && data.alerts.isNotEmpty)
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: _AlertBanner(alert: data.alerts.first),
+                              child: _AlertBanner(alerts: data.alerts),
                             ),
                           ),
       
@@ -1224,32 +1233,127 @@ class _WeeklyStrip extends StatelessWidget {
 }
 
 class _AlertBanner extends StatelessWidget {
-  const _AlertBanner({required this.alert});
-  final WeatherAlert alert;
+  const _AlertBanner({required this.alerts});
+  final List<WeatherAlert> alerts;
+
+  String _prettyTime(String s) {
+    // s: "YYYYMMDDHHmm" 형태 기대(아닐 수도 있으니 방어)
+    if (s.length >= 12) {
+      final mm = s.substring(4, 6);
+      final dd = s.substring(6, 8);
+      final hh = s.substring(8, 10);
+      final mi = s.substring(10, 12);
+      return '$mm/$dd $hh:$mi';
+    }
+    return s;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '${alert.title}${alert.region == null ? '' : ' · ${alert.region}'}',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+    final first = alerts.first;
+    final more = alerts.length > 1 ? ' · ${alerts.length - 1}건 더' : '';
+    final t = Theme.of(context).textTheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlertDetailPage(alerts: alerts),
           ),
-        ],
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.14),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('기상 특보',
+                      style: t.titleSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${first.title}$more',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '발표 ${_prettyTime(first.timeText)}',
+                    style: t.labelSmall?.copyWith(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white70),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AlertDetailPage extends StatelessWidget {
+  const AlertDetailPage({super.key, required this.alerts});
+  final List<WeatherAlert> alerts;
+
+  String _prettyTime(String s) {
+    if (s.length >= 12) {
+      final yy = s.substring(0, 4);
+      final mm = s.substring(4, 6);
+      final dd = s.substring(6, 8);
+      final hh = s.substring(8, 10);
+      final mi = s.substring(10, 12);
+      return '$yy-$mm-$dd $hh:$mi';
+    }
+    return s;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('기상 특보'),
+      ),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: alerts.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (_, i) {
+          final a = alerts[i];
+          return Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(a.title,
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                Text('발표: ${_prettyTime(a.timeText)}', style: t.bodySmall),
+                if ((a.region ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text('지역: ${a.region}', style: t.bodySmall),
+                ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1379,36 +1483,41 @@ class _TransitCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+              ElevatedButton.icon(
+                icon: const Icon(Icons.route, size: 15),
+                label: const Text('경로 보기'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
+                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
                 ),
                 onPressed: () {
-                  // 경로 눈으로 보기
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => Routeview(raw: data.raw),
-
-                    ),
+                    MaterialPageRoute(builder: (_) => Routeview(raw: data.raw)),
                   );
                 },
-                child: const Text('[경로 보기]'),
               ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.bookmark_border, size: 15),
+                label: const Text('즐겨찾기'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
+                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
+                  side: BorderSide(color: Colors.white.withOpacity(0.7)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () {
                   // TODO: 즐겨찾기 저장/삭제 로직 연결
                 },
-                child: const Text('[즐겨찾기]'),
               ),
             ],
           ),

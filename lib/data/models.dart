@@ -32,10 +32,14 @@ class HourlyForecast {
 
 class WeatherAlert {
   final String title;
-  final String? region;
-  final String? timeText;
+  final String region;
+  final String timeText;
 
-  const WeatherAlert({required this.title, this.region, this.timeText});
+  const WeatherAlert({
+    required this.title,
+    required this.region,
+    required this.timeText
+  });
 }
 
 class AirQuality {
