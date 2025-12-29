@@ -8,6 +8,7 @@ import 'firebase_options.dart';
 import 'home/home_page.dart';
 import 'join/login.dart'; // ✅ LoginPage 파일 경로에 맞게 수정!
 import 'package:flutter_project/community/Community.dart';
+import 'package:flutter_project/mypage/userMypage.dart';
 
 
 Future<void> main() async {
@@ -44,8 +45,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/home': (context) => const HomePage(),
         '/community': (context) => const CommunityPage(),
-        // '/admin': (context) => const AdminHomePage()
-        // '/mypage': (context) => const MyPage(),
+        '/mypage': (context) => const UserMypage(),
         // '/notice': (context) => const NoticePage(),
       },
 
