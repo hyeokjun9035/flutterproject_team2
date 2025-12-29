@@ -49,8 +49,14 @@ class _JoinPage1State extends State<JoinPage1>{
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            //이미지 추가
-            // Image.asset("java2.jpg"),
+           //이미지 추가
+           Padding(
+               padding: const EdgeInsets.only( right: 350),
+             child:Image.asset("assets/joinIcon/cloud.png", width: 50, ),
+           ),
+
+
+
 
             TextField(
               controller: _name,
