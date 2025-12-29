@@ -22,7 +22,8 @@ import 'package:geocoding/geocoding.dart';
 import '../carry/checklist_service.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
-import '../headandputter/putter.dart'; //jgh251226
+import '../headandputter/putter.dart';
+import '../ui/url_helpers.dart'; //jgh251226
 
 
 class HomePage extends StatefulWidget {
@@ -42,6 +43,12 @@ class _HomePageState extends State<HomePage> {
   // 2025-12-23 jgh251223---E
   Future<DashboardData>? _future;
 
+  Future<void> _openForecastWeb() async {
+    if (_lat == null || _lon == null) return;
+    final url = buildWeatherNuriDigitalForecastUrl(lat: _lat!, lon: _lon!);
+    await openExternal(url);
+  }
+
   double? _lat;
   double? _lon;
   String _locationLabel = '위치 확인 중...'; // 화면 표시용 (부평역)
@@ -49,6 +56,18 @@ class _HomePageState extends State<HomePage> {
   String _adminArea = '';
   DateTime? _sunrise;
   DateTime? _sunset;
+  bool _editMode = false;
+
+  Widget tappableCard({required Widget child, required VoidCallback onTap}) {
+    return IgnorePointer(
+      ignoring: _editMode,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: child,
+      ),
+    );
+  }
 
   // 2025-12-23 jgh251223 상수 하드코딩---S
   // static const TransitDestination _defaultDestination = TransitDestination(
@@ -394,11 +413,10 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                           sliver: SliverList(
                             delegate: SliverChildListDelegate.fixed([
-                              _Card(
-                                child: isLoading
-                                    ? const _Skeleton(height: 120)
-                                    : _WeatherHero(
-                                    now: data!.now, sunrise: _sunrise, sunset: _sunset),
+                              tappableCard(
+                              onTap: _openForecastWeb,
+                              child: _Card(child: _WeatherHero(
+                                  now: data!.now, sunrise: _sunrise, sunset: _sunset)),
                               ),
                               const SizedBox(height: 12),
 
@@ -440,18 +458,16 @@ class _HomePageState extends State<HomePage> {
                                     : _AirCard(air: data!.air),
                               ),
                               const SizedBox(height: 12),
-      
-                              _Card(
-                                child: isLoading
-                                    ? const _Skeleton(height: 90)
-                                    : _HourlyStrip(items: data!.hourly),
+
+                              tappableCard(
+                              onTap: _openForecastWeb,
+                              child: _Card(child: _HourlyStrip(items: data.hourly)),
                               ),
                               const SizedBox(height: 24),
-      
-                              _Card(
-                                child: isLoading
-                                    ? const _Skeleton(height: 120)
-                                    : _WeeklyStrip(items: data!.weekly),
+
+                              tappableCard(
+                              onTap: _openForecastWeb,
+                              child: _Card(child: _WeeklyStrip(items: data.weekly)),
                               ),
                               const SizedBox(height: 12),
       
@@ -1724,7 +1740,7 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
                           e.message,
                           textAlign: TextAlign.center,
                           softWrap: true,
-                          maxLines: 3,                 // ✅ 2~3줄
+                          maxLines: 5,                 // ✅ 2~3줄
                           overflow: TextOverflow.ellipsis, // ✅ ... 안 찍고 그냥 보이게
                           style: const TextStyle(
                             color: Color(0xB3FFFFFF),
