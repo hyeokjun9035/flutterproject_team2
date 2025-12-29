@@ -16,7 +16,9 @@ class PutterScaffold extends StatefulWidget {
 
 class _PutterScaffoldState extends State<PutterScaffold> {
   void _onTap(int index) {
-    if (index == widget.currentIndex) return;
+    // if (index == widget.currentIndex) return;
+    // ✅ 홈(0)은 현재 탭이어도 항상 홈으로 이동
+    if (index == widget.currentIndex && index != 0) return;
 
     switch (index) {
       case 0:
@@ -30,6 +32,9 @@ class _PutterScaffoldState extends State<PutterScaffold> {
         break;
       case 3:
         Navigator.pushReplacementNamed(context, '/notice');
+        break;
+      case 7:
+        Navigator.pushReplacementNamed(context, '/home');
         break;
     }
   }
