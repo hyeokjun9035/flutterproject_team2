@@ -92,6 +92,7 @@ class _JoinPage1State extends State<JoinPage1>{
             const SizedBox(height: 24,),
 
 
+
           ElevatedButton(
               onPressed: () {
                 Navigator.push(

@@ -93,10 +93,10 @@ class _JoinPage4State extends State<JoinPage4>{
             Row(
               children: [
 
-                Padding(padding: const EdgeInsets.fromLTRB(90, 0, 90, 50)),
-                Icon(Icons.location_on),
-                Icon(Icons.camera_alt),
-                Icon(Icons.edit_notifications),
+                Padding(padding: const EdgeInsets.fromLTRB(50, 0, 90, 70), ),
+                Icon(Icons.location_on, size: 50,),
+                Icon(Icons.camera_alt, size: 50,),
+                Icon(Icons.edit_notifications, size: 50,),
               ]
             ),
 

@@ -62,19 +62,19 @@ class _JoinPage5State extends State<JoinPage5>{
 
 
   Future<void> JoinPage5() async{
-  //   await fs.collection("users").add({
-  //     "name": widget.name,
-  //     "age": widget.age,
-  //     "phone": widget.phone,
-  //     "email": widget.email,
-  //     "password": widget.password,
-  //     "nickName": widget.nickName,
-  //     "gender": widget.gender,
-  //     "isLocationChecked": widget.isLocationChecked,
-  //     "isCameraChecked": widget.isCameraChecked,
-  //     "isAlramChecked": widget.isAlramChecked
-  //   });
-  //
+    await fs.collection("users").add({
+      "name": widget.name,
+      "age": widget.age,
+      "phone": widget.phone,
+      "email": widget.email,
+      "password": widget.password,
+      "nickName": widget.nickName,
+      "gender": widget.gender,
+      "isLocationChecked": widget.isLocationChecked,
+      "isCameraChecked": widget.isCameraChecked,
+      "isAlramChecked": widget.isAlramChecked
+    });
+
   }
   @override
   Widget build(BuildContext context){

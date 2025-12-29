@@ -80,7 +80,6 @@ class _JoinPage2State extends State<JoinPage2>{
 
             TextField(
               controller: _email,
-              obscureText: true,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.email),
                 labelText: "이메일",
@@ -90,6 +89,7 @@ class _JoinPage2State extends State<JoinPage2>{
             const SizedBox(height: 16),
             TextField(
               controller: _password,
+              obscureText: true,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.onetwothree, size: 30,) ,
                 labelText: "비밀번호",

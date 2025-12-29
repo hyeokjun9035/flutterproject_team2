@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:flutter_project/admin/admin_home_page.dart';
 import 'join1.dart';
 import 'package:flutter_project/home/home_page.dart';
+
+
+
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -27,13 +30,38 @@ class _LoginPageState extends State<LoginPage> {
         .get();
 
     if (snapshot.docs.isEmpty) {
-      _showMessage("해당 이메일이 존재하지 않습니다");
+      _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
       return;
     }
 
     final userDoc = snapshot.docs.first;
 
-    if (userDoc["password"] == password) {
+    //밑에 할려고 시도한 거
+    // if (userDoc["password"] == "admin") {
+    //   _showMessage("로그인 성공!");
+    //   Navigator.pushReplacement(
+    //     context,
+    //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    //   );
+    // }
+
+    // =========================================================
+    // 1. 하드코딩된 관리자 계정 체크 로직 추가
+    // =========================================================
+    if (email == "admin" && password == "admin") {
+      _showMessage("관리자 로그인 성공!");
+      // mounted 상태 확인
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        // AdminHomePage로 바로 이동
+        MaterialPageRoute(builder: (_) => const AdminHomePage()),
+      );
+      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
+    }
+    ///////////////////////////////////////////////////////////
+
+    if (userDoc["password"] == password ) {
       _showMessage("로그인 성공!");
       Navigator.pushReplacement(
         context,
@@ -90,6 +118,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             const SizedBox(height: 24),
 
+
             ElevatedButton(
               onPressed: _login,
               child: const Text("로그인"),
@@ -104,6 +133,9 @@ class _LoginPageState extends State<LoginPage> {
               child: const Text("회원가입"),
             ),
           ],
+
+
+
         ),
       ),
     );
