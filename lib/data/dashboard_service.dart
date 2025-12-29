@@ -182,6 +182,10 @@ class DashboardService {
         sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
         pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
         wfText: m['wfText']?.toString(),
+        wfAm: m['wfAm']?.toString(),
+        wfPm: m['wfPm']?.toString(),
+        popAm: m['popAm'] is int ? m['popAm'] as int : int.tryParse('${m['popAm']}'),
+        popPm: m['popPm'] is int ? m['popPm'] as int : int.tryParse('${m['popPm']}'),
       );
     }).toList();
 

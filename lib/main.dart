@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+// import 'package:flutter_project/admin/admin_home_page.dart';
 import 'firebase_options.dart';
 import 'home/home_page.dart';
 import 'join/login.dart'; // ✅ LoginPage 파일 경로에 맞게 수정!
 import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/mypage/userMypage.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

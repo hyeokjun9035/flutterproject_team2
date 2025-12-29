@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'place_result.dart';
 
@@ -15,7 +16,14 @@ class Location extends StatefulWidget {
 
 class _LocationState extends State<Location> {
   // 🔑 카카오 REST API 키
-  static const String kakaoRestKey = "b855d23f2a124d98b3fd43e1a532f3b6";
+  late final String kakaoRestKey;
+
+  @override
+  void initState() {
+    super.initState();
+    kakaoRestKey = dotenv.env['KAKAO_REST_KEY'] ?? '';
+    _loadMyLocation();
+  }
 
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
@@ -27,12 +35,6 @@ class _LocationState extends State<Location> {
   PlaceResult? _selected;
   double? _myLat;
   double? _myLng;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMyLocation();
-  }
 
   Future<void> _loadMyLocation() async {
     final perm = await Geolocator.checkPermission();
@@ -70,6 +72,18 @@ class _LocationState extends State<Location> {
   }
 
   Future<void> _searchKakao(String query) async {
+    if (kakaoRestKey.isEmpty) {
+      setState(() {
+        _loading = false;
+        _results = [];
+      });
+      // 원하면 여기서 SnackBar로 알려도 됨
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(content: Text("KAKAO_REST_KEY가 설정되어 있지 않습니다.")),
+      // );
+      return;
+    }
+
     setState(() => _loading = true);
 
     try {

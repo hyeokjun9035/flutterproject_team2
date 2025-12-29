@@ -44,13 +44,23 @@ class _JoinPage1State extends State<JoinPage1>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,10,10,150),
+        padding: const EdgeInsets.fromLTRB(10,0,10,250),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            //이미지 추가
-            // Image.asset("java2.jpg"),
+            Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 380, 0),
+                child: Image.asset("assets/joinIcon/sun.png", width: 30,)
+            ),
+           //이미지 추가
+           Padding(
+               padding: const EdgeInsets.fromLTRB(10,0,350,200),
+             child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
+           ),
+
+
+
 
             TextField(
               controller: _name,
@@ -80,6 +90,7 @@ class _JoinPage1State extends State<JoinPage1>{
               ),
             ),
             const SizedBox(height: 24,),
+
 
 
           ElevatedButton(
