@@ -50,13 +50,6 @@ class _JoinPage3State extends State<JoinPage3>{
   final FirebaseFirestore fs = FirebaseFirestore.instance;
   String? _gender;
 
-
-  Future<void> _join() async{
-    await fs.collection("users").add({
-      "gender" : _gender
-    });
-
-  }
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -64,11 +57,20 @@ class _JoinPage3State extends State<JoinPage3>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,10,10,150),
+        padding: const EdgeInsets.fromLTRB(10,0,10,390),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 300, 0),
+                child: Image.asset("assets/joinIcon/sun.png", width: 30,)
+            ),
+            //이미지 추가
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
+            ),
             // ✅ 성별 선택 박스
             DropdownButtonFormField<String>(
               value: _gender,
@@ -86,9 +88,6 @@ class _JoinPage3State extends State<JoinPage3>{
                 });
               },
             ),
-
-
-
 
             const SizedBox(height: 24,),
             ElevatedButton(

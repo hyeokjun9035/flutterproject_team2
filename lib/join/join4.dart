@@ -71,16 +71,34 @@ class _JoinPage4State extends State<JoinPage4>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 200),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
 
           children: [
             Padding(
-                padding:const EdgeInsetsGeometry.fromLTRB(0, 0, 0, 100),
+                padding: const EdgeInsets.fromLTRB(0, 0, 270,0),
+                child: Image.asset("assets/joinIcon/sun.png", width: 30,)
+            ),
+            //이미지 추가
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
+            ),
+            Padding(
+                padding:const EdgeInsetsGeometry.fromLTRB(0, 0, 0, 20),
               child: Text("기타 및 관련 서비스에 동의해주세요"),
             ),
 
+            Row(
+              children: [
+
+                Padding(padding: const EdgeInsets.fromLTRB(50, 0, 90, 70), ),
+                Icon(Icons.location_on, size: 50,),
+                Icon(Icons.camera_alt, size: 50,),
+                Icon(Icons.edit_notifications, size: 50,),
+              ]
+            ),
 
             CheckboxListTile(
               title: const Text("위치기반 서비스에 동의합니다 (필수)"),
