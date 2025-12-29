@@ -14,7 +14,7 @@ setGlobalOptions({ maxInstances: 10 });
 function toNum(v) {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
-  if (!s || s === "-" ) return null;
+  if (s === '' || s === '-' ) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
@@ -304,7 +304,7 @@ function buildDailyFromVilage(items) {
 
   return [...byDate.values()]
     .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .slice(0, 3)
+    .slice(0, 4)
     .map(d => ({
       date: d.date,
       min: d.min,
@@ -401,28 +401,38 @@ function ymdKst(dt) {
   return `${y}${m}${day}`;
 }
 
-function appendMidToWeekly(short3, midLand, midTa, baseYmd) {
+function parseYmd(ymd) {
+  const y = Number(ymd.slice(0,4));
+  const m = Number(ymd.slice(4,6));
+  const d = Number(ymd.slice(6,8));
+  // UTC로 고정 (일수 차이 계산 안정)
+  return new Date(Date.UTC(y, m - 1, d));
+}
 
-  const out = [...short3];
+function diffDaysYmd(aYmd, bYmd) {
+  const a = parseYmd(aYmd);
+  const b = parseYmd(bYmd);
+  return Math.round((a - b) / (24 * 60 * 60 * 1000)); // a - b (일)
+}
 
-  // 오늘~모레(3일) 이후를 4~7일차 정도로 채워서 7일 카드 만들기
-  for (let d = 3; d <= 7; d++) {
-    const taMin = midTa?.[`taMin${d}`];
-    const taMax = midTa?.[`taMax${d}`];
+function appendMidToWeekly(shortList, midLand, midTa, baseYmd) {
+  const out = [...shortList];
 
-    const rnAm = midLand?.[`rnSt${d}Am`];
-    const rnPm = midLand?.[`rnSt${d}Pm`];
-    const wfAm = midLand?.[`wf${d}Am`];
-    const wfPm = midLand?.[`wf${d}Pm`];
+  const startOff = out.length >= 4 ? 4 : 3;
+
+  for (let off = startOff; off <= 7; off++) {
 
     out.push({
-      date: addDaysYmd(baseYmd, d),
-      min: toNum(taMin),
-      max: toNum(taMax),
-      pop: pickMax(rnAm, rnPm),                 // ✅ 오전/오후 중 큰 값
-      wfText: (wfPm ?? wfAm) ?? null,           // ✅ PM 우선, 없으면 AM
-      sky: null,
-      pty: null,
+      date: addDaysYmd(baseYmd, off),
+      min: toNum(midTa?.[`taMin${off}`]),
+      max: toNum(midTa?.[`taMax${off}`]),
+      wfAm: midLand?.[`wf${off}Am`] ?? null,
+      wfPm: midLand?.[`wf${off}Pm`] ?? null,
+      popAm: midLand?.[`rnSt${off}Am`] != null ? toNum(midLand[`rnSt${off}Am`]) : null,
+      popPm: midLand?.[`rnSt${off}Pm`] != null ? toNum(midLand[`rnSt${off}Pm`]) : null,
+      // 기존 유지
+      wfText: midLand?.[`wf${off}Pm`] ?? null,
+      pop: midLand?.[`rnSt${off}Pm`] != null ? toNum(midLand[`rnSt${off}Pm`]) : null,
     });
   }
 
@@ -543,36 +553,61 @@ async function callKmaWthrWrnList({ fromTmFc, toTmFc, stnId }) {
   return items;
 }
 
+function compactRegion(s) {
+  return String(s ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/(특별시|광역시|특별자치시|특별자치도|자치도)$/g, ""); // 끝에 붙는 행정 접미 제거
+}
+
+function buildAlertKeywords(administrativeArea, addr) {
+  const out = new Set();
+
+  const add = (v) => {
+    const raw = String(v ?? "").trim();
+    if (!raw) return;
+    out.add(raw);
+    out.add(compactRegion(raw));
+    // “부산광역시” -> “부산” 같은 1단어도 추가
+    const first = raw.split(/\s+/)[0];
+    if (first) out.add(compactRegion(first));
+  };
+
+  add(administrativeArea); // 예: "인천광역시"
+  add(addr);               // 예: "인천광역시 부평구"
+
+  // addr 두 번째 토큰(구/군)도 추가: "부평구"
+  const parts = String(addr ?? "").split(/\s+/).filter(Boolean);
+  if (parts[1]) out.add(parts[1]);
+
+  return [...out].filter(Boolean);
+}
+
 // title에 지역 키워드가 들어오는 경우가 많아서(예: “... 인천 ...”), 간단 필터
 function buildAlertsFromWrnList(items, { keywords = [] } = {}) {
-  const kw = keywords
-    .map(s => String(s ?? "").trim())
-    .filter(Boolean)
-    .map(s => s.replace(/\s/g, ""));
+  const kw = keywords.map(k => String(k).replace(/\s+/g, "")).filter(Boolean);
 
-  const norm = (s) => String(s ?? "").replace(/\s/g, "");
-
-  const out = items
-    .map((it) => ({
-      title: String(it.title ?? "").trim(),
-      region: "",                 // 필요하면 여기서 파싱해서 넣어도 됨
-      timeText: String(it.tmFc ?? ""), // YYYYMMDDHHmm 형태로 내려오는 경우가 많음
-      // 나중에 “통보문 상세” 붙일 때 쓰라고 같이 내려둠(선택)
-      tmSeq: it.tmSeq ?? null,
-      stnId: it.stnId ?? null,
+  return (items ?? [])
+    .map(it => ({
+      title: String(it.title ?? "특보"),
+      region: "", // title에서 뽑아도 되고, 여기선 비워도 됨
+      timeText: String(it.tmFc ?? ""), // ✅ tmFc가 발표시각(년월일시분) :contentReference[oaicite:1]{index=1}
+      tmSeq: String(it.tmSeq ?? ""),
+      stnId: String(it.stnId ?? ""),
     }))
-    .filter(a => a.title) // title 없는 건 제거
+    // 해제/취소는 배너에서 제외하고 싶으면:
+    .filter(a => !a.title.includes("해제") && !a.title.includes("취소"))
+    // 지역 키워드 매칭
     .filter(a => {
       if (kw.length === 0) return true;
-      const t = norm(a.title);
-      return kw.some(k => t.includes(k));
+      const t = a.title.replace(/\s+/g, "");
+      return kw.some(k => k && t.includes(k));
     })
-    // 최신순
-    .sort((a, b) => String(b.timeText).localeCompare(String(a.timeText)));
-
-  // 배너/상세에 너무 많으면 UI 부담 → 상위 20개만
-  return out.slice(0, 20);
+    // 최신순(내림차순)
+    .sort((a, b) => (a.timeText < b.timeText ? 1 : -1))
+    .slice(0, 5);
 }
+
 
 
 /** -----------------------------
@@ -607,6 +642,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     // ✅ 중기: tmFc(06/18) + regId 분리
     const tmFc = midTmFc(new Date());
+    const tmFcYmd = tmFc.substring(0, 8);
 
     const landRegId = regIdLandFromAdmin(administrativeArea);      // 육상용(기존)
     const taRegId = regIdTaFromAdmin(administrativeArea);      // ✅ 기온용(추가)
@@ -620,7 +656,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     // ✅ baseYmd: 단기 3일의 첫 날짜(없으면 오늘로)
     const baseYmd = weeklyShort3[0]?.date ?? ymdKst(new Date());
 
-    weekly = appendMidToWeekly(weeklyShort3, midLand, midTa, baseYmd);
+    weekly = appendMidToWeekly(weeklyShort3, midLand, midTa, baseYmd, tmFcYmd);
 
     const airRes = await buildAir(addr, administrativeArea);
 
@@ -628,7 +664,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     let alerts = [];
     try {
       const todayYmd = ymdKst(new Date());           // 너 파일에 이미 있음 :contentReference[oaicite:3]{index=3}
-      const fromYmd = addDaysYmd(todayYmd, -3);      // 너 파일에 이미 있음 :contentReference[oaicite:4]{index=4}
+      const fromYmd = addDaysYmd(todayYmd, -14);      // 너 파일에 이미 있음 :contentReference[oaicite:4]{index=4}
 
       const wrnItems = await callKmaWthrWrnList({
         fromTmFc: fromYmd,
@@ -636,9 +672,9 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
         // stnId: 필요하면 나중에 매핑해서 넣기
       });
 
-      // keywords: 광역시/도 + (가능하면) addr(“인천광역시 부평구”) 같이 보내면 매칭률↑
-      const keywords = [administrativeArea, addr];
+      const keywords = buildAlertKeywords(administrativeArea, addr);
       alerts = buildAlertsFromWrnList(wrnItems, { keywords });
+
     } catch (err) {
       logger.warn("alerts fetch failed", err);
       alerts = [];

@@ -52,7 +52,8 @@ dependencies:
   image_picker:
   firebase_storage:
   firebase_functions:
-
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
