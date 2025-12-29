@@ -62,19 +62,19 @@ class _JoinPage5State extends State<JoinPage5>{
 
 
   Future<void> JoinPage5() async{
-    await fs.collection("users").add({
-      "name": widget.name,
-      "age": widget.age,
-      "phone": widget.phone,
-      "email": widget.email,
-      "password": widget.password,
-      "nickName": widget.nickName,
-      "gender": widget.gender,
-      "isLocationChecked": widget.isLocationChecked,
-      "isCameraChecked": widget.isCameraChecked,
-      "isAlramChecked": widget.isAlramChecked
-    });
-
+  //   await fs.collection("users").add({
+  //     "name": widget.name,
+  //     "age": widget.age,
+  //     "phone": widget.phone,
+  //     "email": widget.email,
+  //     "password": widget.password,
+  //     "nickName": widget.nickName,
+  //     "gender": widget.gender,
+  //     "isLocationChecked": widget.isLocationChecked,
+  //     "isCameraChecked": widget.isCameraChecked,
+  //     "isAlramChecked": widget.isAlramChecked
+  //   });
+  //
   }
   @override
   Widget build(BuildContext context){
@@ -83,12 +83,17 @@ class _JoinPage5State extends State<JoinPage5>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+        padding: const EdgeInsets.fromLTRB(150, 0, 0, 100),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
 
           children: [
+            Padding(
+                padding: const EdgeInsets.fromLTRB(100, 0,0,0),
+                child: Image.asset("assets/joinIcon/colorSun.png", width: 30,)
+            ),
             Text("${widget.nickName}님 환영합니다!"),
+
 
             ElevatedButton(
                 onPressed: () async{
@@ -100,7 +105,7 @@ class _JoinPage5State extends State<JoinPage5>{
                       ))
                   );
                 },
-                child: Text("다음")
+                child: Text("메인으로")
             )
           ],
 
