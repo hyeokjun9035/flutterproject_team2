@@ -344,31 +344,33 @@ class _HomePageState extends State<HomePage> {
       body: Scaffold(
         body: FutureBuilder<DashboardData>(
           future: _future,
+          initialData: DashboardCache.data,
           builder: (context, snapshot) {
-            // ✅ 에러 먼저 처리 (여기서 data! 쓰면 안 됨)
-            if (snapshot.hasError) {
+            final data = snapshot.data;
+
+            // 초기 진입만 로딩 처리
+            final isFirstLoading =
+                snapshot.connectionState != ConnectionState.done && data == null;
+            // 새로고침/백그라운드 갱신
+            final isRefreshing =
+                snapshot.connectionState != ConnectionState.done && data != null;
+
+            if (snapshot.hasError && data == null) {
               final err = snapshot.error;
               return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                     const Icon(Icons.error_outline, size: 36),
-                     const SizedBox(height: 12),
-                     Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
-                     const SizedBox(height: 12),
-                     ElevatedButton(
-                         onPressed: _reload,
-                         child: Text('다시시도')
-                     )
-                    ]
-                  ),
-                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, size: 36),
+                    const SizedBox(height: 12),
+                    Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    ElevatedButton(onPressed: _reload, child: const Text('다시시도'))
+                  ],
+                )
               );
             }
-      
-            final data = snapshot.data;
+
             final now = data?.now;
       
             // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
@@ -397,6 +399,7 @@ class _HomePageState extends State<HomePage> {
                               locationName: _locationLabel,
                               updatedAt: data?.updatedAt,
                               onRefresh: _reload,
+                              isRefreshing: isRefreshing,
                             ),
                           ),
                         ),
@@ -413,10 +416,14 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                           sliver: SliverList(
                             delegate: SliverChildListDelegate.fixed([
+
                               tappableCard(
-                              onTap: _openForecastWeb,
-                              child: _Card(child: _WeatherHero(
-                                  now: data!.now, sunrise: _sunrise, sunset: _sunset)),
+                                onTap: _openForecastWeb,
+                                child: _Card(
+                                    child: isFirstLoading
+                                        ? const _Skeleton(height: 170)
+                                        : _WeatherHero(now: data!.now, sunrise: _sunrise, sunset: _sunset)
+                                ),
                               ),
                               const SizedBox(height: 12),
 
@@ -460,14 +467,22 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 12),
 
                               tappableCard(
-                              onTap: _openForecastWeb,
-                              child: _Card(child: _HourlyStrip(items: data.hourly)),
+                                onTap: _openForecastWeb,
+                                child: _Card(
+                                    child: isFirstLoading
+                                        ? const _Skeleton(height: 140)
+                                        : _HourlyStrip(items: data!.hourly)
+                                ),
                               ),
                               const SizedBox(height: 24),
 
                               tappableCard(
-                              onTap: _openForecastWeb,
-                              child: _Card(child: _WeeklyStrip(items: data.weekly)),
+                                onTap: _openForecastWeb,
+                                child: _Card(
+                                    child: isFirstLoading
+                                        ? const _Skeleton(height: 140)
+                                        : _WeeklyStrip(items: data!.weekly)
+                                ),
                               ),
                               const SizedBox(height: 12),
       
@@ -525,11 +540,13 @@ class _TopBar extends StatelessWidget {
     required this.locationName,
     required this.updatedAt,
     required this.onRefresh,
+    required this.isRefreshing
   });
 
   final String locationName;
   final DateTime? updatedAt;
   final VoidCallback onRefresh;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -548,6 +565,11 @@ class _TopBar extends StatelessWidget {
           icon: const Icon(Icons.refresh, color: Colors.white),
           tooltip: '새로고침',
         ),
+        if (isRefreshing)
+          const SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
       ],
     );
   }
@@ -957,48 +979,37 @@ class _AirCard extends StatelessWidget {
     required int? value,
     required DustGrade grade,
   }) {
+    final vText = value == null ? '--' : '$value';
+    final gText = gradeLabel(grade);
     final c = gradeColor(grade);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.withOpacity(0.45)),
+        color: Colors.white.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.withOpacity(0.55)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              )),
-          const SizedBox(width: 8),
-          Text(
-            value == null ? '--' : '$value',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: c.withOpacity(0.22),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              gradeLabel(grade),
-              style: TextStyle(
-                color: c,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
+          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12,)),
+          const SizedBox(width: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(vText, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: c.withOpacity(0.22),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(gText, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
               ),
-            ),
-          ),
+            ],
+          )
         ],
       ),
     );
@@ -1740,8 +1751,8 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
                           e.message,
                           textAlign: TextAlign.center,
                           softWrap: true,
-                          maxLines: 5,                 // ✅ 2~3줄
-                          overflow: TextOverflow.ellipsis, // ✅ ... 안 찍고 그냥 보이게
+                          maxLines: 5,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Color(0xB3FFFFFF),
                             fontSize: 11,
