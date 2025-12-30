@@ -11,6 +11,7 @@ import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/mypage/userMypage.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 
 Future<void> main() async {
@@ -23,6 +24,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+
+    androidProvider: AndroidProvider.debug,
+
   );
 
   // ✅ Functions 에뮬레이터로 연결 (개발할 때만)
@@ -56,19 +63,10 @@ class MyApp extends StatelessWidget {
       initialRoute: '/login',
       routes: {
         '/login': (context) => const LoginPage(),
+        '/home': (context) => const HomePage(),
         '/community': (context) => const CommunityPage(),
         '/mypage': (context) => const UserMypage(),
         // '/notice': (context) => const NoticePage(),
-      },
-
-      // ✅ 여기 추가: /home은 arguments로 uid 받아서 생성
-      onGenerateRoute: (settings) {
-        if (settings.name == '/home') {
-          debugPrint("✅ /home args = ${settings.arguments}");
-          final uid = settings.arguments as String;
-          return MaterialPageRoute(builder: (_) => HomePage(userUid: uid));
-        }
-        return null;
       },
 
       theme: ThemeData(

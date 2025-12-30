@@ -27,6 +27,7 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage4 extends StatefulWidget {
   final String email;
+  final String uid;
   final String intro;
   final String name;
   final String profile_image_url;
@@ -36,6 +37,7 @@ class JoinPage4 extends StatefulWidget {
   const JoinPage4({
     super.key,
     required this.email,
+    required this.uid,
     required this.intro,
     required this.name,
     required this.profile_image_url,
@@ -131,6 +133,7 @@ class _JoinPage4State extends State<JoinPage4>{
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage5(
+                          uid: widget.uid,
                           email: widget.email,
                           intro: widget.intro,
                           name: widget.name,

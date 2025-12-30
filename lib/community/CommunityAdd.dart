@@ -19,10 +19,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'Community.dart';
 import 'Event.dart';
 import 'Chatter.dart';
 import 'Fashion.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Communityadd extends StatefulWidget {
   const Communityadd({super.key});
@@ -785,10 +785,17 @@ class _CommunityaddState extends State<Communityadd> {
 
   Future<void> _addCommunity() async {
     await _ensureSignedIn();
+    final user = FirebaseAuth.instance.currentUser;
 
     final categoryAtSubmit = selectedCategory;
     final title = _title.text.trim();
     final plain = _editorController.document.toPlainText().trim();
+
+    if (user == null) {
+      debugPrint("❌ user null (로그인 안됨)");
+      return;
+    }
+    final uid = user.uid;
 
     if (title.isEmpty || plain.isEmpty) {
       print("제목 또는 내용 입력");
@@ -808,6 +815,7 @@ class _CommunityaddState extends State<Communityadd> {
 
     // ✅ Firestore 저장
     await docRef.set({
+      'authorUid': uid,
       'title': title,
       'category': categoryAtSubmit,
 
@@ -841,6 +849,8 @@ class _CommunityaddState extends State<Communityadd> {
 
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    debugPrint("✅ saved authorUid = $uid");
 
     // 초기화
     _title.clear();

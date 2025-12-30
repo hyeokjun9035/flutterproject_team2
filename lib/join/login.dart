@@ -22,13 +22,8 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
 
-
-  Future<void> _login() async {
-    final email = _emailController.text.trim();
-    final pwd = _pwdController.text.trim();
-
-    //--------------관리자 로그인---------------
-    if (email == "admin@gmail.com" && pwd == "admin1") {
+    //jgh251230 관리자 로그인 끌어올림---S
+    if (email == "admin" && password == "admin") {
       _showMessage("관리자 로그인 성공!");
       // mounted 상태 확인
       if (!mounted) return;
@@ -39,15 +34,50 @@ class _LoginPageState extends State<LoginPage> {
       );
       return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
     }
+    //jgh251230 관리자 로그인 끌어올림---E
+    
+    final snapshot = await fs
+        .collection("users")
+        .where("email", isEqualTo: email)
+        .get();
+
+    // if (snapshot.docs.isEmpty) {
+    //   _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
+    //   return;
+    // }
+
+    final userDoc = snapshot.docs.first;
+
+    //밑에 할려고 시도한 거
+    // if (userDoc["password"] == "admin") {
+    //   _showMessage("로그인 성공!");
+    //   Navigator.pushReplacement(
+    //     context,
+    //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    //   );
+    // }
+
+    // =========================================================
+    // 1. 하드코딩된 관리자 계정 체크 로직 추가
+    // =========================================================
+    // if (email == "admin" && password == "admin") {
+    //   _showMessage("관리자 로그인 성공!");
+    //   // mounted 상태 확인
+    //   if (!mounted) return;
+    //   Navigator.pushReplacement(
+    //     context,
+    //     // AdminHomePage로 바로 이동
+    //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    //   );
+    //   return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
+    // }
+    ///////////////////////////////////////////////////////////
 
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
           email: email,
           password: pwd,
       );
-
-      final String uid = userCredential.user!.uid;
-      debugPrint("✅ login uid = $uid");
 
       _showMessage("로그인 성공!");
 
@@ -57,7 +87,7 @@ class _LoginPageState extends State<LoginPage> {
       //HomePage로 이동(로그인 성공 시)
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => HomePage(userUid: uid)),
+          MaterialPageRoute(builder: (_) => const HomePage()),
       );
     } on FirebaseAuthException catch (e) {
       String message;

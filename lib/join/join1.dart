@@ -39,10 +39,10 @@ class JoinPage1 extends StatefulWidget {
   final String checkPwd;
 
   const JoinPage1({
-  super.key,
-  required this.email,
-  required this.pwd,
-  required this.checkPwd,
+    super.key,
+    required this.email,
+    required this.pwd,
+    required this.checkPwd,
 
   });
 
@@ -123,11 +123,11 @@ class _JoinPage1State extends State<JoinPage1> {
                 padding: const EdgeInsets.fromLTRB(0, 0, 380, 0),
                 child: Image.asset("assets/joinIcon/sun.png", width: 30,)
             ),
-           //이미지 추가
-           Padding(
-               padding: const EdgeInsets.fromLTRB(10,0,350,200),
-             child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
-           ),
+            //이미지 추가
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
+            ),
 
 
 
@@ -187,15 +187,18 @@ class _JoinPage1State extends State<JoinPage1> {
               //     );
               // }
               },
-                child: Text("다음"),
-                )
+              child: Text("다음"),
+            )
+
+
+
+
           ],
-          
+
         ),
       ),
     );
   }
 }
-
 
 
