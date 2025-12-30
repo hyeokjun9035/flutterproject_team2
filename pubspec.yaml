@@ -43,6 +43,14 @@ dependencies:
   sunrise_sunset_calc:
   video_player: ^2.9.2 #jgh251226
   webview_flutter: ^4.10.0 #jgh251226
+  flutter_quill: ^11.5.0
+  flutter_localizations:
+    sdk: flutter
+  video_thumbnail: ^0.5.3
+  path_provider: ^2.1.4
+  path_provider_android: ^2.2.14
+  path: ^1.9.0
+  chewie: ^1.8.5
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
