@@ -11,6 +11,7 @@ import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/mypage/userMypage.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 
 Future<void> main() async {
@@ -23,6 +24,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+
+    androidProvider: AndroidProvider.debug,
+
   );
 
   // ✅ Functions 에뮬레이터로 연결 (개발할 때만)

@@ -22,13 +22,45 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
 
+    //jgh251230 관리자 로그인 끌어올림---S
+    if (email == "admin" && password == "admin") {
+      _showMessage("관리자 로그인 성공!");
+      // mounted 상태 확인
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        // AdminHomePage로 바로 이동
+        MaterialPageRoute(builder: (_) => const AdminHomePage()),
+      );
+      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
+    }
+    //jgh251230 관리자 로그인 끌어올림---E
+    
+    final snapshot = await fs
+        .collection("users")
+        .where("email", isEqualTo: email)
+        .get();
 
-  Future<void> _login() async {
-    final email = _emailController.text.trim();
-    final pwd = _pwdController.text.trim();
+    // if (snapshot.docs.isEmpty) {
+    //   _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
+    //   return;
+    // }
 
-    //--------------관리자 로그인---------------
-    // if (email == "admin" && pwd == "admin") {
+    final userDoc = snapshot.docs.first;
+
+    //밑에 할려고 시도한 거
+    // if (userDoc["password"] == "admin") {
+    //   _showMessage("로그인 성공!");
+    //   Navigator.pushReplacement(
+    //     context,
+    //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    //   );
+    // }
+
+    // =========================================================
+    // 1. 하드코딩된 관리자 계정 체크 로직 추가
+    // =========================================================
+    // if (email == "admin" && password == "admin") {
     //   _showMessage("관리자 로그인 성공!");
     //   // mounted 상태 확인
     //   if (!mounted) return;
@@ -39,6 +71,7 @@ class _LoginPageState extends State<LoginPage> {
     //   );
     //   return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
     // }
+    ///////////////////////////////////////////////////////////
 
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
@@ -122,25 +155,31 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 24),
 
 
-            ElevatedButton(
-              onPressed: _login,
-              child: const Text("로그인"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const JoinPage1(
-                    email: "",
-                    pwd: "",
-                    checkPwd: "",
-                  )
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _login,
+                  child: const Text("로그인"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const JoinPage1(
+                        email: "",
+                        pwd: "",
+                        checkPwd: "",
+                      )
 
-                  ),
-                );
-              },
-              child: const Text("회원가입"),
-            ),
+                      ),
+                    );
+                  },
+                  child: const Text("회원가입"),
+                ),
+              ],
+            )
+
           ],
 
 
