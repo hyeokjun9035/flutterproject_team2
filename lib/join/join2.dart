@@ -35,11 +35,8 @@ class JoinPage2 extends StatefulWidget {
   const JoinPage2({
     super.key,
     required this.email
-
   }
-
       );
-
 
 
 
@@ -82,7 +79,7 @@ class _JoinPage2State extends State<JoinPage2>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,180),
+        padding: const EdgeInsets.fromLTRB(10,0,10,225),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
