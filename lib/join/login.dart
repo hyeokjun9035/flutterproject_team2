@@ -46,6 +46,9 @@ class _LoginPageState extends State<LoginPage> {
           password: pwd,
       );
 
+      final String uid = userCredential.user!.uid;
+      debugPrint("✅ login uid = $uid");
+
       _showMessage("로그인 성공!");
 
       //mounted상태 확인
@@ -54,7 +57,7 @@ class _LoginPageState extends State<LoginPage> {
       //HomePage로 이동(로그인 성공 시)
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomePage()),
+          MaterialPageRoute(builder: (_) => HomePage(userUid: uid)),
       );
     } on FirebaseAuthException catch (e) {
       String message;

@@ -56,10 +56,19 @@ class MyApp extends StatelessWidget {
       initialRoute: '/login',
       routes: {
         '/login': (context) => const LoginPage(),
-        '/home': (context) => const HomePage(),
         '/community': (context) => const CommunityPage(),
         '/mypage': (context) => const UserMypage(),
         // '/notice': (context) => const NoticePage(),
+      },
+
+      // ✅ 여기 추가: /home은 arguments로 uid 받아서 생성
+      onGenerateRoute: (settings) {
+        if (settings.name == '/home') {
+          debugPrint("✅ /home args = ${settings.arguments}");
+          final uid = settings.arguments as String;
+          return MaterialPageRoute(builder: (_) => HomePage(userUid: uid));
+        }
+        return null;
       },
 
       theme: ThemeData(
