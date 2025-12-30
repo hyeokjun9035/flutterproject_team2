@@ -10,7 +10,6 @@ import 'package:flutter_project/data/models.dart';
 
 class PostDetail extends StatefulWidget {
   final List<File> images;
-
   const PostDetail({super.key, required this.images});
 
   @override
@@ -20,16 +19,14 @@ class PostDetail extends StatefulWidget {
 class _PostDetailState extends State<PostDetail> {
   final List<String> _boardList = ['자유게시판', '비밀게시판'];
   String? _selectedBoard;
-
   final TextEditingController _contentController = TextEditingController();
+
   bool _isLoading = false;
   bool _isWeatherLoading = false;
-
   final _dashboardService = DashboardService(region: 'asia-northeast3');
 
   Map<String, dynamic>? _selectedLocation;
   DashboardData? _weatherData;
-
 
 
   void _openGoogleMapSearch() {
@@ -42,30 +39,32 @@ class _PostDetailState extends State<PostDetail> {
           setState(() {
             _selectedLocation = data;
           });
+
+          _fetchWeather(data['LAT'], data['LNG'], data['SI']);
         },
       ),
     );
   }
 
+
   Future<void> _fetchWeather(double lat, double lon, String locName) async {
+    if (!mounted) return;
     setState(() => _isWeatherLoading = true);
+
     try {
       final data = await _dashboardService.fetchDashboardByLatLon(
-        lat: lat,
-        lon: lon,
-        locationName: locName,
-        airAddr: locName,
-        administrativeArea: locName,
+        lat: lat, lon: lon, locationName: locName, airAddr: locName, administrativeArea: locName,
       );
-      setState(() {
-        _weatherData = data;
-      });
+      if (mounted) {
+        setState(() => _weatherData = data);
+      }
     } catch (e) {
       debugPrint("날씨 가져오기 실패: $e");
     } finally {
-      setState(() => _isWeatherLoading = false);
+      if (mounted) setState(() => _isWeatherLoading = false);
     }
   }
+
 
   Future<void> _savePost() async {
     if (_selectedBoard == null || _contentController.text.trim().isEmpty || _selectedLocation == null) {
@@ -79,13 +78,15 @@ class _PostDetailState extends State<PostDetail> {
       final user = FirebaseAuth.instance.currentUser;
       List<String> uploadedUrls = [];
 
+
       for (var imageFile in widget.images) {
         String fileName = '${DateTime.now().millisecondsSinceEpoch}_${widget.images.indexOf(imageFile)}.jpg';
         Reference storageRef = FirebaseStorage.instance.ref().child('post_images').child(fileName);
         await storageRef.putFile(imageFile);
-        String downloadUrl = await storageRef.getDownloadURL();
-        uploadedUrls.add(downloadUrl);
+        String url = await storageRef.getDownloadURL();
+        uploadedUrls.add(url);
       }
+
 
       await FirebaseFirestore.instance.collection('community').add({
         'board_type': _selectedBoard,
@@ -117,156 +118,158 @@ class _PostDetailState extends State<PostDetail> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: TextButton(
+        elevation: 0.5,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black87),
           onPressed: () => Navigator.pop(context),
-          child: const Text("뒤로", style: TextStyle(color: Colors.black, fontSize: 16)),
         ),
+        title: const Text("제보 상세 내용", style: TextStyle(color: Colors.black, fontSize: 17, fontWeight: FontWeight.bold)),
         actions: [
           _isLoading
-              ? const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: CircularProgressIndicator(strokeWidth: 2)))
+              ? const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))))
               : TextButton(
             onPressed: _savePost,
-            child: const Text("완료", style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text("완료", style: TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 150,
-                    height: 100,
-                    decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-                    child: widget.images.isNotEmpty
-                        ? Image.file(widget.images[0], fit: BoxFit.cover)
-                        : const Center(child: Text("이미지 없음")),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _isWeatherLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Text("현재 날씨", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Icon(
-                            _getWeatherIcon(_weatherData?.now.pty, _weatherData?.now.sky),
-                            size: 30,
-                            color: Colors.blueAccent
-                        ),
-                        Text(
-                            "온도 : ${_weatherData?.now.temp ?? '-'}도, 미세먼지: ${_weatherData?.air.gradeText ?? '-'}",
-                            style: const TextStyle(fontSize: 10)
-                        ),
-                        Text(
-                            "습도:${_weatherData?.now.humidity?.toInt() ?? '-'}% 바람: ${_weatherData?.now.wind ?? '-'} m/s",
-                            style: const TextStyle(fontSize: 10)
-                        ),
-                        const Text("자동으로 입력됩니다.", style: TextStyle(fontSize: 9, color: Colors.grey)),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-            ),
+            _buildSummaryCard(),
+            const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
-                decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 1.2)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                ),
                 child: Column(
                   children: [
                     _buildBoardDropdown(),
-                    const Divider(height: 1, color: Colors.black, thickness: 1.2),
-                    InkWell(
-                      onTap: _openGoogleMapSearch,
-                      child: _buildFieldContent(
-                        child: Row(
-                          children: [
-                            const Icon(Icons.location_on_outlined, size: 20, color: Colors.red),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                _selectedLocation == null
-                                    ? "위치를 검색하거나 지도를 클릭하세요"
-                                    : "${_selectedLocation!['SI']} ${_selectedLocation!['GUN']} ${_selectedLocation!['GIL']}",
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: _selectedLocation == null ? Colors.grey : Colors.black,
-                                    fontWeight: _selectedLocation == null ? FontWeight.normal : FontWeight.bold
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1, color: Colors.black, thickness: 1.2),
-                    _buildFieldContent(
-                      child: Text(
-                        _weatherData == null
-                            ? "위치를 선택하면 날씨가 입력됩니다."
-                            : "현재 날씨: ${_weatherData!.now.temp}°C, 미세먼지: ${_weatherData!.air.gradeText}, 바람: ${_weatherData!.now.wind}m/s",
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ),
-                    const Divider(height: 1, color: Colors.black, thickness: 1.2),
-                    Container(
-                      height: 150,
-                      padding: const EdgeInsets.all(15),
-                      child: TextField(
-                        controller: _contentController,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          hintText: "게시글 내용을 입력해주세요.\nex) 00시 부평역 구간 정체 입니다. ㅠㅠ",
-                          hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    ),
+                    const Divider(height: 1),
+                    _buildLocationPicker(),
+                    const Divider(height: 1),
+                    _buildContentInput(),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBoardDropdown() {
+  Widget _buildSummaryCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: DropdownButtonHideUnderline(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 100,
+              height: 100,
+              child: widget.images.isNotEmpty
+                  ? Image.file(widget.images[0], fit: BoxFit.cover)
+                  : Container(color: Colors.grey[200]),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _isWeatherLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("현재 지역 날씨", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                _weatherData == null
+                    ? const Text("위치를 선택하면\n정보가 표시됩니다.", style: TextStyle(color: Colors.black54, fontSize: 14))
+                    : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(_getWeatherIcon(_weatherData!.now.pty, _weatherData!.now.sky), color: Colors.blueAccent, size: 20),
+                        const SizedBox(width: 5),
+                        Text("${_weatherData!.now.temp?.toStringAsFixed(1)}°C", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Text("미세먼지: ${_weatherData!.air.gradeText}", style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                    Text("습도: ${_weatherData!.now.humidity}%", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoardDropdown() {
+    return ListTile(
+      leading: const Icon(Icons.layers_outlined, color: Colors.blueAccent),
+      title: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedBoard,
-          hint: const Row(
-            children: [
-              Icon(Icons.bookmark_border, size: 20, color: Colors.black),
-              SizedBox(width: 10),
-              Text("올라갈 게시판을 선택해주세요.", style: TextStyle(fontSize: 14)),
-            ],
-          ),
+          hint: const Text("게시판 선택", style: TextStyle(fontSize: 15, color: Colors.grey)),
           isExpanded: true,
-          items: _boardList
-              .map((String b) => DropdownMenuItem(value: b, child: Text(b)))
-              .toList(),
+          items: _boardList.map((b) => DropdownMenuItem(value: b, child: Text(b, style: const TextStyle(fontSize: 15)))).toList(),
           onChanged: (v) => setState(() => _selectedBoard = v),
         ),
       ),
     );
   }
+
+  Widget _buildLocationPicker() {
+    return ListTile(
+      onTap: _openGoogleMapSearch,
+      leading: const Icon(Icons.location_on_outlined, color: Colors.redAccent),
+      title: Text(
+        _selectedLocation == null
+            ? "교통 제보 위치 선택"
+            : "${_selectedLocation!['SI']} ${_selectedLocation!['GUN']} ${_selectedLocation!['GIL']}",
+        style: TextStyle(
+            fontSize: 15,
+            color: _selectedLocation == null ? Colors.grey : Colors.black,
+            fontWeight: _selectedLocation == null ? FontWeight.normal : FontWeight.w600
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+    );
+  }
+
+  Widget _buildContentInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: TextField(
+        controller: _contentController,
+        maxLines: 5,
+        decoration: const InputDecoration(
+          hintText: "정체 구간이나 사고 상황을 알려주세요.\n(예: 부평역 삼거리 공사로 인해 정체 중)",
+          hintStyle: TextStyle(fontSize: 14, color: Colors.grey, height: 1.5),
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+
   IconData _getWeatherIcon(int? pty, int? sky) {
     if (pty == null || pty == 0) {
       if (sky == 4) return Icons.cloud;
@@ -281,15 +284,8 @@ class _PostDetailState extends State<PostDetail> {
       default: return Icons.wb_sunny_outlined;
     }
   }
-
-  Widget _buildFieldContent({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      child: child,
-    );
-  }
 }
+
 
 
 class _GoogleMapSearchModal extends StatefulWidget {
@@ -301,7 +297,7 @@ class _GoogleMapSearchModal extends StatefulWidget {
 }
 
 class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
-  LatLng _currentCenter = const LatLng(37.489, 126.724); // 부평역
+  LatLng _currentCenter = const LatLng(37.489, 126.724);
   GoogleMapController? _controller;
   final TextEditingController _searchController = TextEditingController();
   Set<Marker> _markers = {};
@@ -309,19 +305,23 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
   void _searchAddress() async {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
+    FocusScope.of(context).unfocus();
+
     try {
       List<Location> locations = await locationFromAddress(query);
       if (locations.isNotEmpty) {
         final loc = locations.first;
         final target = LatLng(loc.latitude, loc.longitude);
         _controller?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
-        setState(() {
-          _currentCenter = target;
-          _markers = {Marker(markerId: const MarkerId("selected"), position: target)};
-        });
+        if (mounted) {
+          setState(() {
+            _currentCenter = target;
+            _markers = {Marker(markerId: const MarkerId("selected"), position: target)};
+          });
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("검색 결과를 찾을 수 없습니다.")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("검색 결과가 없습니다.")));
     }
   }
 
@@ -329,27 +329,27 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       child: Column(
         children: [
+          Container(margin: const EdgeInsets.only(top: 10), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
           Padding(
             padding: const EdgeInsets.all(15),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: "주소 검색",
+                hintText: "장소 또는 주소 검색",
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               ),
               onSubmitted: (_) => _searchAddress(),
             ),
           ),
           Expanded(
             child: GoogleMap(
-              initialCameraPosition: CameraPosition(target: _currentCenter, zoom: 16),
+              initialCameraPosition: CameraPosition(target: _currentCenter, zoom: 15),
               onMapCreated: (c) => _controller = c,
               markers: _markers,
               onTap: (pos) {
@@ -366,21 +366,28 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
                 backgroundColor: Colors.blueAccent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
               ),
               onPressed: () async {
-                await setLocaleIdentifier("ko_KR");
-                List<Placemark> p = await placemarkFromCoordinates(_currentCenter.latitude, _currentCenter.longitude);
-                if (p.isNotEmpty) {
-                  Placemark place = p[0];
-                  widget.onLocationSelected({
-                    'SI': place.administrativeArea ?? "",
-                    'GUN': place.locality ?? place.subAdministrativeArea ?? "",
-                    'GIL': place.thoroughfare ?? place.subLocality ?? "",
-                    'ROADNO': place.subThoroughfare ?? "",
-                    'LAT': _currentCenter.latitude,
-                    'LNG': _currentCenter.longitude,
-                  });
-                  Navigator.pop(context);
+                try {
+                  List<Placemark> p = await placemarkFromCoordinates(_currentCenter.latitude, _currentCenter.longitude);
+                  if (p.isNotEmpty) {
+                    Placemark place = p[0];
+                    widget.onLocationSelected({
+                      'SI': place.administrativeArea ?? "",
+                      'GUN': place.locality ?? place.subAdministrativeArea ?? "",
+                      'GIL': place.thoroughfare ?? place.subLocality ?? "",
+                      'ROADNO': place.subThoroughfare ?? "",
+                      'LAT': _currentCenter.latitude,
+                      'LNG': _currentCenter.longitude,
+                    });
+                    if (mounted) Navigator.pop(context);
+                  }
+                } catch (e) {
+                  debugPrint("지오코딩 실패: $e");
                 }
               },
               child: const Text("이 위치 선택", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
