@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'userMypage.dart';
-
+//임시 로그인
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,7 +14,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // 로그인 함수
+
   Future<void> _signIn() async {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -22,7 +22,7 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text.trim(),
       );
 
-      // 로그인 성공 시 마이페이지로 이동
+
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -30,7 +30,7 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      // 에러 발생 시 알림창
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message ?? "로그인 실패")),
       );

@@ -9,6 +9,9 @@ import 'home/home_page.dart';
 import 'join/login.dart'; // ✅ LoginPage 파일 경로에 맞게 수정!
 import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/mypage/userMypage.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 
 Future<void> main() async {
@@ -21,6 +24,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+
+    androidProvider: AndroidProvider.debug,
+
   );
 
   // ✅ Functions 에뮬레이터로 연결 (개발할 때만)
@@ -38,6 +47,17 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Weather Dashboard',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en'),
+        Locale('ko'),
+      ],
+
 
       // ✅ 라우트는 유지하되, 시작은 로그인으로
       initialRoute: '/login',

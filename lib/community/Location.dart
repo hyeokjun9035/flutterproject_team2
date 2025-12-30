@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../headandputter/putter.dart';
 
 import 'place_result.dart';
 
@@ -171,76 +172,79 @@ class _LocationState extends State<Location> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: const CloseButton(),
-        title: const Text("위치"),
-        actions: [
-          IconButton(onPressed: _clear, icon: const Icon(Icons.refresh)),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(
-              controller: _controller,
-              onChanged: _onQueryChanged,
-              decoration: InputDecoration(
-                hintText: "위치 검색",
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _hasText
-                    ? IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _clear,
-                )
-                    : null,
-                filled: true,
-                fillColor: Colors.grey.shade200,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
+    return PutterScaffold(
+      currentIndex: 1,
+      body: Scaffold(
+        appBar: AppBar(
+          leading: const CloseButton(),
+          title: const Text("위치"),
+          actions: [
+            IconButton(onPressed: _clear, icon: const Icon(Icons.refresh)),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              TextField(
+                controller: _controller,
+                onChanged: _onQueryChanged,
+                decoration: InputDecoration(
+                  hintText: "위치 검색",
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  suffixIcon: _hasText
+                      ? IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: _clear,
+                  )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.grey.shade200,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            if (_loading) const LinearProgressIndicator(),
+              if (_loading) const LinearProgressIndicator(),
 
-            Expanded(
-              child: ListView.separated(
-                itemCount: _results.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final p = _results[i];
-                  final bool isSelected = _selected != null && _selected!.lat == p.lat && _selected!.lng == p.lng;
-                  String distText = "";
-                  if (_myLat != null && _myLng != null) {
-                    final meters = Geolocator.distanceBetween(
-                      _myLat!, _myLng!,
-                      p.lat, p.lng,
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final p = _results[i];
+                    final bool isSelected = _selected != null && _selected!.lat == p.lat && _selected!.lng == p.lng;
+                    String distText = "";
+                    if (_myLat != null && _myLng != null) {
+                      final meters = Geolocator.distanceBetween(
+                        _myLat!, _myLng!,
+                        p.lat, p.lng,
+                      );
+                      distText = " · ${(meters / 1000).toStringAsFixed(1)}km";
+                    }
+                    return ListTile(
+                      title: Text(p.name),
+                      subtitle: Text("${p.address}$distText"),
+                      trailing: isSelected ? const Icon(Icons.check) : null,
+                      onTap: () => setState(() => _selected = p),
                     );
-                    distText = " · ${(meters / 1000).toStringAsFixed(1)}km";
-                  }
-                  return ListTile(
-                    title: Text(p.name),
-                    subtitle: Text("${p.address}$distText"),
-                    trailing: isSelected ? const Icon(Icons.check) : null,
-                    onTap: () => setState(() => _selected = p),
-                  );
-                },
+                  },
+                ),
               ),
-            ),
-            SizedBox(height: 12,),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                  onPressed: _selected == null ? null : _confirm,
-                  child: const Text("위치 추가")
-              ),
-            )
-          ],
+              SizedBox(height: 12,),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                    onPressed: _selected == null ? null : _confirm,
+                    child: const Text("위치 추가")
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );

@@ -116,7 +116,10 @@ class DashboardService {
     required String airAddr,
     required String administrativeArea
   }) async {
-    final callable = _functions.httpsCallable('getDashboard');
+    final callable = _functions.httpsCallable(
+        'getDashboard',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 20))
+    );
 
     final res = await callable.call({
       'lat': lat,

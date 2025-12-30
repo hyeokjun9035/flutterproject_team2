@@ -1,5 +1,9 @@
+import 'dart:math';
+import 'dart:io'; // File 사용을 위해 필요
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:image_picker/image_picker.dart';
 import '../firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'join3.dart';
@@ -26,35 +30,51 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage2 extends StatefulWidget {
-  final String name;
-  final String age;
-  final String phone;
+  final String email;
 
   const JoinPage2({
     super.key,
-    required this.name,
-    required this.age,
-    required this.phone,
+    required this.email
 
-});
+  }
+
+      );
+
+
+
 
   @override
   State<JoinPage2> createState() => _JoinPage2State();
 }
 class _JoinPage2State extends State<JoinPage2>{
   final FirebaseFirestore fs = FirebaseFirestore.instance;
-  final TextEditingController _email = TextEditingController();
-  final TextEditingController _password = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _name = TextEditingController();
   final TextEditingController _nickName = TextEditingController();
+  final TextEditingController _intro = TextEditingController();
 
-  Future<void> _join() async{
-    await fs.collection("users").add({
-      "email" : _email.text,
-      "password" : _password.text,
-      "nickName" : _nickName.text
-    });
+  File? _profile_image_file;
+  String defaultImageUrl =
+      "https://example.com/default_avatar.png"; // 기본 아바타 URL
 
+  Future<void> _pickImage() async {
+    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+    if(picked !=null){
+      setState(() {
+        _profile_image_file = File(picked.path);
+      });
+    }
   }
+
+  Future<String> uploadToStorage(File file) async {
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child("profile_images/${DateTime.now().millisecondsSinceEpoch}.png");
+
+    await ref.putFile(file); //실제업로드
+    return await ref.getDownloadURL(); //다운로드 URL반환
+  }
+
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -62,7 +82,7 @@ class _JoinPage2State extends State<JoinPage2>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,250),
+        padding: const EdgeInsets.fromLTRB(10,0,10,180),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -73,26 +93,28 @@ class _JoinPage2State extends State<JoinPage2>{
             ),
             //이미지 추가
             Padding(
-              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              padding: const EdgeInsets.fromLTRB(10,0,350,100),
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
 
-
-            TextField(
-              controller: _email,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.email),
-                labelText: "이메일",
-                border: OutlineInputBorder(),
+            Padding(
+              padding: const EdgeInsetsGeometry.fromLTRB(0, 0, 0, 50),
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundImage: _profile_image_file != null
+                      ? FileImage(_profile_image_file!)
+                      : NetworkImage(defaultImageUrl) as ImageProvider,
+                ),
               ),
             ),
-            const SizedBox(height: 16),
+
             TextField(
-              controller: _password,
-              obscureText: true,
+              controller: _name,
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.onetwothree, size: 30,) ,
-                labelText: "비밀번호",
+                prefixIcon: Icon(Icons.person),
+                labelText: "이름",
                 border: OutlineInputBorder(),
               ),
             ),
@@ -105,30 +127,43 @@ class _JoinPage2State extends State<JoinPage2>{
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 24,),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _intro,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.person_add_alt_rounded, size: 30,) ,
+                labelText: "자기소개를 적어주세요!",
+                hintText: "hi!",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
             ElevatedButton(
-                onPressed: ()  {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_)=>JoinPage3(
-                          name: widget.name,
-                          age: widget.age,
-                          phone: widget.phone,
-                          email: _email.text,
-                          password: _password.text,
-                          nickName: _nickName.text,
-                      ))
-                  );
-                },
-                child: Text("다음")
-            )
-          ],
+              onPressed: () async {
+                String imageUrl;
+                if(_profile_image_file != null){
+                  imageUrl = await uploadToStorage(_profile_image_file!);
+                }else{
+                  imageUrl = defaultImageUrl; //기본 아바타
+                }
 
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_)=> JoinPage3(
+                    email: widget.email,
+                    name: _name.text,
+                    profile_image_url: imageUrl,
+                    nickName: _nickName.text,
+                    intro: _intro.text,
+                  )
+                  )
+                );
+              },
+              child: const Text("다음"),
+            ),
+          ],
         ),
       ),
     );
   }
 }
-
-
-

@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 class Postdelete extends StatefulWidget {
-  final String postId; // 문서 ID
-  final Map<String, dynamic> initialData; // 기존 데이터
+  final String postId;
+  final Map<String, dynamic> initialData;
 
   const Postdelete({super.key, required this.postId, required this.initialData});
 
@@ -15,14 +15,14 @@ class Postdelete extends StatefulWidget {
 class _PostdeleteState extends State<Postdelete> {
   late TextEditingController _contentController;
   late String _selectedBoard;
-  bool _isProcessing = false; // 로딩 상태
+  bool _isProcessing = false;
 
   @override
   void initState() {
     super.initState();
-    // 1. 전달받은 게시글 데이터로 초기값 세팅
-    _contentController = TextEditingController(text: widget.initialData['content']);
-    _selectedBoard = widget.initialData['board_type'] ?? "자유게시판";
+
+    _contentController = TextEditingController(text: widget.initialData['content']?.toString() ?? "");
+    _selectedBoard = widget.initialData['board_type']?.toString() ?? "자유게시판";
   }
 
   @override
@@ -31,26 +31,27 @@ class _PostdeleteState extends State<Postdelete> {
     super.dispose();
   }
 
-  // --- 🔥 Firebase 삭제 로직 ---
   Future<void> _deletePost() async {
     setState(() => _isProcessing = true);
     try {
-      // A. Storage 이미지 삭제 (이미지 URL 리스트가 있는 경우)
-      List<dynamic> imageUrls = widget.initialData['image_urls'] ?? [];
-      for (String url in imageUrls) {
-        try {
-          await FirebaseStorage.instance.refFromURL(url).delete();
-        } catch (e) {
-          print("이미지 삭제 실패(경로가 없거나 이미 삭제됨): $e");
+
+      var rawUrls = widget.initialData['image_urls'];
+      if (rawUrls is List) {
+        for (var url in rawUrls) {
+          try {
+            await FirebaseStorage.instance.refFromURL(url.toString()).delete();
+          } catch (e) {
+            debugPrint("이미지 삭제 실패: $e");
+          }
         }
       }
 
-      // B. Firestore 문서 삭제
       await FirebaseFirestore.instance.collection('community').doc(widget.postId).delete();
 
       if (mounted) {
-        Navigator.pop(context); // 팝업 닫기
-        Navigator.pop(context); // 상세 페이지까지 닫기
+        Navigator.pop(context);
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시글이 삭제되었습니다.")));
       }
     } catch (e) {
@@ -60,18 +61,22 @@ class _PostdeleteState extends State<Postdelete> {
     }
   }
 
-  // --- 🔥 Firebase 수정 로직 ---
   Future<void> _updatePost() async {
+    if (_contentController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("내용을 입력해주세요.")));
+      return;
+    }
+
     setState(() => _isProcessing = true);
     try {
       await FirebaseFirestore.instance.collection('community').doc(widget.postId).update({
         'content': _contentController.text,
         'board_type': _selectedBoard,
-        'udate': FieldValue.serverTimestamp(), // 수정 시간 추가
+        'udate': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
-        Navigator.pop(context); // 이전 페이지로 이동
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("수정이 완료되었습니다.")));
       }
     } catch (e) {
@@ -81,40 +86,16 @@ class _PostdeleteState extends State<Postdelete> {
     }
   }
 
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          content: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Text("게시글을 삭제 하시겠습니까?", textAlign: TextAlign.center),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
-              child: const Text("취소", style: TextStyle(color: Colors.white)),
-            ),
-            const SizedBox(width: 10),
-            ElevatedButton(
-              onPressed: _isProcessing ? null : _deletePost, // 로딩 중 클릭 방지
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("삭제하기", style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 2. 랜덤 이미지 대신 실제 DB 이미지 URL 사용
-    List<dynamic> imageUrls = widget.initialData['image_urls'] ?? [];
-    String displayUrl = imageUrls.isNotEmpty ? imageUrls[0] : '';
+
+    var rawUrls = widget.initialData['image_urls'];
+    String displayUrl = "";
+    if (rawUrls is List && rawUrls.isNotEmpty) {
+      displayUrl = rawUrls[0].toString();
+    } else if (rawUrls is String) {
+      displayUrl = rawUrls;
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -123,96 +104,137 @@ class _PostdeleteState extends State<Postdelete> {
         elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text("취소", style: TextStyle(color: Colors.black)),
+          child: const Text("취소", style: TextStyle(color: Colors.grey, fontSize: 16)),
         ),
+        title: const Text("게시글 수정", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 17)),
+        centerTitle: true,
         actions: [
           TextButton(
             onPressed: _isProcessing ? null : _updatePost,
-            child: const Text("수정하기", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            child: const Text("완료", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
           ),
         ],
       ),
       body: _isProcessing
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 이미지 미리보기 (DB URL 사용)
-            Container(
-              width: 120,
-              height: 100,
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
-              child: displayUrl.isNotEmpty
-                  ? Image.network(displayUrl, fit: BoxFit.cover)
-                  : const Center(child: Icon(Icons.image_not_supported)),
-            ),
-            const SizedBox(height: 20),
 
-            // 카테고리 선택
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(border: Border.all(color: Colors.black54)),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _selectedBoard,
-                  items: const [
-                    DropdownMenuItem(value: "자유게시판", child: Text("자유게시판")),
-                    DropdownMenuItem(value: "비밀 게시판", child: Text("비밀 게시판")),
-                    DropdownMenuItem(value: "공지사항", child: Text("공지사항")),
-                    DropdownMenuItem(value: "필독", child: Text("필독")),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => _selectedBoard = value);
-                  },
-                ),
-              ),
-            ),
-
-            // 위치 정보 (기존 데이터 사용)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(border: Border.all(color: Colors.black54)),
-              child: Row(
+            Center(
+              child: Stack(
                 children: [
-                  const Icon(Icons.location_on_outlined, size: 18),
-                  const SizedBox(width: 5),
-                  Text(widget.initialData['location'] ?? "부평역"),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: displayUrl.isNotEmpty
+                        ? Image.network(displayUrl, width: double.infinity, height: 200, fit: BoxFit.cover)
+                        : Container(
+                      width: double.infinity,
+                      height: 200,
+                      color: Colors.grey[100],
+                      child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                    ),
+                  ),
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                    ),
+                  )
                 ],
               ),
             ),
+            const SizedBox(height: 25),
 
-            // 본문 입력창 (Controller 연결)
-            TextField(
-              controller: _contentController,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: "내용을 입력하세요",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: Colors.black54),
+
+            const Text("게시판 선택", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Container(
+                color: Colors.white,
+                child: DropdownButtonHideUnderline(
+                  child: Container(
+                    color: Colors.white,
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _selectedBoard,
+                      items: ["자유게시판", "비밀 게시판"].map((String value) {
+                        return DropdownMenuItem<String>(value: value, child: Text(value));
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) setState(() => _selectedBoard = value);
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 20),
 
-            // 삭제하기 버튼
-            GestureDetector(
-              onTap: () => _showDeleteDialog(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(8),
+
+            const Text("내용 수정", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _contentController,
+              maxLines: 8,
+              decoration: InputDecoration(
+                hintText: "소중한 의견을 남겨주세요.",
+                filled: true,
+                fillColor: Colors.grey[50],
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                child: const Text("삭제하기", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.blueAccent),
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+
+
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showDeleteDialog(context),
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                label: const Text("게시글 삭제하기", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  side: const BorderSide(color: Colors.redAccent),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("정말 삭제할까요?", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text("삭제된 게시글은 다시 복구할 수 없습니다."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소", style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: _deletePost, child: const Text("삭제", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+        ],
       ),
     );
   }
