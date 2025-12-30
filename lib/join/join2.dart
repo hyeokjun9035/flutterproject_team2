@@ -31,6 +31,7 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage2 extends StatefulWidget {
   final String email;
+  final String uid;
 
   const JoinPage2({
     super.key,
