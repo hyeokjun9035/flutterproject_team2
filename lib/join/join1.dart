@@ -60,42 +60,42 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
   //trim() == 공백제거
-  Future<bool> _join() async {
-    if (_pwd.text.trim() != _checkPwd.text.trim()) {
-      _showMessage("비밀번호를 다시 확인해주세요");
-      return false; //실패
-    }
-
-    try {
-      //firebase auth를 사용하여 계정 생성
-      UserCredential userCredential = await _auth
-          .createUserWithEmailAndPassword(
-        email: _email.text.trim(),
-        password: _pwd.text.trim(),
-      );
-      //인증 성공 시 발급된 UID를 사용하여 Firestore에 나머지 정보 저장
-      String uid = userCredential.user!.uid; //고유 UID획득
-
-
-      return true;
-    } on FirebaseAuthException catch (e) {
-      String message;
-      if (e.code == 'weak-password') {
-        message = '비밀번호는 6자리 이상이어야 합니다.';
-      } else if (e.code == 'email-already-in-use') {
-        message = '이미 사용중인 이메일입니다.';
-      } else if (e.code == 'invalid-email') {
-        message = '유효하지 않은 이메일 형식입니다';
-      } else {
-        message = '회원가입 중 오류가 발생했습니다: ${e.message}';
-      }
-      _showMessage(message);
-      return false;
-    } catch (e) {
-      _showMessage("오류발생");
-      return false;
-    }
-  }
+  // Future<bool> _join() async {
+  //   if (_pwd.text.trim() != _checkPwd.text.trim()) {
+  //     _showMessage("비밀번호를 다시 확인해주세요");
+  //     return false; //실패
+  //   }
+  //
+  //   try {
+  //     //firebase auth를 사용하여 계정 생성
+  //       UserCredential userCredential = await _auth
+  //           .createUserWithEmailAndPassword(
+  //        email: _email.text.trim(),
+  //        password: _pwd.text.trim(),
+  //       );
+  //         //인증 성공 시 발급된 UID를 사용하여 Firestore에 나머지 정보 저장
+  //         String uid = userCredential.user!.uid; //고유 UID획득
+  //
+  //
+  //        return true;
+  //      } on FirebaseAuthException catch (e) {
+  //         String message;
+  //         if (e.code == 'weak-password') {
+  //             message = '비밀번호는 6자리 이상이어야 합니다.';
+  //         } else if (e.code == 'email-already-in-use') {
+  //             message = '이미 사용중인 이메일입니다.';
+  //         } else if (e.code == 'invalid-email') {
+  //             message = '유효하지 않은 이메일 형식입니다';
+  //         } else {
+  //            message = '회원가입 중 오류가 발생했습니다: ${e.message}';
+  //     }
+  //          _showMessage(message);
+  //          return false;
+  //     } catch (e) {
+  //           _showMessage("오류발생");
+  //           return false;
+  //   }
+  // }
 
 
   void _showMessage(String msg) {
@@ -114,7 +114,7 @@ class _JoinPage1State extends State<JoinPage1> {
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,200),
+        padding: const EdgeInsets.fromLTRB(10,0,10,250),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -164,23 +164,28 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
 
-            ElevatedButton(
-              onPressed: () async {
-                bool success = await _join();
-                if (success) {
-                  String? uid = _auth.currentUser?.uid;
-                  if (mounted && uid != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) =>
-                          JoinPage2(
-                            email: _email.text.trim(),
-                            uid: uid,
-                          ),
-                      ),
-                    );
-                  }
-                }
+          ElevatedButton(
+              onPressed: ()  {
+                //테스트용 코드
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => JoinPage2(
+                      email: _email.text,
+                    ))
+                );
+                
+                
+                // bool success = await _join();
+                
+              //   if (success) {
+              //     Navigator.push(
+              //         context,
+              //         MaterialPageRoute(builder: (_) =>
+              //             JoinPage2(
+              //               email: _email.text.trim()
+              //             ))
+              //     );
+              // }
               },
               child: Text("다음"),
             )

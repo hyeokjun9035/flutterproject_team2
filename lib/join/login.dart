@@ -125,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: AppBar(title: const Text("로그인")),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 180),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -156,8 +156,9 @@ class _LoginPageState extends State<LoginPage> {
 
 
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+
                 ElevatedButton(
                   onPressed: _login,
                   child: const Text("로그인"),

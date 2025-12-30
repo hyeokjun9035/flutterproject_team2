@@ -68,7 +68,7 @@ class _JoinPage3State extends State<JoinPage3>{
             ),
             //이미지 추가
             Padding(
-              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              padding: const EdgeInsets.fromLTRB(10,0,350,210),
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
             // ✅ 성별 선택 박스
