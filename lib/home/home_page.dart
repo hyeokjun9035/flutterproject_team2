@@ -27,7 +27,8 @@ import '../ui/url_helpers.dart'; //jgh251226
 
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final String userUid;
+  const HomePage({super.key, required this.userUid});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -86,6 +87,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    debugPrint("✅ HomePage received uid = ${widget.userUid}");
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _checklistService.fetchEnabledItems();
