@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:flutter_project/data/dashboard_service.dart';
+import 'package:flutter_project/data/models.dart';
 
 class PostDetail extends StatefulWidget {
   final List<File> images;
@@ -21,11 +23,15 @@ class _PostDetailState extends State<PostDetail> {
 
   final TextEditingController _contentController = TextEditingController();
   bool _isLoading = false;
+  bool _isWeatherLoading = false;
 
-  // 🔥 위치 정보를 저장할 변수
+  final _dashboardService = DashboardService(region: 'asia-northeast3');
+
   Map<String, dynamic>? _selectedLocation;
+  DashboardData? _weatherData;
 
-  // 🔥 구글 지도 검색 모달 열기
+
+
   void _openGoogleMapSearch() {
     showModalBottomSheet(
       context: context,
@@ -41,18 +47,29 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
-  // 🔥 Firebase 저장 (이미지 + 게시글 + 위치)
+  Future<void> _fetchWeather(double lat, double lon, String locName) async {
+    setState(() => _isWeatherLoading = true);
+    try {
+      final data = await _dashboardService.fetchDashboardByLatLon(
+        lat: lat,
+        lon: lon,
+        locationName: locName,
+        airAddr: locName,
+        administrativeArea: locName,
+      );
+      setState(() {
+        _weatherData = data;
+      });
+    } catch (e) {
+      debugPrint("날씨 가져오기 실패: $e");
+    } finally {
+      setState(() => _isWeatherLoading = false);
+    }
+  }
+
   Future<void> _savePost() async {
-    if (_selectedBoard == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시판을 선택해주세요!")));
-      return;
-    }
-    if (_contentController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("내용을 입력해주세요!")));
-      return;
-    }
-    if (_selectedLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("위치를 선택해주세요!")));
+    if (_selectedBoard == null || _contentController.text.trim().isEmpty || _selectedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("모든 정보를 입력해주세요!")));
       return;
     }
 
@@ -62,7 +79,6 @@ class _PostDetailState extends State<PostDetail> {
       final user = FirebaseAuth.instance.currentUser;
       List<String> uploadedUrls = [];
 
-      // 1. Firebase Storage 이미지 업로드
       for (var imageFile in widget.images) {
         String fileName = '${DateTime.now().millisecondsSinceEpoch}_${widget.images.indexOf(imageFile)}.jpg';
         Reference storageRef = FirebaseStorage.instance.ref().child('post_images').child(fileName);
@@ -71,20 +87,24 @@ class _PostDetailState extends State<PostDetail> {
         uploadedUrls.add(downloadUrl);
       }
 
-      // 2. Firestore 데이터 저장
       await FirebaseFirestore.instance.collection('community').add({
         'board_type': _selectedBoard,
         'title': '교통 제보',
         'content': _contentController.text.trim(),
         'user_id': user?.uid ?? '익명',
         'image_urls': uploadedUrls,
-        'location': _selectedLocation, // 위도, 경도, 주소 포함
+        'location': _selectedLocation,
+        'weather': _weatherData != null ? {
+          'temp': _weatherData!.now.temp,
+          'sky': _weatherData!.now.sky,
+          'pty': _weatherData!.now.pty,
+          'air_grade': _weatherData!.air.gradeText,
+        } : null, // 게시글 저장 시 날씨 정보도 함께 저장
         'cdate': FieldValue.serverTimestamp(),
         'report_count': 0,
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시글이 등록되었습니다!")));
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
@@ -131,15 +151,27 @@ class _PostDetailState extends State<PostDetail> {
                         : const Center(child: Text("이미지 없음")),
                   ),
                   const SizedBox(width: 20),
-                  const Expanded(
-                    child: Column(
+                  Expanded(
+                    child: _isWeatherLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text("현재 날씨", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Icon(Icons.wb_sunny_outlined, size: 30, color: Colors.orange),
-                        Text("온도 : 5도, 미세먼지: 30ug/m^3", style: TextStyle(fontSize: 10)),
-                        Text("습도:47% 바람: 2.6 m/s", style: TextStyle(fontSize: 10)),
-                        Text("자동으로 입력됩니다.", style: TextStyle(fontSize: 9, color: Colors.grey)),
+                        const Text("현재 날씨", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Icon(
+                            _getWeatherIcon(_weatherData?.now.pty, _weatherData?.now.sky),
+                            size: 30,
+                            color: Colors.blueAccent
+                        ),
+                        Text(
+                            "온도 : ${_weatherData?.now.temp ?? '-'}도, 미세먼지: ${_weatherData?.air.gradeText ?? '-'}",
+                            style: const TextStyle(fontSize: 10)
+                        ),
+                        Text(
+                            "습도:${_weatherData?.now.humidity?.toInt() ?? '-'}% 바람: ${_weatherData?.now.wind ?? '-'} m/s",
+                            style: const TextStyle(fontSize: 10)
+                        ),
+                        const Text("자동으로 입력됩니다.", style: TextStyle(fontSize: 9, color: Colors.grey)),
                       ],
                     ),
                   )
@@ -152,11 +184,8 @@ class _PostDetailState extends State<PostDetail> {
                 decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 1.2)),
                 child: Column(
                   children: [
-                    // 게시판 선택
                     _buildBoardDropdown(),
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
-
-                    // 위치 선택 (클릭 시 지도 모달 호출)
                     InkWell(
                       onTap: _openGoogleMapSearch,
                       child: _buildFieldContent(
@@ -181,12 +210,13 @@ class _PostDetailState extends State<PostDetail> {
                         ),
                       ),
                     ),
-
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
                     _buildFieldContent(
-                      child: const Text(
-                        "현재 날씨: ☀️ 영상 5도, ☁️ 미세먼지 : 30ug/m^3, 💨 바람: 2.6m/s",
-                        style: TextStyle(fontSize: 11),
+                      child: Text(
+                        _weatherData == null
+                            ? "위치를 선택하면 날씨가 입력됩니다."
+                            : "현재 날씨: ${_weatherData!.now.temp}°C, 미세먼지: ${_weatherData!.air.gradeText}, 바람: ${_weatherData!.now.wind}m/s",
+                        style: const TextStyle(fontSize: 11),
                       ),
                     ),
                     const Divider(height: 1, color: Colors.black, thickness: 1.2),
@@ -229,11 +259,29 @@ class _PostDetailState extends State<PostDetail> {
             ],
           ),
           isExpanded: true,
-          items: _boardList.map((String b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+          items: _boardList
+              .map((String b) => DropdownMenuItem(value: b, child: Text(b)))
+              .toList(),
           onChanged: (v) => setState(() => _selectedBoard = v),
         ),
       ),
     );
+  }
+  IconData _getWeatherIcon(int? pty, int? sky) {
+    // pty: 강수 형태 (0:없음, 1:비, 2:비/눈, 3:눈, 4:소나기)
+    // sky: 하늘 상태 (1:맑음, 3:구름많음, 4:흐림)
+    if (pty == null || pty == 0) {
+      if (sky == 4) return Icons.cloud; // 흐림
+      if (sky == 3) return Icons.wb_cloudy_outlined; // 구름많음
+      return Icons.wb_sunny_outlined; // 맑음
+    }
+    switch (pty) {
+      case 1: return Icons.umbrella; // 비
+      case 2: return Icons.cloudy_snowing; // 비/눈
+      case 3: return Icons.ac_unit; // 눈
+      case 4: return Icons.thunderstorm; // 소나기
+      default: return Icons.wb_sunny_outlined;
+    }
   }
 
   Widget _buildFieldContent({required Widget child}) {
