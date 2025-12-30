@@ -34,7 +34,8 @@ class JoinPage2 extends StatefulWidget {
   final String uid;
   const JoinPage2({
     super.key,
-    required this.email
+    required this.email,
+    required this.uid
   }
       );
 
