@@ -26,21 +26,19 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage3 extends StatefulWidget {
-  final String name;
-  final String age;
-  final String phone;
   final String email;
-  final String password;
+  final String name;
+  final String intro;
   final String nickName;
+  final String profile_image_url;
 
   const JoinPage3({
     super.key,
-    required this.name,
-    required this.age,
-    required this.phone,
     required this.email,
-    required this.password,
+    required this.name,
+    required this.intro,
     required this.nickName,
+    required this.profile_image_url,
   });
 
   @override
@@ -79,8 +77,8 @@ class _JoinPage3State extends State<JoinPage3>{
                 border: OutlineInputBorder(),
               ),
               items: const [
-                DropdownMenuItem(value: "M", child: Text("남")),
-                DropdownMenuItem(value: "F", child: Text("녀")),
+                DropdownMenuItem(value: "male", child: Text("남")),
+                DropdownMenuItem(value: "female", child: Text("녀")),
               ],
               onChanged: (value) {
                 setState(() {
@@ -96,11 +94,10 @@ class _JoinPage3State extends State<JoinPage3>{
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(
-                        name: widget.name,
-                        age: widget.age,
-                        phone: widget.phone,
                         email: widget.email,
-                        password: widget.password,
+                        name: widget.name,
+                        intro: widget.intro,
+                        profile_image_url: widget.profile_image_url,
                         nickName: widget.nickName,
                         gender: _gender ?? "", //성별 값 전달
 

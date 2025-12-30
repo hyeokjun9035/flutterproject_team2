@@ -44,6 +44,7 @@ dependencies:
   video_player: ^2.9.2 #jgh251226
   webview_flutter: ^4.10.0 #jgh251226
 
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
