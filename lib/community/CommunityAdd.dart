@@ -5,17 +5,85 @@ import 'place_result.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../data/dashboard_service.dart';
-import '../data/models.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:chewie/chewie.dart';
+import 'package:video_player/video_player.dart';
 import 'package:geocoding/geocoding.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import '../headandputter/putter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'Community.dart';
+import 'Event.dart';
+import 'Chatter.dart';
+import 'Fashion.dart';
 
 class Communityadd extends StatefulWidget {
   const Communityadd({super.key});
 
   @override
   State<Communityadd> createState() => _CommunityaddState();
+}
+
+class VideoPlayerPage extends StatefulWidget {
+  final String path;
+  final String title;
+
+  const VideoPlayerPage({super.key, required this.path, required this.title});
+
+  @override
+  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
+}
+
+class _VideoPlayerPageState extends State<VideoPlayerPage> {
+  VideoPlayerController? _vp;
+  ChewieController? _chewie;
+
+  @override
+  void initState() {
+    super.initState();
+    _vp = VideoPlayerController.file(File(widget.path));
+    _vp!.initialize().then((_) {
+      _chewie = ChewieController(
+        videoPlayerController: _vp!,
+        autoPlay: true,
+        looping: false,
+        allowFullScreen: true,
+        allowPlaybackSpeedChanging: true,
+      );
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _chewie?.dispose();
+    _vp?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = _chewie != null && _vp!.value.isInitialized;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: Center(
+        child: ready
+            ? AspectRatio(
+          aspectRatio: _vp!.value.aspectRatio,
+          child: Chewie(controller: _chewie!),
+        )
+            : const CircularProgressIndicator(),
+      ),
+    );
+  }
 }
 
 class _WeatherItem extends StatelessWidget {
@@ -34,6 +102,403 @@ class _WeatherItem extends StatelessWidget {
       ],
     );
   }
+}
+
+Future<String> _uploadFileToStorage({
+  required File file,
+  required String storagePath, // 예: community/{docId}/images/xxx.jpg
+  required String contentType, // 예: image/jpeg, video/mp4
+}) async {
+  final ref = FirebaseStorage.instance.ref().child(storagePath);
+
+  final metadata = SettableMetadata(contentType: contentType);
+
+  final task = ref.putFile(file, metadata);
+
+  // (선택) 진행률 보고 싶으면 task.snapshotEvents.listen(...)
+  final snap = await task.whenComplete(() {});
+  final url = await snap.ref.getDownloadURL();
+  return url;
+}
+
+String _guessImageContentType(String path) {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+String _guessVideoContentType(String path) {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  return 'video/mp4';
+}
+
+
+class _MiniQuillToolbar extends StatelessWidget {
+  final QuillController controller;
+
+  final VoidCallback onPickImageGallery;
+  final VoidCallback onPickVideoGallery;
+  final VoidCallback onPickImageCamera;
+  final VoidCallback onPickVideoCamera;
+
+  const _MiniQuillToolbar({
+    required this.controller,
+    required this.onPickImageGallery,
+    required this.onPickVideoGallery,
+    required this.onPickImageCamera,
+    required this.onPickVideoCamera,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          _icon(
+            icon: Icons.undo,
+            onTap: () {
+              if (controller.hasUndo) controller.undo();
+            },
+          ),
+          _icon(
+            icon: Icons.redo,
+            onTap: () {
+              if (controller.hasRedo) controller.redo();
+            },
+          ),
+
+          _toggleAttr(icon: Icons.format_bold, attr: Attribute.bold),
+          _toggleAttr(icon: Icons.format_italic, attr: Attribute.italic),
+          _toggleAttr(icon: Icons.format_underline, attr: Attribute.underline),
+
+
+          _toggleList(icon: Icons.format_list_bulleted, listType: Attribute.ul),
+
+          const Spacer(),
+
+          // ✅ 여기부터 미디어 버튼(툴바 안으로!)
+          _icon(icon: Icons.photo_outlined, onTap: onPickImageGallery),
+          _icon(icon: Icons.videocam_outlined, onTap: onPickVideoGallery),
+
+          PopupMenuButton<String>(
+            tooltip: '카메라',
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.camera_alt_outlined, size: 20),
+            onSelected: (v) {
+              if (v == 'photo') onPickImageCamera();
+              if (v == 'video') onPickVideoCamera();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'photo', child: Text('사진 촬영')),
+              PopupMenuItem(value: 'video', child: Text('동영상 촬영')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _icon({required IconData icon, required VoidCallback onTap}) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      iconSize: 20,
+      onPressed: onTap,
+      icon: Icon(icon),
+    );
+  }
+
+  Widget _toggleAttr({required IconData icon, required Attribute attr}) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      iconSize: 20,
+      onPressed: () {
+        final current = controller.getSelectionStyle().attributes[attr.key];
+        controller.formatSelection(
+          current == null ? attr : Attribute.clone(attr, null),
+        );
+      },
+      icon: Icon(icon),
+    );
+  }
+
+  Widget _toggleList({required IconData icon, required Attribute listType}) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      iconSize: 20,
+      onPressed: () {
+        final attrs = controller.getSelectionStyle().attributes;
+        final current = attrs[Attribute.list.key];
+        controller.formatSelection(
+          current == null ? listType : Attribute.clone(Attribute.list, null),
+        );
+      },
+      icon: Icon(icon),
+    );
+  }
+}
+
+class _VideoEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => 'local_video';
+
+  final Map<String, Future<Uint8List?>> _thumbCache = {}; // ✅ 캐시
+
+  Future<Uint8List?> _thumb(String path) {
+    return _thumbCache.putIfAbsent(
+      path,
+          () => VideoThumbnail.thumbnailData(
+        video: path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 900,
+        quality: 75,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final embed = embedContext.node as Embed;
+    final String path = embed.value.data.toString();
+
+    debugPrint("VIDEO PATH=$path exists=${File(path).existsSync()}");
+
+    if (path.isEmpty || !File(path).existsSync()) {
+      return _fallback(path);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: FutureBuilder<Uint8List?>(
+          future: _thumb(path),
+          builder: (context, snap) {
+            // ✅ 로딩 UI
+            if (snap.connectionState != ConnectionState.done) {
+              return _loadingThumb();
+            }
+
+            // ✅ 에러/실패 시 fallback
+            if (snap.hasError || snap.data == null) {
+              return _fallback(path);
+            }
+
+            final bytes = snap.data!;
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  ),
+                ),
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _loadingThumb() {
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        color: Colors.black12,
+        alignment: Alignment.center,
+        child: const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallback(String path) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.movie_outlined),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              path.split('/').last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalImageEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => BlockEmbed.imageType; // 'image'
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final embed = embedContext.node as Embed;
+    final String path = embed.value.data.toString();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Text('이미지를 불러올 수 없음'),
+        ),
+      ),
+    );
+  }
+}
+
+class LocalVideoEmbedBuilder extends EmbedBuilder {
+  final void Function(String path, String name) onPlay;
+  LocalVideoEmbedBuilder({required this.onPlay});
+  @override
+  String get key => VideoBlockEmbed.kType;
+
+  final Map<String, Future<Uint8List?>> _thumbCache = {};
+
+  Future<Uint8List?> _thumbBytes(String path) {
+    return _thumbCache.putIfAbsent(path, () async {
+      final bytes = await VideoThumbnail.thumbnailData(
+        video: path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 900,
+        quality: 75,
+      );
+      return bytes;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final embed = embedContext.node as Embed;
+    final raw = embed.value.data.toString();
+
+    String path = raw;
+    String name = raw.split('/').last;
+
+    // ✅ JSON이면 path/name 꺼내기
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      path = (m['path'] ?? path).toString();
+      name = (m['name'] ?? name).toString();
+    } catch (_) {}
+
+    if (path.isEmpty || !File(path).existsSync()) {
+      return _fallback(name);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: FutureBuilder<Uint8List?>(
+          future: _thumbBytes(path),
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return _loading();
+            }
+            final bytes = snap.data;
+            if (bytes == null) return _fallback(name);
+
+            return GestureDetector(
+              onTap: () => onPlay(path, name),
+
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.memory(bytes, fit: BoxFit.cover),
+                  ),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.35),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _loading() => const AspectRatio(
+    aspectRatio: 16 / 9,
+    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+  );
+
+  Widget _fallback(String name) => Container(
+    margin: const EdgeInsets.symmetric(vertical: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      border: Border.all(color: Colors.grey),
+      borderRadius: BorderRadius.circular(12),
+      color: Colors.white,
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.movie_outlined),
+        const SizedBox(width: 8),
+        Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      ],
+    ),
+  );
+}
+
+class VideoBlockEmbed extends CustomBlockEmbed {
+  static const String kType = 'local_video';
+
+  VideoBlockEmbed(String value) : super(kType, value);
+
+  static VideoBlockEmbed fromNode(Embed node) =>
+      VideoBlockEmbed(node.value.data.toString());
 }
 
 class _GoogleMapPreview extends StatelessWidget {
@@ -56,29 +521,391 @@ class _GoogleMapPreview extends StatelessWidget {
 }
 
 class _CommunityaddState extends State<Communityadd> {
+  int _lastValidOffset = 0;
   late final DashboardService _service;
+  late final QuillController _editorController;
   PlaceResult? selectedPlace;
   final List<String> categories = ["사건/이슈", "수다", "패션"];
   String selectedCategory = "사건/이슈";
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _title = TextEditingController();
+  final Map<String, int> _imageIndexByLocalPath = {}; // localPath -> images index
+  final Map<String, int> _videoIndexByLocalPath = {}; // localPath -> videos index
+
+  void _insertImageIntoEditor(String imagePath) {
+    final sel = _editorController.selection;
+
+    final index = sel.baseOffset >= 0 ? sel.baseOffset : _lastValidOffset;
+    final length = (sel.baseOffset >= 0 && sel.extentOffset >= 0)
+        ? (sel.extentOffset - sel.baseOffset)
+        : 0;
+
+    if (length > 0) {
+      _editorController.replaceText(index, length, '', null);
+    }
+
+    _editorController.replaceText(index, 0, BlockEmbed.image(imagePath), null);
+    _editorController.replaceText(index + 1, 0, '\n', null);
+
+    _editorController.updateSelection(
+      TextSelection.collapsed(offset: index + 2),
+      ChangeSource.local,
+    );
+  }
+
+  Future<Map<String, dynamic>> _buildBlocksAndUpload({
+    required String docId,
+  }) async {
+    final List<Map<String, dynamic>> blocks = [];
+    final List<String> imageUrls = [];
+    final List<String> videoUrls = [];
+
+    // Quill delta json
+    final deltaJson = _editorController.document.toDelta().toJson();
+
+    // 텍스트 검색/요약용 (선택)
+    final plain = _editorController.document.toPlainText();
+
+    for (final op in deltaJson) {
+      final insert = op['insert'];
+
+      // 1) 텍스트
+      if (insert is String) {
+        if (insert.isNotEmpty) {
+          blocks.add({'t': 'text', 'v': insert});
+        }
+        continue;
+      }
+
+      // 2) 임베드(이미지/비디오 등)
+      if (insert is Map) {
+        // 2-1) image
+        if (insert.containsKey('image')) {
+          final localPath = insert['image']?.toString() ?? '';
+          if (localPath.isEmpty) continue;
+
+          // 이미 업로드한 적 있으면 그 index 재사용
+          if (_imageIndexByLocalPath.containsKey(localPath)) {
+            blocks.add({'t': 'image', 'v': _imageIndexByLocalPath[localPath]});
+            continue;
+          }
+
+          final file = File(localPath);
+          if (!file.existsSync()) continue;
+
+          final ext = p.extension(localPath).replaceFirst('.', '');
+          final safeName =
+              '${DateTime.now().millisecondsSinceEpoch}_${p.basename(localPath).isNotEmpty ? p.basename(localPath) : "image.$ext"}';
+
+          final url = await _uploadFileToStorage(
+            file: file,
+            storagePath: 'community/$docId/images/$safeName',
+            contentType: _guessImageContentType(localPath),
+          );
+
+          final idx = imageUrls.length;
+          imageUrls.add(url);
+          _imageIndexByLocalPath[localPath] = idx;
+
+          blocks.add({'t': 'image', 'v': idx});
+          continue;
+        }
+
+        // 2-2) local_video (네 커스텀 embed)
+        if (insert.containsKey(VideoBlockEmbed.kType)) {
+          final raw = insert[VideoBlockEmbed.kType]?.toString() ?? '';
+          if (raw.isEmpty) continue;
+
+          // payload가 JSON이면 path/name 꺼내기
+          String localPath = raw;
+          String name = p.basename(raw);
+
+          try {
+            final m = jsonDecode(raw) as Map<String, dynamic>;
+            localPath = (m['path'] ?? localPath).toString();
+            name = (m['name'] ?? name).toString();
+          } catch (_) {}
+
+          if (localPath.isEmpty) continue;
+
+          // 이미 업로드한 적 있으면 재사용
+          if (_videoIndexByLocalPath.containsKey(localPath)) {
+            blocks.add({
+              't': 'video',
+              'v': _videoIndexByLocalPath[localPath],
+              'name': name,
+            });
+            continue;
+          }
+
+          final file = File(localPath);
+          if (!file.existsSync()) continue;
+
+          final ext = p.extension(localPath).replaceFirst('.', '');
+          final safeName =
+              '${DateTime.now().millisecondsSinceEpoch}_${name.isNotEmpty ? name : "video.$ext"}';
+
+          final url = await _uploadFileToStorage(
+            file: file,
+            storagePath: 'community/$docId/videos/$safeName',
+            contentType: _guessVideoContentType(localPath),
+          );
+
+          final idx = videoUrls.length;
+          videoUrls.add(url);
+          _videoIndexByLocalPath[localPath] = idx;
+
+          blocks.add({'t': 'video', 'v': idx, 'name': name});
+          continue;
+        }
+      }
+    }
+
+    return {
+      'blocks': blocks,
+      'images': imageUrls,
+      'videos': videoUrls,
+      'plain': plain.trim(),
+    };
+  }
+
+  Future<void> _ensureSignedIn() async {
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+    }
+  }
+
+  Future<void> _openVideoPlayerSheet({
+    required String path,
+    required String title,
+  }) async {
+    if (!File(path).existsSync()) return;
+
+    final vp = VideoPlayerController.file(File(path));
+    await vp.initialize();
+
+    final chewie = ChewieController(
+      videoPlayerController: vp,
+      autoPlay: true,
+      looping: false,
+      allowFullScreen: true,
+      allowPlaybackSpeedChanging: true,
+    );
+
+    if (!mounted) {
+      chewie.dispose();
+      vp.dispose();
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (_) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.55,
+            child: Column(
+              children: [
+                // 상단바
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(color: Colors.white),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: vp.value.aspectRatio,
+                      child: Chewie(controller: chewie),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // 닫히면 정리
+    chewie.dispose();
+    vp.dispose();
+  }
+
+  void _insertVideoIntoEditor({required String videoPath, required String originalName}) {
+    final sel = _editorController.selection;
+    final index = sel.baseOffset >= 0 ? sel.baseOffset : _lastValidOffset;
+    final length = (sel.baseOffset >= 0 && sel.extentOffset >= 0)
+        ? (sel.extentOffset - sel.baseOffset)
+        : 0;
+
+    if (length > 0) _editorController.replaceText(index, length, '', null);
+
+    final payload = jsonEncode({'path': videoPath, 'name': originalName});
+
+    _editorController.replaceText(
+      index,
+      0,
+      BlockEmbed.custom(VideoBlockEmbed(payload)),
+      null,
+    );
+    _editorController.replaceText(index + 1, 0, '\n', null);
+
+    _editorController.updateSelection(
+      TextSelection.collapsed(offset: index + 2),
+      ChangeSource.local,
+    );
+  }
+
+  Future<String> _ensureLocalPath(XFile xf) async {
+    final dir = await getTemporaryDirectory(); // ✅ 앱 캐시 폴더
+    final origName = (xf.name.isNotEmpty) ? xf.name : 'video.mp4';
+    final safeName = '${DateTime.now().millisecondsSinceEpoch}_$origName';
+    final outPath = p.join(dir.path, safeName);
+
+    await File(outPath).writeAsBytes(await xf.readAsBytes(), flush: true);
+    return outPath;
+  }
+
+  Future<void> _addCommunity() async {
+    await _ensureSignedIn();
+
+    final categoryAtSubmit = selectedCategory;
+    final title = _title.text.trim();
+    final plain = _editorController.document.toPlainText().trim();
+
+    if (title.isEmpty || plain.isEmpty) {
+      print("제목 또는 내용 입력");
+      return;
+    }
+
+    final fs = FirebaseFirestore.instance;
+    final docRef = fs.collection("community").doc(); // docId 미리 생성
+    final docId = docRef.id;
+
+    // ✅ delta를 읽어서 “저장용 blocks + images + videos” 생성(업로드 포함)
+    final built = await _buildBlocksAndUpload(docId: docId);
+    final blocks = built['blocks'] as List<dynamic>;
+    final imageUrls = built['images'] as List<String>;
+    final videoUrls = built['videos'] as List<String>;
+    final plainForSearch = (built['plain'] as String?) ?? '';
+
+    // ✅ Firestore 저장
+    await docRef.set({
+      'title': title,
+      'category': categoryAtSubmit,
+
+      // ✅ 핵심: 순서 정보
+      'blocks': blocks,
+
+      // ✅ 미디어 URL 따로
+      'images': imageUrls,
+      'videos': videoUrls,
+
+      // (선택) 검색/리스트 요약용
+      'plain': plainForSearch,
+
+      'place': selectedPlace == null
+          ? null
+          : {
+        'name': selectedPlace!.name,
+        'address': selectedPlace!.address,
+        'lat': selectedPlace!.lat,
+        'lng': selectedPlace!.lng,
+        'distanceM': selectedPlace!.distanceM,
+      },
+
+      'weather': {
+        'temp': _temp,
+        'wind': _wind,
+        'rainChance': _rainChance,
+        'code': _weatherCode,
+      },
+      'air': {'pm10': _pm10, 'pm25': _pm25},
+
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // 초기화
+    _title.clear();
+    _editorController.clear();
+    setState(() {
+      selectedCategory = categories.first;
+      selectedPlace = null;
+      _images.clear();
+      _videos.clear();
+      _temp = null;
+      _wind = null;
+      _rainChance = null;
+      _weatherCode = null;
+      _pm10 = null;
+      _pm25 = null;
+
+      // ✅ 캐시도 초기화(다음 글에 영향 없게)
+      _imageIndexByLocalPath.clear();
+      _videoIndexByLocalPath.clear();
+    });
+
+    if (!mounted) return;
+
+    // ✅ 카테고리별 이동(네가 원한 동작)
+    Widget target;
+    switch (categoryAtSubmit) {
+      case "사건/이슈":
+        target = const Event();
+        break;
+      case "수다":
+        target = const Chatter();
+        break;
+      case "패션":
+        target = const Fashion();
+        break;
+      default:
+        target = const Event();
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => target),
+    );
+  }
 
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _images = [];
+  final List<XFile> _videos = [];
 
-  Future<void> _pickFromGallery() async {
+  Future<void> _pickFromGalleryAndInsert() async {
     try {
       final files = await _picker.pickMultiImage(
-        imageQuality: 85, // 0~100 (낮추면 용량 절감)
+        imageQuality: 85,
         maxWidth: 1600,
       );
       if (!mounted) return;
 
-      if (files.isNotEmpty) {
-        setState(() => _images.addAll(files));
+      for (final f in files) {
+        _insertImageIntoEditor(f.path);
       }
     } catch (_) {}
   }
 
-  Future<void> _pickFromCamera() async {
+
+  Future<void> _pickFromCameraAndInsert() async {
     try {
       final file = await _picker.pickImage(
         source: ImageSource.camera,
@@ -88,48 +915,49 @@ class _CommunityaddState extends State<Communityadd> {
       if (!mounted) return;
 
       if (file != null) {
-        setState(() => _images.add(file));
+        _insertImageIntoEditor(file.path);
       }
     } catch (_) {}
   }
 
-  void _removeImageAt(int index) {
-    setState(() => _images.removeAt(index));
-  }
+  Future<void> _pickVideoFromGalleryAndInsert() async {
+    final file = await _picker.pickVideo(source: ImageSource.gallery);
+    if (!mounted || file == null) return;
 
-  Widget _thumb(XFile img) {
-    return FutureBuilder<Uint8List>(
-      future: img.readAsBytes(),
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return Container(
-            width: 92,
-            height: 92,
-            alignment: Alignment.center,
-            child: const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-        return Image.memory(
-          snap.data!,
-          width: 92,
-          height: 92,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-        );
-      },
+    final localPath = await _ensureLocalPath(file);
+    setState(() => _videos.add(file));
+
+    _insertVideoIntoEditor(
+      videoPath: localPath,
+      originalName: file.name, // ✅ Accident1.mp4
     );
   }
 
+  Future<void> _pickVideoFromCameraAndInsert() async {
+    final file = await _picker.pickVideo(source: ImageSource.camera);
+    if (!mounted || file == null) return;
+
+    final localPath = await _ensureLocalPath(file);
+    setState(() => _videos.add(file));
+
+    _insertVideoIntoEditor(
+      videoPath: localPath,
+      originalName: file.name.isNotEmpty ? file.name : 'camera_video.mp4',
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _service = DashboardService(region: 'asia-northeast3');
+    _editorController = QuillController.basic();
+
+    _editorController.addListener(() {
+      final o = _editorController.selection.baseOffset;
+      if (o >= 0) _lastValidOffset = o;
+    });
   }
+
 
   String _regionLabelFromPlace(PlaceResult p) {
     // 1) address가 있으면 그걸로 대충 시/구만 뽑기 (가장 간단)
@@ -194,8 +1022,9 @@ class _CommunityaddState extends State<Communityadd> {
 
     for (final p in pms) {
       final admin = _t(p.administrativeArea);
-      final district =
-      _t(p.locality).isNotEmpty ? _t(p.locality) : _t(p.subAdministrativeArea);
+      final district = _t(p.locality).isNotEmpty
+          ? _t(p.locality)
+          : _t(p.subAdministrativeArea);
       final addr = [admin, district].where((e) => e.isNotEmpty).join(' ');
       if (addr.isNotEmpty) return addr;
     }
@@ -203,7 +1032,6 @@ class _CommunityaddState extends State<Communityadd> {
     return '';
   }
 
-  String? _weatherLine; // 화면에 보여줄 한 줄
   bool _weatherLoading = false;
   int? _weatherCode;
   double? _temp;
@@ -306,19 +1134,6 @@ class _CommunityaddState extends State<Communityadd> {
     }
   }
 
-  // 아주 간단한 코드→문구 매핑(필요하면 더 늘리면 됨)
-  String _weatherDesc(int code) {
-    if (code == 0) return "맑음";
-    if (code == 1 || code == 2) return "대체로 맑음";
-    if (code == 3) return "흐림";
-    if (code == 45 || code == 48) return "안개";
-    if (code >= 51 && code <= 67) return "비";
-    if (code >= 71 && code <= 77) return "눈";
-    if (code >= 80 && code <= 82) return "소나기";
-    if (code >= 95) return "뇌우";
-    return "알 수 없음";
-  }
-
   IconData _weatherIcon(int? code) {
     if (code == null) return Icons.cloud_outlined;
 
@@ -415,297 +1230,287 @@ class _CommunityaddState extends State<Communityadd> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
+    _title.dispose();
+    _editorController.dispose();
     _removeDropdown();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("새 게시물")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ✅ 이 박스 바로 아래로 항상 펼쳐지게 연결
-            CompositedTransformTarget(
-              link: _layerLink,
-              child: InkWell(
-                onTap: _toggleDropdown,
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: double.infinity,
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        selectedCategory,
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const Spacer(),
-                      Icon(
-                        _isOpen
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            TextField(
-              decoration: const InputDecoration(
-                labelText: "제목",
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            Expanded(
-              child: TextField(
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: const InputDecoration(
-                  labelText: "내용",
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-// ✅ 사진 첨부 영역
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickFromGallery,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('사진 추가'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _pickFromCamera,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('카메라'),
-                ),
-              ],
-            ),
-
-            if (_images.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 92,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _images.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, i) {
-                    final img = _images[i];
-                    return Stack(
+    return PutterScaffold(
+      currentIndex: 1,
+      body: Scaffold(
+        appBar: AppBar(title: const Text("새 게시물")),
+        body: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ✅ 이 박스 바로 아래로 항상 펼쳐지게 연결
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: InkWell(
+                  onTap: _toggleDropdown,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white,
+                    ),
+                    child: Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: SizedBox(
-                            width: 92,
-                            height: 92,
-                            child: _thumb(img),
-                          ),
+                        Text(
+                          selectedCategory,
+                          style: const TextStyle(fontSize: 16),
                         ),
-                        Positioned(
-                          top: 2,
-                          right: 2,
-                          child: InkWell(
-                            onTap: () => _removeImageAt(i),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.close, size: 16, color: Colors.white),
-                            ),
-                          ),
+                        const Spacer(),
+                        Icon(
+                          _isOpen
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
                         ),
                       ],
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
-            ],
 
-            if (selectedPlace != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
-                  color: Colors.white,
+              const SizedBox(height: 10),
+
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(
+                  labelText: "제목",
+                  border: OutlineInputBorder(),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on_outlined),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+
+              const SizedBox(height: 10),
+
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ✅ 내가 원하는 버튼만 "한 줄" 커스텀 툴바
+                  _MiniQuillToolbar(
+                    controller: _editorController,
+                    onPickImageGallery: _pickFromGalleryAndInsert,
+                    onPickVideoGallery: _pickVideoFromGalleryAndInsert,
+                    onPickImageCamera: _pickFromCameraAndInsert,
+                    onPickVideoCamera: _pickVideoFromCameraAndInsert,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Container(
+                    height: 220,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: QuillEditor.basic(
+                      controller: _editorController,
+                      config: QuillEditorConfig(
+                        placeholder: '내용을 입력하세요...',
+                        embedBuilders: [
+                          _LocalImageEmbedBuilder(),
+                      LocalVideoEmbedBuilder(
+                        onPlay: (path, name) => _openVideoPlayerSheet(path: path, title: name),
+                      ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+              Column(
+                children: [
+                  if (selectedPlace != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                        color: Colors.white,
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                selectedPlace!.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                              const Icon(Icons.location_on_outlined),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      selectedPlace!.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (selectedPlace!.distanceM != null)
+                                      Text(
+                                        "${(selectedPlace!.distanceM! / 1000).toStringAsFixed(1)}km",
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                              if (selectedPlace!.distanceM != null)
-                                Text(
-                                  "${(selectedPlace!.distanceM! / 1000).toStringAsFixed(1)}km",
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () => setState(() {
+                                  selectedPlace = null;
+                                  _temp = null;
+                                  _wind = null;
+                                  _rainChance = null;
+                                  _weatherCode = null;
+                                  _pm10 = null;
+                                  _pm25 = null;
+                                }),
+                              ),
                             ],
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => setState(() {
-                            selectedPlace = null;
-                            _temp = null;
-                            _wind = null;
-                            _rainChance = null;
-                            _weatherCode = null;
-                            _pm10 = null;
-                            _pm25 = null;
-                          }),
-                        ),
-                      ],
-                    ),
 
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 160,
-                      width: double.infinity,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: _GoogleMapPreview(place: selectedPlace!), // ✅ 이게 맞음
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 160,
+                            width: double.infinity,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _GoogleMapPreview(
+                                place: selectedPlace!,
+                              ), // ✅ 이게 맞음
+                            ),
+                          ),
+                          const SizedBox(height: 8),
 
-                    if (_weatherLoading)
-                      const Center(
-                        child: CircularProgressIndicator(strokeWidth: 1.5),
-                      )
-                    else if (_temp != null) ...[
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              "${_regionLabelFromPlace(selectedPlace!)} 현재 날씨",
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                          if (_weatherLoading)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                              ),
+                            )
+                          else if (_temp != null) ...[
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    "${_regionLabelFromPlace(selectedPlace!)} 현재 날씨",
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(_weatherIcon(_weatherCode), size: 18),
+                                  const SizedBox(width: 14),
+
+                                  _WeatherItem(
+                                    icon: Icons.thermostat,
+                                    label: "온도 ${_temp!.round()}°",
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _WeatherItem(
+                                    icon: Icons.water_drop,
+                                    label: "강수 ${_rainChance ?? 0}%",
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _WeatherItem(
+                                    icon: Icons.blur_on,
+                                    label: _pm10 == null
+                                        ? "PM10 -"
+                                        : "PM10 ${_pm10!.round()}㎍/㎥",
+                                  ),
+                                  _WeatherItem(
+                                    icon: Icons.blur_on,
+                                    label: _pm25 == null
+                                        ? "PM2.5 -"
+                                        : "PM2.5 ${_pm25!.round()}㎍/㎥",
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _WeatherItem(
+                                    icon: Icons.air,
+                                    label: "바람 ${_wind!.toStringAsFixed(1)}m/s",
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Icon(_weatherIcon(_weatherCode), size: 18),
-                            const SizedBox(width: 14),
+                          ] else
+                            const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
 
-                            _WeatherItem(
-                              icon: Icons.thermostat,
-                              label: "온도 ${_temp!.round()}°",
-                            ),
-                            const SizedBox(width: 12),
-                            _WeatherItem(
-                              icon: Icons.water_drop,
-                              label: "강수 ${_rainChance ?? 0}%",
-                            ),
-                            const SizedBox(width: 12),
-                            _WeatherItem(
-                              icon: Icons.blur_on,
-                              label: _pm10 == null
-                                  ? "PM10 -"
-                                  : "PM10 ${_pm10!.round()}㎍/㎥",
-                            ),
-                            _WeatherItem(
-                              icon: Icons.blur_on,
-                              label: _pm25 == null
-                                  ? "PM2.5 -"
-                                  : "PM2.5 ${_pm25!.round()}㎍/㎥",
-                            ),
-                            const SizedBox(width: 12),
-                            _WeatherItem(
-                              icon: Icons.air,
-                              label: "바람 ${_wind!.toStringAsFixed(1)}m/s",
-                            ),
-                          ],
+                  if (selectedPlace == null)
+                    ListTile(
+                      leading: const Icon(Icons.location_on_outlined),
+                      title: const Text("위치추가"),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final result = await Navigator.push<PlaceResult>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const loc.Location(),
+                          ),
+                        );
+
+                        if (result != null) {
+                          setState(() => selectedPlace = result);
+                          await _fetchWeatherForPlace(result);
+                          await _fetchAirFromTeamDashboard(result);
+                          await Future.delayed(
+                            const Duration(milliseconds: 200),
+                          );
+                          if (!mounted) return;
+                          _scrollController.animateTo(
+                            _scrollController.position.maxScrollExtent,
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      },
+                    ),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _addCommunity,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                    ] else
-                      const SizedBox.shrink(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            if (selectedPlace == null)
-              ListTile(
-                leading: const Icon(Icons.location_on_outlined),
-                title: const Text("위치추가"),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final result = await Navigator.push<PlaceResult>(
-                    context,
-                    MaterialPageRoute(builder: (_) => const loc.Location()),
-                  );
-
-                  if (result != null) {
-                    setState(() => selectedPlace = result);
-                    await _fetchWeatherForPlace(result);
-                    await _fetchAirFromTeamDashboard(result);
-                  }
-                },
-              ),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                      child: const Text("공유"),
+                    ),
                   ),
-                ),
-                child: const Text("공유"),
+                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
