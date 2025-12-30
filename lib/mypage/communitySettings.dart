@@ -39,11 +39,13 @@ class _CommunitySettingsState extends State<CommunitySettings> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 1.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white, width: 1.2),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  
                   const Text("푸시 알림", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Switch(
                     value: _isPushEnabled,

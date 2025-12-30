@@ -20,117 +20,127 @@ class UserMypage extends StatelessWidget {
     // ✅ 1. Scaffold 대신 PutterScaffold를 반환합니다.
     return PutterScaffold(
       currentIndex: 2, // 마이페이지는 2번 인덱스
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user?.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("사용자 정보를 찾을 수 없습니다."));
-          }
-
-          var userData = snapshot.data!.data() as Map<String, dynamic>;
-
-          // ✅ 2. 기존의 Column 내용을 그대로 body에 넣습니다.
-          return Column(
-            children: [
-              // 상단 프로필 영역 (기존 코드 유지)
-              Container(
-                padding: const EdgeInsets.only(top: 60, bottom: 40, left: 20, right: 20),
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Colors.limeAccent,
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Icon(Icons.format_list_bulleted, size: 24, color: Colors.black54),
-                        Icon(Icons.person, size: 35, color: Colors.black),
+      body: Container(
+        color: Colors.white,
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user?.uid)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+        
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Center(child: Text("사용자 정보를 찾을 수 없습니다."));
+            }
+        
+            var userData = snapshot.data!.data() as Map<String, dynamic>;
+        
+        
+            return Column(
+              children: [
+                // 상단 프로필 영역 (기존 코드 유지)
+                Container(
+                  padding: const EdgeInsets.only(top: 60, bottom: 40, left: 20, right: 20),
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,    // 시작 방향
+                      end: Alignment.bottomCenter, // 끝 방향
+                      colors: [
+                        Color(0xFF29B6F6), // 진한 하늘색
+                        Color(0xFFB3E5FC), // 아주 연한 하늘색
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundColor: const Color(0xFFE0E0E0),
-                          backgroundImage: (userData['profile_image_url'] != null &&
-                              userData['profile_image_url'].toString().isNotEmpty)
-                              ? NetworkImage(userData['profile_image_url'])
-                              : null,
-                          child: (userData['profile_image_url'] == null ||
-                              userData['profile_image_url'].toString().isEmpty)
-                              ? const Icon(Icons.person, size: 60, color: Colors.white)
-                              : null,
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const UserEdit()),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                            ),
-                            child: const Icon(Icons.edit, size: 20, color: Colors.grey),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          // Icon(Icons.format_list_bulleted, size: 24, color: Colors.black54),
+                          // Icon(Icons.person, size: 35, color: Colors.black),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: const Color(0xFF4FC3F7),
+                            backgroundImage: (userData['profile_image_url'] != null &&
+                                userData['profile_image_url'].toString().isNotEmpty)
+                                ? NetworkImage(userData['profile_image_url'])
+                                : null,
+                            child: (userData['profile_image_url'] == null ||
+                                userData['profile_image_url'].toString().isEmpty)
+                                ? const Icon(Icons.person, size: 60, color: Colors.white)
+                                : null,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      userData['name'] ?? "이름 없음",
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      userData['nickname'] ?? "닉네임 없음",
-                      style: const TextStyle(fontSize: 16, color: Colors.black),
-                    ),
-                  ],
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const UserEdit()),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                              ),
+                              child: const Icon(Icons.edit, size: 20, color: Colors.grey),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        userData['name'] ?? "이름 없음",
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        userData['nickname'] ?? "닉네임 없음",
+                        style: const TextStyle(fontSize: 16, color: Colors.black),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-
-              // 하단 리스트 영역
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                  children: [
-                    _buildMenuButton(context, Icons.description_outlined, "내가 작성한 게시글"),
-                    _buildMenuButton(context, Icons.location_on_outlined, "위치 설정"),
-                    _buildMenuButton(context, Icons.settings_outlined, "커뮤니티 설정"),
-                    TextButton(
-                      onPressed: () async {
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LoginPage()),
-                                (route) => false,
-                          );
-                        }
-                      },
-                      child: const Text("로그아웃", style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
+        
+                // 하단 리스트 영역
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                    children: [
+                      _buildMenuButton(context, Icons.description_outlined, "내가 작성한 게시글"),
+                      _buildMenuButton(context, Icons.location_on_outlined, "위치 설정"),
+                      _buildMenuButton(context, Icons.settings_outlined, "커뮤니티 설정"),
+                      TextButton(
+                        onPressed: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const LoginPage()),
+                                  (route) => false,
+                            );
+                          }
+                        },
+                        child: const Text("로그아웃", style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -140,8 +150,8 @@ class UserMypage extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1.2),
+        color: Colors.grey[50],
+        border: Border.all(color: Colors.white, width: 1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: ListTile(

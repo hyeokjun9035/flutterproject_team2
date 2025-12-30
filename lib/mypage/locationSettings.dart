@@ -6,6 +6,40 @@ import 'locationAdd.dart';
 class LocationSettings extends StatelessWidget {
   const LocationSettings({super.key});
 
+  // 🗑️ 삭제 확인 다이얼로그 함수
+  void _showDeleteDialog(BuildContext context, String docId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("즐겨찾기 삭제", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text("정말 삭제하시겠습니까?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), // 취소
+            child: const Text("취소", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid != null) {
+                // Firestore에서 해당 문서 삭제
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid)
+                    .collection('favorites')
+                    .doc(docId)
+                    .delete();
+              }
+              if (context.mounted) Navigator.pop(context); // 닫기
+            },
+            child: const Text("삭제", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -30,13 +64,12 @@ class LocationSettings extends StatelessWidget {
             const Text("즐겨 찾기", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
 
-            // 🔥 Firestore 데이터 연동 부분
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('users')
                     .doc(user?.uid)
-                    .collection('favorites') // 즐겨찾기 서브컬렉션
+                    .collection('favorites')
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -52,15 +85,16 @@ class LocationSettings extends StatelessWidget {
                     itemCount: docs.length,
                     separatorBuilder: (context, index) => const SizedBox(height: 15),
                     itemBuilder: (context, index) {
-                      var data = docs[index].data() as Map<String, dynamic>;
-                      return _buildFavoriteCard(data);
+                      var doc = docs[index];
+                      var data = doc.data() as Map<String, dynamic>;
+                      // 🔥 여기서 doc.id(문서ID)를 같이 전달합니다.
+                      return _buildFavoriteCard(context, data, doc.id);
                     },
                   );
                 },
               ),
             ),
 
-            // 위치 추가 하기 버튼
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -80,12 +114,12 @@ class LocationSettings extends StatelessWidget {
     );
   }
 
-  // 즐겨찾기 카드 UI 빌더
-  Widget _buildFavoriteCard(Map<String, dynamic> data) {
-    // 주소 문자열 조합 함수 (SI GUN GIL ROADNO 활용)
+  // 🔥 수정된 즐겨찾기 카드 UI 빌더
+  Widget _buildFavoriteCard(BuildContext context, Map<String, dynamic> data, String docId) {
     String formatAddress(Map<String, dynamic>? loc) {
       if (loc == null) return "주소 정보 없음";
-      return "${loc['SI']} ${loc['GUN']} ${loc['GIL']} ${loc['ROADNO']}";
+      // 번지수(ROADNO)가 짤리지 않게 뒤에 붙여줍니다.
+      return "${loc['SI']} ${loc['GUN']} ${loc['GIL']} ${loc['ROADNO'] ?? ''}".trim();
     }
 
     return Container(
@@ -93,13 +127,19 @@ class LocationSettings extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5), // 패딩 소폭 조정
             color: Colors.grey[400],
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(data['title'] ?? "이름 없음", style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Icon(Icons.star, color: Colors.amber, size: 20),
+                // 🔥 IconButton으로 변경하여 터치 영역을 확보하고 삭제 함수 연결
+                IconButton(
+                  onPressed: () => _showDeleteDialog(context, docId),
+                  icon: const Icon(Icons.star, color: Colors.amber, size: 24),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
               ],
             ),
           ),

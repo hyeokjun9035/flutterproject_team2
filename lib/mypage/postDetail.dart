@@ -268,18 +268,16 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
   IconData _getWeatherIcon(int? pty, int? sky) {
-    // pty: 강수 형태 (0:없음, 1:비, 2:비/눈, 3:눈, 4:소나기)
-    // sky: 하늘 상태 (1:맑음, 3:구름많음, 4:흐림)
     if (pty == null || pty == 0) {
-      if (sky == 4) return Icons.cloud; // 흐림
-      if (sky == 3) return Icons.wb_cloudy_outlined; // 구름많음
-      return Icons.wb_sunny_outlined; // 맑음
+      if (sky == 4) return Icons.cloud;
+      if (sky == 3) return Icons.wb_cloudy_outlined;
+      return Icons.wb_sunny_outlined;
     }
     switch (pty) {
-      case 1: return Icons.umbrella; // 비
-      case 2: return Icons.cloudy_snowing; // 비/눈
-      case 3: return Icons.ac_unit; // 눈
-      case 4: return Icons.thunderstorm; // 소나기
+      case 1: return Icons.umbrella;
+      case 2: return Icons.cloudy_snowing;
+      case 3: return Icons.ac_unit;
+      case 4: return Icons.thunderstorm;
       default: return Icons.wb_sunny_outlined;
     }
   }
@@ -376,8 +374,9 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
                   Placemark place = p[0];
                   widget.onLocationSelected({
                     'SI': place.administrativeArea ?? "",
-                    'GUN': place.locality ?? "",
-                    'GIL': place.thoroughfare ?? "",
+                    'GUN': place.locality ?? place.subAdministrativeArea ?? "",
+                    'GIL': place.thoroughfare ?? place.subLocality ?? "",
+                    'ROADNO': place.subThoroughfare ?? "",
                     'LAT': _currentCenter.latitude,
                     'LNG': _currentCenter.longitude,
                   });
