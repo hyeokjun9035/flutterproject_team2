@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_project/admin/admin_home_page.dart';
 import 'join1.dart';
 import 'package:flutter_project/home/home_page.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 
 
 
@@ -16,59 +16,61 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _pwdController = TextEditingController();
+
+  //firebase Auth 인스턴스 _login 함수 밖에서 초기화
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+
 
   Future<void> _login() async {
-    final FirebaseFirestore fs = FirebaseFirestore.instance;
-
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final pwd = _pwdController.text.trim();
 
-    final snapshot = await fs
-        .collection("users")
-        .where("email", isEqualTo: email)
-        .get();
-
-    if (snapshot.docs.isEmpty) {
-      _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
-      return;
-    }
-
-    final userDoc = snapshot.docs.first;
-
-    //밑에 할려고 시도한 거
-    // if (userDoc["password"] == "admin") {
-    //   _showMessage("로그인 성공!");
+    //--------------관리자 로그인---------------
+    // if (email == "admin" && pwd == "admin") {
+    //   _showMessage("관리자 로그인 성공!");
+    //   // mounted 상태 확인
+    //   if (!mounted) return;
     //   Navigator.pushReplacement(
     //     context,
+    //     // AdminHomePage로 바로 이동
     //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
     //   );
+    //   return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
     // }
 
-    // =========================================================
-    // 1. 하드코딩된 관리자 계정 체크 로직 추가
-    // =========================================================
-    if (email == "admin" && password == "admin") {
-      _showMessage("관리자 로그인 성공!");
-      // mounted 상태 확인
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        // AdminHomePage로 바로 이동
-        MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+          email: email,
+          password: pwd,
       );
-      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
-    }
-    ///////////////////////////////////////////////////////////
 
-    if (userDoc["password"] == password ) {
       _showMessage("로그인 성공!");
+
+      //mounted상태 확인
+      if(!mounted) return;
+
+      //HomePage로 이동(로그인 성공 시)
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
       );
-    } else {
-      _showMessage("비밀번호를 확인해주세요");
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if(e.code == 'user-not-found') {
+        message = '등록되지 않은 이메일 입니다.';
+      } else if (e.code == 'wrong-password') {
+        message = '비밀번호가 일치하지 않습니다.';
+      } else if (e.code == 'invalid-email') {
+        message = '유효하지 않은 이메일 형식입니다.';
+      } else {
+        message = '로그인 중 오류가 발생했습니다';
+      }
+      _showMessage(message);
+    } catch (e) {
+      //기타 오류 처리
+      _showMessage("알 수 없는 오류 발생");
     }
   }
 
@@ -81,7 +83,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     _emailController.dispose();
-    _passwordController.dispose();
+    _pwdController.dispose();
     super.dispose();
   }
 
@@ -102,6 +104,7 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 24),
             TextField(
               controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(
                 labelText: "이메일",
                 border: OutlineInputBorder(),
@@ -109,7 +112,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _passwordController,
+              controller: _pwdController,
               obscureText: true,
               decoration: const InputDecoration(
                 labelText: "비밀번호",
@@ -127,7 +130,13 @@ class _LoginPageState extends State<LoginPage> {
               onPressed: () async {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const JoinPage1()),
+                  MaterialPageRoute(builder: (_) => const JoinPage1(
+                    email: "",
+                    pwd: "",
+                    checkPwd: "",
+                  )
+
+                  ),
                 );
               },
               child: const Text("회원가입"),

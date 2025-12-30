@@ -26,21 +26,19 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage4 extends StatefulWidget {
-  final String name;
-  final String age;
-  final String phone;
   final String email;
-  final String password;
+  final String intro;
+  final String name;
+  final String profile_image_url;
   final String nickName;
   final String gender;
 
   const JoinPage4({
     super.key,
-    required this.name,
-    required this.age,
-    required this.phone,
     required this.email,
-    required this.password,
+    required this.intro,
+    required this.name,
+    required this.profile_image_url,
     required this.nickName,
     required this.gender
   });
@@ -91,9 +89,9 @@ class _JoinPage4State extends State<JoinPage4>{
             ),
 
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-
-                Padding(padding: const EdgeInsets.fromLTRB(50, 0, 90, 70), ),
+                Padding(padding: const EdgeInsets.fromLTRB(0, 0, 0, 0), ),
                 Icon(Icons.location_on, size: 50,),
                 Icon(Icons.camera_alt, size: 50,),
                 Icon(Icons.edit_notifications, size: 50,),
@@ -129,17 +127,15 @@ class _JoinPage4State extends State<JoinPage4>{
             ),
 
             ElevatedButton(
-                onPressed: () async{
-                  await _join();
+                onPressed: () {
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage5(
-                          name: widget.name,
-                          age: widget.age,
-                          phone: widget.phone,
                           email: widget.email,
-                          password: widget.password,
+                          intro: widget.intro,
+                          name: widget.name,
                           nickName: widget.nickName,
+                          profile_image_url: widget.profile_image_url,
                           gender: widget.gender, //성별 값 전달
                         isLocationChecked: isLocationChecked,
                           isCameraChecked: isCameraChecked,
