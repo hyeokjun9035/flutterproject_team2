@@ -622,13 +622,15 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     const { nx, ny } = latLonToGrid(lat, lon);
 
-    // addr: 에어코리아 조회용 ("인천광역시 부평구" 같은 형태가 안정적)
     const addr = String(request.data?.addr ?? request.data?.locationName ?? "");
     const administrativeArea = String(request.data?.administrativeArea ?? "");
 
-    const kmaNcst = await callKmaUltraNcst(nx, ny);
-    const kmaUltra = await callKmaUltraFcst(nx, ny);
-    const kmaVilage = await callKmaVilageFcst(nx, ny);
+    // ✅ 1) KMA 3종 병렬
+    const [kmaNcst, kmaUltra, kmaVilage] = await Promise.all([
+      callKmaUltraNcst(nx, ny),
+      callKmaUltraFcst(nx, ny),
+      callKmaVilageFcst(nx, ny),
+    ]);
 
     const hourlyFcst = mergeHourly(
       buildHourlyUltraRaw(kmaUltra.items),
@@ -636,45 +638,41 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
       24
     );
 
-    // 3) 주간: 단기 3일 + 중기 덧붙이기(가능하면)
-    const weeklyShort3 = buildDailyFromVilage(kmaVilage.items);
-    let weekly = weeklyShort3;
+    // ✅ 2) 주간(단기 먼저)
+    const weeklyShort = buildDailyFromVilage(kmaVilage.items); // (너가 4일로 늘렸으면 그 함수가 알아서 4일 나옴)
+    const baseYmd = weeklyShort[0]?.date ?? ymdKst(new Date());
 
-    // ✅ 중기: tmFc(06/18) + regId 분리
+    // ✅ 3) 중기/대기질 병렬
     const tmFc = midTmFc(new Date());
     const tmFcYmd = tmFc.substring(0, 8);
 
-    const landRegId = regIdLandFromAdmin(administrativeArea);      // 육상용(기존)
-    const taRegId = regIdTaFromAdmin(administrativeArea);      // ✅ 기온용(추가)
+    const landRegId = regIdLandFromAdmin(administrativeArea);
+    const taRegId = regIdTaFromAdmin(administrativeArea);
 
-    let midLand = null;
-    let midTa = null;
+    const [midLand, midTa, airRes] = await Promise.all([
+      landRegId ? callMidLand(landRegId, tmFc) : Promise.resolve(null),
+      taRegId ? callMidTa(taRegId, tmFc) : Promise.resolve(null),
+      buildAir(addr, administrativeArea),
+    ]);
 
-    if (landRegId) midLand = await callMidLand(landRegId, tmFc);
-    if (taRegId) midTa = await callMidTa(taRegId, tmFc);
+    // ✅ 4) weekly: mid가 있으면 append, 없으면 short 유지
+    const weekly = (midLand || midTa)
+      ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd, tmFcYmd)
+      : weeklyShort;
 
-    // ✅ baseYmd: 단기 3일의 첫 날짜(없으면 오늘로)
-    const baseYmd = weeklyShort3[0]?.date ?? ymdKst(new Date());
-
-    weekly = appendMidToWeekly(weeklyShort3, midLand, midTa, baseYmd, tmFcYmd);
-
-    const airRes = await buildAir(addr, administrativeArea);
-
-    // 5) 특보(목록): 최근 2~3일만 조회해서 title 키워드로 필터
+    // ✅ 5) 특보
     let alerts = [];
     try {
-      const todayYmd = ymdKst(new Date());           // 너 파일에 이미 있음 :contentReference[oaicite:3]{index=3}
-      const fromYmd = addDaysYmd(todayYmd, -14);      // 너 파일에 이미 있음 :contentReference[oaicite:4]{index=4}
+      const todayYmd = ymdKst(new Date());
+      const fromYmd = addDaysYmd(todayYmd, -14);
 
       const wrnItems = await callKmaWthrWrnList({
         fromTmFc: fromYmd,
         toTmFc: todayYmd,
-        // stnId: 필요하면 나중에 매핑해서 넣기
       });
 
       const keywords = buildAlertKeywords(administrativeArea, addr);
       alerts = buildAlertsFromWrnList(wrnItems, { keywords });
-
     } catch (err) {
       logger.warn("alerts fetch failed", err);
       alerts = [];
@@ -682,27 +680,27 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     return {
       updatedAt: new Date().toISOString(),
-        locationName: String(locationName ?? ""),
-        weatherNow: kmaNcst.items,
-        hourlyFcst,
-        weekly,
-        alerts,
-        air: airRes.air,
-        meta: {
-          nx,
-          ny,
-          addr,
-          administrativeArea,
-          tmFc,
-          landRegId: landRegId ?? null,
-          taRegId: taRegId ?? null,
-          midLandOk: !!midLand,
-          midTaOk: !!midTa,
-          kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
-          kmaUltraBase: { base_date: kmaUltra.base_date, base_time: kmaUltra.base_time },
-          kmaVilageBase: { base_date: kmaVilage.base_date, base_time: kmaVilage.base_time },
-          air: airRes.meta,
-        },
+      locationName: String(locationName ?? ""),
+      weatherNow: kmaNcst.items,
+      hourlyFcst,
+      weekly,
+      alerts,
+      air: airRes.air,
+      meta: {
+        nx,
+        ny,
+        addr,
+        administrativeArea,
+        tmFc,
+        landRegId: landRegId ?? null,
+        taRegId: taRegId ?? null,
+        midLandOk: !!midLand,
+        midTaOk: !!midTa,
+        kmaNcstBase: { base_date: kmaNcst.base_date, base_time: kmaNcst.base_time },
+        kmaUltraBase: { base_date: kmaUltra.base_date, base_time: kmaUltra.base_time },
+        kmaVilageBase: { base_date: kmaVilage.base_date, base_time: kmaVilage.base_time },
+        air: airRes.meta,
+      },
     };
   } catch (e) {
     logger.error("getDashboard failed", e);
