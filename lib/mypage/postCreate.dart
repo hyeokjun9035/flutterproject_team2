@@ -13,16 +13,16 @@ class PostCreate extends StatefulWidget {
 class _PostCreateState extends State<PostCreate> {
   final ImagePicker _picker = ImagePicker();
 
-  // 타입을 File로 설정하여 타입 충돌 에러를 방지합니다.
+
   List<File> _selectedImages = [];
 
-  // 갤러리에서 여러 장의 이미지를 가져오는 함수
+
   Future<void> _pickImages() async {
     try {
       final List<XFile> images = await _picker.pickMultiImage();
       if (images.isNotEmpty) {
         setState(() {
-          // XFile 리스트를 File 리스트로 즉시 변환하여 화면을 갱신합니다.
+
           _selectedImages = images.map((xFile) => File(xFile.path)).toList();
         });
       }
@@ -45,12 +45,12 @@ class _PostCreateState extends State<PostCreate> {
         actions: [
           TextButton(
             onPressed: _selectedImages.isEmpty
-                ? null // 사진이 없으면 버튼 비활성화
+                ? null
                 : () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  // 선택된 이미지 리스트를 다음 페이지로 전달
+
                   builder: (context) => PostDetail(images: _selectedImages),
                 ),
               );
@@ -99,7 +99,7 @@ class _PostCreateState extends State<PostCreate> {
               ],
             ),
 
-            // 선택된 이미지들을 보여주는 격자 뷰
+
             _selectedImages.isEmpty
                 ? Container(
               height: 100,

@@ -6,15 +6,14 @@ class CommunitySettings extends StatefulWidget {
   @override
   State<CommunitySettings> createState() => _CommunitySettingsState();
 }
-
+//아직 설정 미정
 class _CommunitySettingsState extends State<CommunitySettings> {
   bool _isPushEnabled = true; // 푸시 알림 상태 변수
-  bool _isPrivateMode = false; // 추가 예시 설정 (비공개 모드)
+  bool _isPrivateMode = false; // 추가 예시 설정
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 배경색을 아주 연한 블루그레이로 설정하여 카드와 대비를 줍니다.
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -40,7 +39,7 @@ class _CommunitySettingsState extends State<CommunitySettings> {
             ),
             const SizedBox(height: 12),
 
-            // 설정 카드 섹션
+
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -55,7 +54,7 @@ class _CommunitySettingsState extends State<CommunitySettings> {
               ),
               child: Column(
                 children: [
-                  // 1. 푸시 알림 설정
+
                   _buildSettingItem(
                     icon: Icons.notifications_active_outlined,
                     iconColor: Colors.blueAccent,
@@ -78,7 +77,7 @@ class _CommunitySettingsState extends State<CommunitySettings> {
 
                   const Divider(height: 1, indent: 60, endIndent: 20, color: Color(0xFFF1F1F1)),
 
-                  // 2. 비공개 모드 (추가 예정 항목 예시)
+
                   _buildSettingItem(
                     icon: Icons.lock_outline_rounded,
                     iconColor: Colors.orangeAccent,
@@ -106,7 +105,7 @@ class _CommunitySettingsState extends State<CommunitySettings> {
             ),
             const SizedBox(height: 12),
 
-            // 기타 메뉴 영역
+
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -128,7 +127,7 @@ class _CommunitySettingsState extends State<CommunitySettings> {
     );
   }
 
-  // 설정 항목을 만드는 공통 위젯
+
   Widget _buildSettingItem({
     required IconData icon,
     required Color iconColor,

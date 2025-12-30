@@ -13,7 +13,7 @@ class MyPosts extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? myUid = FirebaseAuth.instance.currentUser?.uid;
 
-    // 1. DashboardService 인스턴스 생성 (지역 설정 필요)
+
     final dashboardService = DashboardService(region: 'asia-northeast3');
 
     return Scaffold(
@@ -31,7 +31,7 @@ class MyPosts extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 2. 서비스 호출 및 위젯 빌드
+
             _buildRealTimeWeather(dashboardService),
 
             const SizedBox(height: 30),
@@ -45,7 +45,7 @@ class MyPosts extends StatelessWidget {
       ),
     );
   }
-// 1. 게시글 작성하러 가기 버튼 영역
+
   Widget _buildActionButtons(BuildContext context) {
     return GestureDetector(
       onTap: () {
@@ -80,7 +80,7 @@ class MyPosts extends StatelessWidget {
     );
   }
 
-  // 2. 작성한 게시글 헤더 영역
+
   Widget _buildPostHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -98,7 +98,7 @@ class MyPosts extends StatelessWidget {
     );
   }
 
-  // 3. Firestore 게시글 그리드 리스트 영역
+
   Widget _buildPostGrid(String? myUid) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -165,10 +165,10 @@ class MyPosts extends StatelessWidget {
       },
     );
   }
-  // === 날씨 영역 빌더 ===
+
   Widget _buildRealTimeWeather(DashboardService service) {
     return FutureBuilder<DashboardData>(
-      // 3. 위경도나 nx, ny 데이터를 사용하여 호출 (예시 값: 서울 기준)
+
       future: service.fetchDashboardByLatLon(
         lat: 37.5665,
         lon: 126.9780,
@@ -197,7 +197,7 @@ class MyPosts extends StatelessWidget {
         return Column(
           children: [
             const SizedBox(height: 10),
-            // 날씨 아이콘 (PTY 또는 SKY 기반)
+
             Icon(
               _getWeatherIcon(now.pty, now.sky),
               size: 80,
@@ -209,7 +209,7 @@ class MyPosts extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            // 대기질 정보 (추가된 부분)
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -225,7 +225,7 @@ class MyPosts extends StatelessWidget {
             Text("습도 : ${now.humidity?.toInt() ?? '-'}% | 바람 : ${now.wind ?? '-'} m/s",
                 style: const TextStyle(fontSize: 14, color: Colors.grey)),
 
-            // 특보 알림이 있을 경우 표시
+
             if (data.alerts.isNotEmpty)
               Container(
                 margin: const EdgeInsets.only(top: 10),
@@ -239,7 +239,7 @@ class MyPosts extends StatelessWidget {
     );
   }
 
-  // 아이콘 로직 확장 (PTY가 0이면 SKY 기준, 아니면 PTY 기준)
+
   IconData _getWeatherIcon(int? pty, int? sky) {
     if (pty == null || pty == 0) {
       // 강수 없음 -> 하늘 상태 기준
@@ -247,7 +247,6 @@ class MyPosts extends StatelessWidget {
       if (sky == 3) return Icons.wb_cloudy_outlined; // 구름많음
       return Icons.wb_sunny_outlined; // 맑음
     }
-    // 강수 있음
     switch (pty) {
       case 1: return Icons.umbrella;
       case 2: return Icons.cloudy_snowing;

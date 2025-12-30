@@ -104,7 +104,7 @@
           ),
           actions: [
             TextButton(
-              onPressed: _updateProfile, // 수정한 부분: 함수 직접 연결
+              onPressed: _updateProfile,
               child: const Text("저장", style: TextStyle(color: Colors.black, fontSize: 16)),
             ),
           ],
@@ -182,7 +182,7 @@
           ],
         ),
       );
-    } // 수정한 부분: 여기서 클래스를 닫았던 잘못된 중괄호를 제거했습니다.
+    }
   
     Widget _buildNicknameField(String label, TextEditingController controller) {
       return Padding(
@@ -203,7 +203,7 @@
             ),
             ElevatedButton(
               onPressed: () async {
-                String inputNickname = controller.text.trim(); // _nicknameController 대신 인자로 받은 controller 사용
+                String inputNickname = controller.text.trim();
                 if (inputNickname.isEmpty) return;
   
                 var doc = await FirebaseFirestore.instance

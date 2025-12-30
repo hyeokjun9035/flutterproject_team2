@@ -122,7 +122,7 @@ class _LocationAddState extends State<LocationAdd> {
   }
 }
 
-// 🔥 즐겨찾기 목록 아이템 위젯 (별표 삭제 기능 포함)
+
 class FavoriteListItem extends StatelessWidget {
   final String docId;
   final Map<String, dynamic> data;
@@ -154,7 +154,7 @@ class FavoriteListItem extends StatelessWidget {
 
   String _formatAddr(Map<String, dynamic>? point) {
     if (point == null) return "정보 없음";
-    // 번지수(ROADNO)까지 포함하여 포맷팅
+
     String base = "${point['SI']} ${point['GUN']} ${point['GIL']}".trim();
     String roadNo = (point['ROADNO'] != null && point['ROADNO'].toString().isNotEmpty)
         ? " ${point['ROADNO']}"
@@ -202,7 +202,7 @@ class FavoriteListItem extends StatelessWidget {
   }
 }
 
-// 🔥 구글 지도 검색 모달 (주소 추출 로직 포함)
+
 class _GoogleMapSearchModal extends StatefulWidget {
   final Function(Map<String, dynamic>) onLocationSelected;
   const _GoogleMapSearchModal({required this.onLocationSelected});
@@ -269,7 +269,7 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
                       'SI': place.administrativeArea ?? "",
                       'GUN': place.locality ?? place.subAdministrativeArea ?? "",
                       'GIL': place.thoroughfare ?? place.subLocality ?? "",
-                      'ROADNO': place.subThoroughfare ?? "", // 🔥 상세 번지 보존
+                      'ROADNO': place.subThoroughfare ?? "",
                       'LAT': _selectedCenter.latitude,
                       'LNG': _selectedCenter.longitude,
                     });

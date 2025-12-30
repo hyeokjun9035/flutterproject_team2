@@ -17,9 +17,9 @@ class UserMypage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    // ✅ 1. Scaffold 대신 PutterScaffold를 반환합니다.
+
     return PutterScaffold(
-      currentIndex: 2, // 마이페이지는 2번 인덱스
+      currentIndex: 2,
       body: Container(
         color: Colors.white,
         child: StreamBuilder<DocumentSnapshot>(
@@ -41,14 +41,14 @@ class UserMypage extends StatelessWidget {
         
             return Column(
               children: [
-                // 상단 프로필 영역 (기존 코드 유지)
+
                 Container(
                   padding: const EdgeInsets.only(top: 60, bottom: 40, left: 20, right: 20),
                   width: double.infinity,
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.topCenter,    // 시작 방향
-                      end: Alignment.bottomCenter, // 끝 방향
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                       colors: [
                         Color(0xFF29B6F6), // 진한 하늘색
                         Color(0xFFB3E5FC), // 아주 연한 하늘색
@@ -145,7 +145,7 @@ class UserMypage extends StatelessWidget {
     );
   }
 
-  // 메뉴 버튼 헬퍼 함수 (기존 코드 유지)
+  // 메뉴 버튼 헬퍼
   Widget _buildMenuButton(BuildContext context, IconData icon, String title) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

@@ -99,7 +99,7 @@ class _PostDetailState extends State<PostDetail> {
           'sky': _weatherData!.now.sky,
           'pty': _weatherData!.now.pty,
           'air_grade': _weatherData!.air.gradeText,
-        } : null, // 게시글 저장 시 날씨 정보도 함께 저장
+        } : null,
         'cdate': FieldValue.serverTimestamp(),
         'report_count': 0,
       });
@@ -291,7 +291,7 @@ class _PostDetailState extends State<PostDetail> {
   }
 }
 
-// 🔥 구글 지도 검색 및 선택 모달
+
 class _GoogleMapSearchModal extends StatefulWidget {
   final Function(Map<String, dynamic>) onLocationSelected;
   const _GoogleMapSearchModal({required this.onLocationSelected});
