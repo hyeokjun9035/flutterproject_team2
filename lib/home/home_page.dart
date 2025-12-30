@@ -28,7 +28,8 @@ import 'home_card_order.dart'; //jgh251226
 
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final String userUid;
+  const HomePage({super.key, required this.userUid});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -201,17 +202,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    debugPrint("✅ HomePage currentUser uid = $uid");
-
-    // 로그인 필수로 막는다면 (추천)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final u = FirebaseAuth.instance.currentUser;
-      if (u == null) {
-        Navigator.pushReplacementNamed(context, '/login');
-      }
-    });
     _loadOrder();
+    debugPrint("✅ HomePage received uid = ${widget.userUid}");
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _fetchChecklistKeepingCache();
