@@ -5,6 +5,14 @@ const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const axios = require("axios");
+const http = require("http");
+const https = require("https");
+
+const ax = axios.create({
+    timeout: 15000,
+    httpAgent: new http.Agent({ keepAlive: true, maxSockets: 50 }),
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 })
+})
 
 setGlobalOptions({ maxInstances: 10 });
 
@@ -30,6 +38,24 @@ function addDaysYmd(ymd, addDays) {
   const mm = pad2(dt.getUTCMonth() + 1);
   const dd = pad2(dt.getUTCDate());
   return `${yy}${mm}${dd}`;
+}
+
+async function retryOnce(fn, tag) {
+  try {
+    return await fn();
+  } catch (e) {
+    logger.warn(`${tag} failed (1st), retrying...`, { msg: String(e?.message ?? e) });
+    return await fn(); // 1회 재시도
+  }
+}
+
+async function safe(promise, fallback, tag) {
+  try {
+    return await promise;
+  } catch (e) {
+    logger.warn(`${tag} failed (ignored)`, { msg: String(e?.message ?? e) });
+    return fallback;
+  }
 }
 
 /** -----------------------------
@@ -148,7 +174,7 @@ async function callKmaUltraNcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
 }
 
@@ -165,7 +191,7 @@ async function callKmaUltraFcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
 }
 
@@ -182,7 +208,7 @@ async function callKmaVilageFcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
 }
 
@@ -366,7 +392,7 @@ async function callMidLand(regId, tmFc) {
     regId,
     tmFc,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return res.data?.response?.body?.items?.item?.[0] ?? null;
 }
 
@@ -380,7 +406,7 @@ async function callMidTa(regId, tmFc) {
     regId,
     tmFc,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return res.data?.response?.body?.items?.item?.[0] ?? null;
 }
 
@@ -460,7 +486,7 @@ async function callAirMsrstnListByAddr(addr) {
     pageNo: 1,
     addr,
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return res.data?.response?.body?.items ?? [];
 }
 
@@ -475,7 +501,7 @@ async function callAirRltmByStation(stationName) {
     dataTerm: "DAILY",
     ver: "1.3",
   };
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   return res.data?.response?.body?.items ?? [];
 }
 
@@ -548,7 +574,7 @@ async function callKmaWthrWrnList({ fromTmFc, toTmFc, stnId }) {
   };
   if (stnId) params.stnId = stnId; // 옵션
 
-  const res = await axios.get(url, { params, timeout: 8000 });
+  const res = await ax.get(url, { params });
   const items = res.data?.response?.body?.items?.item ?? [];
   return items;
 }
@@ -627,9 +653,9 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     // ✅ 1) KMA 3종 병렬
     const [kmaNcst, kmaUltra, kmaVilage] = await Promise.all([
-      callKmaUltraNcst(nx, ny),
-      callKmaUltraFcst(nx, ny),
-      callKmaVilageFcst(nx, ny),
+      retryOnce(() => callKmaUltraNcst(nx, ny), "kmaNcst"),
+      retryOnce(() => callKmaUltraFcst(nx, ny), "kmaUltra"),
+      retryOnce(() => callKmaVilageFcst(nx, ny), "kmaVilage"),
     ]);
 
     const hourlyFcst = mergeHourly(
@@ -649,34 +675,35 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const landRegId = regIdLandFromAdmin(administrativeArea);
     const taRegId = regIdTaFromAdmin(administrativeArea);
 
-    const [midLand, midTa, airRes] = await Promise.all([
-      landRegId ? callMidLand(landRegId, tmFc) : Promise.resolve(null),
-      taRegId ? callMidTa(taRegId, tmFc) : Promise.resolve(null),
+    const midLandP = landRegId
+      ? safe(callMidLand(landRegId, tmFc), null, "midLand")
+      : Promise.resolve(null);
+
+    const midTaP = taRegId
+      ? safe(callMidTa(taRegId, tmFc), null, "midTa")
+      : Promise.resolve(null);
+
+    const airP = safe(
       buildAir(addr, administrativeArea),
-    ]);
+      { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { reason: "air_failed" } },
+      "air"
+    );
+
+    // 특보도 safe로 (너는 현재 try/catch로 감싸고 있음):contentReference[oaicite:6]{index=6}
+    const alertsP = safe((async () => {
+      const todayYmd = ymdKst(new Date());
+      const fromYmd = addDaysYmd(todayYmd, -14);
+      const wrnItems = await callKmaWthrWrnList({ fromTmFc: fromYmd, toTmFc: todayYmd });
+      const keywords = buildAlertKeywords(administrativeArea, addr);
+      return buildAlertsFromWrnList(wrnItems, { keywords });
+    })(), [], "alerts");
+
+    const [midLand, midTa, airRes, alerts] = await Promise.all([midLandP, midTaP, airP, alertsP]);
 
     // ✅ 4) weekly: mid가 있으면 append, 없으면 short 유지
     const weekly = (midLand || midTa)
       ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd, tmFcYmd)
       : weeklyShort;
-
-    // ✅ 5) 특보
-    let alerts = [];
-    try {
-      const todayYmd = ymdKst(new Date());
-      const fromYmd = addDaysYmd(todayYmd, -14);
-
-      const wrnItems = await callKmaWthrWrnList({
-        fromTmFc: fromYmd,
-        toTmFc: todayYmd,
-      });
-
-      const keywords = buildAlertKeywords(administrativeArea, addr);
-      alerts = buildAlertsFromWrnList(wrnItems, { keywords });
-    } catch (err) {
-      logger.warn("alerts fetch failed", err);
-      alerts = [];
-    }
 
     return {
       updatedAt: new Date().toISOString(),

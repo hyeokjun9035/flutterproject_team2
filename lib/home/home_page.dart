@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,7 +24,7 @@ import '../carry/checklist_service.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
-import '../ui/url_helpers.dart'; //jgh251226
+import 'home_card_order.dart'; //jgh251226
 
 
 class HomePage extends StatefulWidget {
@@ -49,6 +50,16 @@ class _HomePageState extends State<HomePage> {
     await openExternal(url);
   }
 
+  Future<void> _openAirKoreaWeb() async {
+    await openExternal(airKoreaMyNeighborhoodUrl());
+  }
+
+  static const double kDefaultLat = 37.5665; // 서울시청
+  static const double kDefaultLon = 126.9780;
+  static const String kDefaultLocationLabel = '기본 위치(서울)';
+
+  bool _usingDefaultLocation = false;
+
   double? _lat;
   double? _lon;
   String _locationLabel = '위치 확인 중...'; // 화면 표시용 (부평역)
@@ -57,6 +68,9 @@ class _HomePageState extends State<HomePage> {
   DateTime? _sunrise;
   DateTime? _sunset;
   bool _editMode = false;
+  List<HomeCardId> _order = [...HomeCardOrderStore.defaultOrder];
+  List<ChecklistItem> _lastChecklist = const [];
+  bool _isRefreshing = false;
 
   Widget tappableCard({required Widget child, required VoidCallback onTap}) {
     return IgnorePointer(
@@ -68,6 +82,107 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  Widget _buildHomeCard(HomeCardId id, DashboardData? data, bool isFirstLoading) {
+    switch (id) {
+      case HomeCardId.weatherHero: {
+        final canTap = !_editMode && !isFirstLoading && _lat != null && _lon != null;
+        return _Card(
+          onTap: canTap ? _openForecastWeb : null,
+          child: isFirstLoading
+              ? const _Skeleton(height: 120)
+              : _WeatherHero(now: data!.now, sunrise: _sunrise, sunset: _sunset),
+        );
+      }
+
+      case HomeCardId.carry:
+        return _Card(
+          child: isFirstLoading
+              ? const _Skeleton(height: 140)
+              : FutureBuilder<List<ChecklistItem>>(
+            future: _checkFuture,
+            initialData: _lastChecklist.isNotEmpty ? _lastChecklist : null,
+            builder: (context, snap) {
+              final items = snap.data ?? _lastChecklist;
+
+              // ✅ “진짜 최초 로딩”에만 스켈레톤
+              final first = (items.isEmpty) && (snap.connectionState != ConnectionState.done);
+              if (first) return const _Skeleton(height: 150);
+
+              if (snap.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '체크리스트 로드 실패: ${snap.error}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                );
+              }
+
+              final all = snap.data ?? const <ChecklistItem>[];
+
+              // ✅ 여기서부터는 data가 null 아님이 보장됨
+              final list = all.where((it) => matchesRule(it, data!)).toList()
+                ..sort((a, b) => b.priority.compareTo(a.priority));
+
+              return _CarryCardFromFirestore(items: list, data: data!);
+            },
+          ),
+        );
+
+      case HomeCardId.air: {
+        final canTap = !_editMode && !isFirstLoading;
+        return _Card(
+          onTap: canTap ? _openAirKoreaWeb : null,
+          child: isFirstLoading
+              ? const _Skeleton(height: 90)
+              : _AirCard(air: data!.air),
+        );
+      }
+
+      case HomeCardId.hourly:
+        return _Card(
+          child: isFirstLoading ? const _Skeleton(height: 90) : _HourlyStrip(items: data!.hourly),
+        );
+
+      case HomeCardId.weekly:
+        return _Card(
+          child: isFirstLoading ? const _Skeleton(height: 130) : _WeeklyStrip(items: data!.weekly),
+        );
+
+      case HomeCardId.transit:
+        return _Card(
+          child: isFirstLoading
+              ? const _Skeleton(height: 130)
+              : FutureBuilder<TransitRouteResult>(
+            future: _transitFuture,
+            builder: (context, transitSnap) {
+              final isTransitLoading =
+                  transitSnap.connectionState != ConnectionState.done;
+              if (isTransitLoading) {
+                return const _Skeleton(height: 120);
+              }
+              if (transitSnap.hasError || !transitSnap.hasData) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                );
+              }
+              return _TransitCard(data: transitSnap.data!);
+            },
+          ),
+        );
+
+      case HomeCardId.nearbyIssues:
+        return _Card(
+          child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCardHardcoded(),
+        );
+    }
+  }
+
 
   // 2025-12-23 jgh251223 상수 하드코딩---S
   // static const TransitDestination _defaultDestination = TransitDestination(
@@ -86,9 +201,10 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _loadOrder();
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
-    _checkFuture = _checklistService.fetchEnabledItems();
+    _checkFuture = _fetchChecklistKeepingCache();
     // 2025-12-23 jgh251223---S
     final apiKey = dotenv.env['TMAP_API_KEY'] ??
         const String.fromEnvironment('TMAP_API_KEY', defaultValue: '');
@@ -117,11 +233,59 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshInBackground() async {
     try {
-      final fresh = await _initLocationAndFetch();
+      final fresh = await _initLocationAndFetch(
+        forceFreshPosition: true,
+        ignoreDashboardCache: true,
+        ignoreGeocodeCache: false,
+      );
       if (!mounted) return;
       setState(() => _future = Future.value(fresh));
     } catch (_) {
       // 실패해도 캐시 화면은 이미 떠 있으니 무시
+    }
+  }
+
+  Future<void> _loadOrder() async {
+    final loaded = await HomeCardOrderStore.load();
+    if (!mounted) return;
+    setState(() => _order = loaded);
+  }
+
+  void _toggleEditMode() async {
+
+    setState(() => _editMode = true);
+
+    await _openOrderSheet;
+
+    if (!mounted) return;
+    setState(() => _editMode = false);
+  }
+
+  Future<void> _openOrderSheet() async {
+    debugPrint('[HomeOrder] open sheet');
+
+    final result = await showModalBottomSheet<List<HomeCardId>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F172A),
+      builder: (_) => _CardOrderSheet(initial: _order),
+    );
+
+    if (result == null) return;
+
+    setState(() => _order = result);
+    await HomeCardOrderStore.save(_order);
+
+    debugPrint('[HomeOrder] saved: ${_order.map((e) => e.name).toList()}');
+  }
+
+  Future<List<ChecklistItem>> _fetchChecklistKeepingCache() async {
+    try {
+      final items = await _checklistService.fetchEnabledItems();
+      if (items.isNotEmpty) _lastChecklist = items;
+      return items;
+    } catch (_) {
+      return _lastChecklist; // ✅ 실패 시 캐시 반환
     }
   }
 
@@ -221,42 +385,101 @@ class _HomePageState extends State<HomePage> {
 }) async {
     // 권한/서비스 체크
     final enabled = await Geolocator.isLocationServiceEnabled();
-    if (!enabled) {
-      setState(() => _locationLabel = '위치 서비스 OFF');
-      throw Exception('Location service disabled');
-    }
 
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
-    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-      setState(() => _locationLabel = '위치 권한 필요');
-      throw Exception('Location permission denied');
+
+    final hasPerm = (perm == LocationPermission.whileInUse || perm == LocationPermission.always);
+    final canUseLocation = enabled && hasPerm;
+
+    String? locationGateReason;
+    if (!enabled) locationGateReason = '위치 서비스 OFF';
+    if (!hasPerm) locationGateReason = '위치 권한 필요';
+
+    if (!canUseLocation && mounted) {
+      setState(() => _locationLabel = locationGateReason ?? '위치 사용 불가');
     }
 
     // 위치 가져오기
-    Position pos;
+    Position? pos;
 
-    if (forceFreshPosition) {
-      // ✅ 새로고침: lastKnown 쓰지 말고 현재 위치 강제
-      pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-        timeLimit: const Duration(seconds: 8),
-        // (옵션) Android에서 위치 갱신이 느리면 아래도 도움될 때가 있음
-        // forceAndroidLocationManager: true,
-      );
-    } else {
-      // ✅ 최초 진입: 빠르게 lastKnown 먼저
-      final last = await Geolocator.getLastKnownPosition();
-      pos = last ??
-          await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.medium,
-            timeLimit: const Duration(seconds: 6),
-          );
+    Future<Position?> _tryCurrent({required int seconds, required LocationAccuracy acc}) async {
+      try {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: acc,
+          timeLimit: Duration(seconds: seconds),
+        );
+      } on TimeoutException {
+        return null;
+      } catch (_) {
+        return null;
+      }
     }
-    _lat = pos.latitude;
-    _lon = pos.longitude;
+
+    Future<Position?> _tryStreamOnce({required int seconds, required LocationAccuracy acc}) async {
+      try {
+        return await Geolocator.getPositionStream(
+          locationSettings: LocationSettings(
+            accuracy: acc,
+            distanceFilter: 0,
+          ),
+        ).first.timeout(Duration(seconds: seconds));
+      } on TimeoutException {
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (canUseLocation) {
+      final last = await Geolocator.getLastKnownPosition();
+
+      if (!forceFreshPosition && last != null) {
+        // 최초 진입은 lastKnown 우선(빠름)
+        pos = last;
+      } else {
+        // 새로고침: stream -> current 순서로 짧게 시도 (너무 오래 끌지 않기)
+        pos = await _tryStreamOnce(
+          seconds: 3,
+          acc: LocationAccuracy.best,
+        );
+
+        pos ??= await _tryCurrent(
+          seconds: 6,
+          acc: LocationAccuracy.best,
+        );
+
+        // 마지막으로 lastKnown 한번 더
+        pos ??= await Geolocator.getLastKnownPosition();
+      }
+    }
+
+    if (pos != null) {
+      _lat = pos.latitude;
+      _lon = pos.longitude;
+      _usingDefaultLocation = false;
+    } else {
+      // ✅ 마지막 fallback: 기존 좌표/캐시 좌표 → 그래도 없으면 "기본 좌표" 사용
+      if (_lat != null && _lon != null) {
+        // 기존 좌표 유지 (기본 좌표를 쓰고 있었으면 그대로 유지)
+        setState(() => _locationLabel = '위치 갱신 지연 · 이전 위치');
+      } else if (!ignoreDashboardCache && DashboardCache.lat != null && DashboardCache.lon != null) {
+        _lat = DashboardCache.lat;
+        _lon = DashboardCache.lon;
+        _usingDefaultLocation = false;
+        setState(() => _locationLabel = '위치 갱신 지연 · 캐시 위치');
+      } else {
+        // ✅ 초기 위치를 못 잡으면 기본 좌표로 먼저 표시
+        _lat = kDefaultLat;
+        _lon = kDefaultLon;
+        _usingDefaultLocation = true;
+
+        final reason = locationGateReason ?? '위치 확인 실패';
+        setState(() => _locationLabel = '$kDefaultLocationLabel · $reason');
+      }
+    }
 
     final nowTime = DateTime.now();
     final today = DateTime(nowTime.year, nowTime.month, nowTime.day);
@@ -276,7 +499,8 @@ class _HomePageState extends State<HomePage> {
       label = DashboardCache.locationLabel ?? '현재 위치';
       addr = DashboardCache.airAddr ?? '';
     } else {
-      final placemarks = await placemarkFromCoordinates(_lat!, _lon!);
+      final placemarks = await placemarkFromCoordinates(_lat!, _lon!)
+          .timeout(const Duration(seconds: 2), onTimeout: () => <Placemark>[]);
       adminArea = placemarks.isNotEmpty ? (placemarks.first.administrativeArea ?? '').trim() : '';
       label = placemarks.isNotEmpty ? pickDisplayLabel(placemarks) : '현재 위치';
       addr = placemarks.isNotEmpty ? pickAirAddr(placemarks) : '';
@@ -290,6 +514,10 @@ class _HomePageState extends State<HomePage> {
         administrativeArea: adminArea,
       );
     }
+
+    final uiLabel = (locationGateReason == null)
+        ? label
+        : '$label · $locationGateReason';
 
     setState(() {
       _sunrise = ss.sunrise;
@@ -324,15 +552,19 @@ class _HomePageState extends State<HomePage> {
 
   }
 
-  void _reload() {
+  Future<void> _reload() async {
     setState(() {
-      _checkFuture = _checklistService.fetchEnabledItems();
-      _future = _initLocationAndFetch(
-        forceFreshPosition: true,
-        ignoreDashboardCache: true,
-        ignoreGeocodeCache: true,
-      );
+      _isRefreshing = true;
+      _checkFuture = _fetchChecklistKeepingCache();
     });
+
+    try {
+      await _refreshInBackground(); // 가능하면 await (안정)
+    } catch (_) {
+      // 무시: 기존 캐시 화면 유지
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
   @override
@@ -346,14 +578,12 @@ class _HomePageState extends State<HomePage> {
           future: _future,
           initialData: DashboardCache.data,
           builder: (context, snapshot) {
-            final data = snapshot.data;
+            final data = snapshot.data ?? DashboardCache.data;
 
             // 초기 진입만 로딩 처리
-            final isFirstLoading =
-                snapshot.connectionState != ConnectionState.done && data == null;
+            final isFirstLoading = (data == null);
             // 새로고침/백그라운드 갱신
-            final isRefreshing =
-                snapshot.connectionState != ConnectionState.done && data != null;
+            final isRefreshing = _isRefreshing;
 
             if (snapshot.hasError && data == null) {
               final err = snapshot.error;
@@ -376,6 +606,9 @@ class _HomePageState extends State<HomePage> {
             // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
             final isLoading =
                 snapshot.connectionState != ConnectionState.done || data == null;
+
+            final safeData = snapshot.data ?? DashboardCache.data;
+            final updatedAt = safeData?.updatedAt ?? DateTime.now();
       
             return Stack(
               children: [
@@ -397,129 +630,37 @@ class _HomePageState extends State<HomePage> {
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                             child: _TopBar(
                               locationName: _locationLabel,
-                              updatedAt: data?.updatedAt,
+                              updatedAt: updatedAt,
                               onRefresh: _reload,
                               isRefreshing: isRefreshing,
+                              editMode: _editMode,
+                              onToggleEditMode: _toggleEditMode,
+                              onOpenOrderSheet: _openOrderSheet,
                             ),
                           ),
                         ),
-      
-                        if (!isLoading && data.alerts.isNotEmpty)
+
+                        if (safeData != null && safeData.alerts.isNotEmpty)
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: _AlertBanner(alerts: data.alerts),
+                              child: _AlertBanner(alerts: safeData.alerts),
                             ),
                           ),
       
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                           sliver: SliverList(
-                            delegate: SliverChildListDelegate.fixed([
-
-                              tappableCard(
-                                onTap: _openForecastWeb,
-                                child: _Card(
-                                    child: isFirstLoading
-                                        ? const _Skeleton(height: 170)
-                                        : _WeatherHero(now: data!.now, sunrise: _sunrise, sunset: _sunset)
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              _Card(
-                                child: (isLoading || data == null)
-                                    ? const _Skeleton(height: 110)
-                                    : FutureBuilder<List<ChecklistItem>>(
-                                  future: _checkFuture,
-                                  builder: (context, snap) {
-                                    if (snap.connectionState == ConnectionState.waiting) {
-                                      return const _Skeleton(height: 110);
-                                    }
-                                    if (snap.hasError) {
-                                      return Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Text(
-                                          '체크리스트 로드 실패: ${snap.error}',
-                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                                        ),
-                                      );
-                                    }
-
-                                    final all = snap.data ?? const <ChecklistItem>[];
-
-                                    // ✅ 여기서부터는 data가 null 아님이 보장됨
-                                    final list = all.where((it) => matchesRule(it, data!)).toList()
-                                      ..sort((a, b) => b.priority.compareTo(a.priority));
-
-                                    return _CarryCardFromFirestore(items: list, data: data!);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-      
-                              _Card(
-                                onTap: () => openUrl('https://www.airkorea.or.kr/'),
-                                child: isLoading
-                                    ? const _Skeleton(height: 90)
-                                    : _AirCard(air: data!.air),
-                              ),
-                              const SizedBox(height: 12),
-
-                              tappableCard(
-                                onTap: _openForecastWeb,
-                                child: _Card(
-                                    child: isFirstLoading
-                                        ? const _Skeleton(height: 140)
-                                        : _HourlyStrip(items: data!.hourly)
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              tappableCard(
-                                onTap: _openForecastWeb,
-                                child: _Card(
-                                    child: isFirstLoading
-                                        ? const _Skeleton(height: 140)
-                                        : _WeeklyStrip(items: data!.weekly)
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-      
-      
-                              // 2025-12-23 jgh251223---S
-                              _Card(
-                                child: FutureBuilder<TransitRouteResult>(
-                                  future: _transitFuture,
-                                  builder: (context, transitSnap) {
-                                    final isTransitLoading =
-                                        transitSnap.connectionState != ConnectionState.done;
-                                    if (isTransitLoading) {
-                                      return const _Skeleton(height: 120);
-                                    }
-                                    if (transitSnap.hasError || !transitSnap.hasData) {
-                                      return Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Text(
-                                          '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
-                                          style: const TextStyle(color: Colors.white),
-                                        ),
-                                      );
-                                    }
-                                    return _TransitCard(data: transitSnap.data!);
-                                  },
-                                ),
-                              ),
-                              // 2025-12-23 jgh251223---E
-                              const SizedBox(height: 24),
-      
-                              // ✅ (추가) 내 주변 1km 카드 (하드코딩)
-                              _Card(
-                                child: const _NearbyIssuesCardHardcoded(),
-                              ),
-                              const SizedBox(height: 12),
-      
-                            ]),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final id = _order[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _buildHomeCard(id, data, isFirstLoading),
+                                );
+                              },
+                              childCount: _order.length,
+                            ),
                           ),
                         ),
                       ],
@@ -539,38 +680,94 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.locationName,
     required this.updatedAt,
+    required this.isRefreshing,
+    required this.editMode,
     required this.onRefresh,
-    required this.isRefreshing
+    required this.onToggleEditMode,
+    required this.onOpenOrderSheet,
   });
 
   final String locationName;
-  final DateTime? updatedAt;
-  final VoidCallback onRefresh;
+  final DateTime updatedAt;
   final bool isRefreshing;
+  final bool editMode;
+
+  final VoidCallback onRefresh;
+  final VoidCallback onToggleEditMode;
+  final VoidCallback onOpenOrderSheet;
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white);
-    final timeText = updatedAt == null ? '업데이트 --:--' : '업데이트 ${DateFormat('HH:mm').format(updatedAt!)}';
+    final t = Theme.of(context).textTheme;
+    final hh = updatedAt.hour.toString().padLeft(2, '0');
+    final mm = updatedAt.minute.toString().padLeft(2, '0');
 
-    return Row(
-      children: [
-        const Icon(Icons.place, color: Colors.white, size: 18),
-        const SizedBox(width: 6),
-        Text(locationName, style: textStyle?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(width: 8),
-        Expanded(child: Text(timeText, style: textStyle?.copyWith(color: Colors.white70))),
-        IconButton(
-          onPressed: onRefresh,
-          icon: const Icon(Icons.refresh, color: Colors.white),
-          tooltip: '새로고침',
-        ),
-        if (isRefreshing)
-          const SizedBox(
-            width: 16, height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.location_on, color: Colors.white, size: 18),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        locationName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // ✅ 업데이트 라인에 아이콘 추가
+                Row(
+                  children: [
+                    const Icon(Icons.schedule, color: Colors.white70, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      '업데이트 $hh:$mm',
+                      style: t.bodySmall?.copyWith(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ✅ 우측 버튼들
+          IconButton(
+            tooltip: '카드 순서 편집',
+            onPressed: onOpenOrderSheet, // ✅ B안: 누르면 바로 시트 뜸
+            icon: const Icon(Icons.swap_vert, color: Colors.white),
+          ),
+
+          IconButton(
+            tooltip: '새로고침',
+            onPressed: isRefreshing ? null : onRefresh,
+            icon: isRefreshing
+                ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.refresh, color: Colors.white),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1779,11 +1976,10 @@ class _NearbyIssuesCardHardcoded extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    // ✅ 하드코딩: 나중에 Firestore + 반경 1km로 교체
-    final issues = const [
-      ('역 출구 침수 심함', 7),
-      ('사거리 교통사고 발생', 3),
-      ('인도 결빙 구간 있음', 2),
+    const issues = [
+      _Issue('역 출구 침수 심함', 7),
+      _Issue('사거리 교통사고 발생', 3),
+      _Issue('인도 결빙 구간 있음', 2),
     ];
 
     return Padding(
@@ -1792,33 +1988,42 @@ class _NearbyIssuesCardHardcoded extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('내 주변 1km · 최신 3건',
-              style: t.titleMedium?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              )),
+              style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
-          ...List.generate(issues.length, (i) {
-            final (title, up) = issues[i];
-            return Padding(
+
+          for (int i = 0; i < issues.length; i++)
+            Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                '${i + 1}. $title (확인 $up)',
+                '${i + 1}. ${issues[i].title} (확인 ${issues[i].up})',
                 style: t.bodySmall?.copyWith(color: Colors.white70),
               ),
-            );
-          }),
+            ),
+
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              TextButton(onPressed: () {}, child: const Text('[지도 보기]')),
-              TextButton(onPressed: () {}, child: const Text('[제보]')),
+              TextButton(
+                onPressed: () {},
+                child: const Text('지도 보기'),
+              ),
+              TextButton(
+                onPressed: () {},
+                child: const Text('제보'),
+              ),
             ],
           ),
         ],
       ),
     );
   }
+}
+
+class _Issue {
+  final String title;
+  final int up;
+  const _Issue(this.title, this.up);
 }
 
 class _MiniTempLine extends StatelessWidget {
@@ -1964,3 +2169,83 @@ class _MiniRainEmpty extends StatelessWidget {
     );
   }
 }
+
+class _CardOrderSheet extends StatefulWidget {
+  const _CardOrderSheet({required this.initial});
+  final List<HomeCardId> initial;
+
+  @override
+  State<_CardOrderSheet> createState() => _CardOrderSheetState();
+}
+
+class _CardOrderSheetState extends State<_CardOrderSheet> {
+  late List<HomeCardId> temp;
+
+  @override
+  void initState() {
+    super.initState();
+    temp = [...widget.initial];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 14,
+          bottom: 14 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Text('카드 순서 편집',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('닫기'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, temp),
+                  child: const Text('저장'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 420,
+              child: ReorderableListView(
+                buildDefaultDragHandles: false,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final item = temp.removeAt(oldIndex);
+                    temp.insert(newIndex, item);
+                  });
+                },
+                children: [
+                  for (final id in temp)
+                    ListTile(
+                      key: ValueKey(id.name),
+                      title: Text(HomeCardOrderStore.label(id),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                      trailing: ReorderableDragStartListener(
+                        index: temp.indexOf(id),
+                        child: const Icon(Icons.drag_handle, color: Colors.white70),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
