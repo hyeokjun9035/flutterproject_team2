@@ -26,7 +26,6 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage3 extends StatefulWidget {
-  final String uid;
   final String email;
   final String name;
   final String intro;
@@ -36,7 +35,6 @@ class JoinPage3 extends StatefulWidget {
   const JoinPage3({
     super.key,
     required this.email,
-    required this.uid,
     required this.name,
     required this.intro,
     required this.nickName,
@@ -68,7 +66,7 @@ class _JoinPage3State extends State<JoinPage3>{
             ),
             //이미지 추가
             Padding(
-              padding: const EdgeInsets.fromLTRB(10,0,350,210),
+              padding: const EdgeInsets.fromLTRB(10,0,350,200),
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
             // ✅ 성별 선택 박스
@@ -96,7 +94,6 @@ class _JoinPage3State extends State<JoinPage3>{
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(
-                        uid: widget.uid,
                         email: widget.email,
                         name: widget.name,
                         intro: widget.intro,
