@@ -139,10 +139,10 @@ class _JoinPage2State extends State<JoinPage2>{
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 String imageUrl;
                 if(_profile_image_file != null){
-                  imageUrl = _profile_image_file!.path;
+                  imageUrl = await uploadToStorage(_profile_image_file!);
                 }else{
                   imageUrl = defaultImageUrl; //기본 아바타
                 }
