@@ -91,7 +91,7 @@ class _JoinPage5State extends State<JoinPage5>{
           children: [
             Padding(
                 padding: const EdgeInsets.fromLTRB(100, 0,0,0),
-                child: Image.asset("assets/joinIcon/colorSun.png", width: 30,)
+                child: Image.asset("assets/joinIcon/colorSu n.png", width: 30,)
             ),
             Text("${widget.nickName}님 환영합니다!"),
 
