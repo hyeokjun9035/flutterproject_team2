@@ -31,14 +31,14 @@ class UserMypage extends StatelessWidget {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-        
-            if (!snapshot.hasData || !snapshot.data!.exists) {
+
+            if (!snapshot.hasData  || !snapshot.data!.exists) {
               return const Center(child: Text("사용자 정보를 찾을 수 없습니다."));
             }
-        
+
             var userData = snapshot.data!.data() as Map<String, dynamic>;
-        
-        
+
+
             return Column(
               children: [
 
@@ -106,13 +106,13 @@ class UserMypage extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        userData['nickname'] ?? "닉네임 없음",
+                        userData['nickName'] ?? "닉네임 없음",
                         style: const TextStyle(fontSize: 16, color: Colors.black),
                       ),
                     ],
                   ),
                 ),
-        
+
                 // 하단 리스트 영역
                 Expanded(
                   child: ListView(
