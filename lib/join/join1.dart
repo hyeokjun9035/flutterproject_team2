@@ -39,10 +39,10 @@ class JoinPage1 extends StatefulWidget {
   final String checkPwd;
 
   const JoinPage1({
-  super.key,
-  required this.email,
-  required this.pwd,
-  required this.checkPwd,
+    super.key,
+    required this.email,
+    required this.pwd,
+    required this.checkPwd,
 
   });
 
@@ -68,32 +68,32 @@ class _JoinPage1State extends State<JoinPage1> {
 
     try {
       //firebase auth를 사용하여 계정 생성
-        UserCredential userCredential = await _auth
-            .createUserWithEmailAndPassword(
-         email: _email.text.trim(),
-         password: _pwd.text.trim(),
-        );
-          //인증 성공 시 발급된 UID를 사용하여 Firestore에 나머지 정보 저장
-          String uid = userCredential.user!.uid; //고유 UID획득
+      UserCredential userCredential = await _auth
+          .createUserWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _pwd.text.trim(),
+      );
+      //인증 성공 시 발급된 UID를 사용하여 Firestore에 나머지 정보 저장
+      String uid = userCredential.user!.uid; //고유 UID획득
 
 
-         return true;
-       } on FirebaseAuthException catch (e) {
-          String message;
-          if (e.code == 'weak-password') {
-              message = '비밀번호는 6자리 이상이어야 합니다.';
-          } else if (e.code == 'email-already-in-use') {
-              message = '이미 사용중인 이메일입니다.';
-          } else if (e.code == 'invalid-email') {
-              message = '유효하지 않은 이메일 형식입니다';
-          } else {
-             message = '회원가입 중 오류가 발생했습니다: ${e.message}';
+      return true;
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'weak-password') {
+        message = '비밀번호는 6자리 이상이어야 합니다.';
+      } else if (e.code == 'email-already-in-use') {
+        message = '이미 사용중인 이메일입니다.';
+      } else if (e.code == 'invalid-email') {
+        message = '유효하지 않은 이메일 형식입니다';
+      } else {
+        message = '회원가입 중 오류가 발생했습니다: ${e.message}';
       }
-           _showMessage(message);
-           return false;
-      } catch (e) {
-            _showMessage("오류발생");
-            return false;
+      _showMessage(message);
+      return false;
+    } catch (e) {
+      _showMessage("오류발생");
+      return false;
     }
   }
 
@@ -123,11 +123,11 @@ class _JoinPage1State extends State<JoinPage1> {
                 padding: const EdgeInsets.fromLTRB(0, 0, 380, 0),
                 child: Image.asset("assets/joinIcon/sun.png", width: 30,)
             ),
-           //이미지 추가
-           Padding(
-               padding: const EdgeInsets.fromLTRB(10,0,350,200),
-             child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
-           ),
+            //이미지 추가
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
+            ),
 
 
 
@@ -164,32 +164,36 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
 
-          ElevatedButton(
+            ElevatedButton(
               onPressed: () async {
                 bool success = await _join();
                 if (success) {
-                  Navigator.push(
+                  String? uid = _auth.currentUser?.uid;
+                  if (mounted && uid != null) {
+                    Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) =>
                           JoinPage2(
-                            email: _email.text.trim()
-                          ))
-                  );
-              }
+                            email: _email.text.trim(),
+                            uid: uid,
+                          ),
+                      ),
+                    );
+                  }
+                }
               },
-                child: Text("다음"),
-                )
+              child: Text("다음"),
+            )
 
 
 
 
           ],
-          
+
         ),
       ),
     );
   }
 }
-
 
 
