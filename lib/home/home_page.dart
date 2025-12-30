@@ -21,6 +21,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../carry/checklist_service.dart';
+import '../data/user_settings_store.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
@@ -39,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   // 2025-12-23 jgh251223---S
   late final TransitService _transitService;
   late final ChecklistService _checklistService;
+  late final UserSettingsStore _settingsStore;
   late Future<List<ChecklistItem>> _checkFuture;
   Future<TransitRouteResult>? _transitFuture;
   // 2025-12-23 jgh251223---E
@@ -211,7 +213,8 @@ class _HomePageState extends State<HomePage> {
         Navigator.pushReplacementNamed(context, '/login');
       }
     });
-    _loadOrder();
+    _settingsStore = UserSettingsStore();
+    _loadOrderFromDb();
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _fetchChecklistKeepingCache();
@@ -239,6 +242,13 @@ class _HomePageState extends State<HomePage> {
     } else {
       _future = _initLocationAndFetch();
     }
+  }
+
+  Future<void> _loadOrderFromDb() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final loaded = await _settingsStore.loadHomeCardOrder(uid!);
+    if (!mounted) return;
+    setState(() => _order = loaded);
   }
 
   Future<void> _refreshInBackground() async {
