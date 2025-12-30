@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'notices/notice_create_page.dart';
-import 'notices/notice_list_page.dart';
+import 'AdminNoticeWritePage.dart';
 
 
 // void main() {
@@ -46,16 +45,6 @@ class _AdminHomePageState extends State<AdminHomePage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            tooltip: '공지 관리',
-            icon: const Icon(Icons.campaign),
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NoticeListPage()),
-              );
-            },
-          ),
           IconButton(
             tooltip: '새로고침',
             onPressed: () async {
@@ -273,7 +262,6 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         _sectionTitle('빠른 작업'),
         const SizedBox(height: 10),
 
-        // 빠른 작업
         Row(
           children: [
             Expanded(
@@ -283,37 +271,26 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
                 onTap: () async {
                   await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const NoticeCreatePage()),
+                    MaterialPageRoute(builder: (_) => const AdminNoticeWritePage()),
                   );
                 },
               ),
+
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _QuickActionButton(
-                icon: Icons.campaign_outlined,
-                title: '공지 관리',
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NoticeListPage()),
+                icon: Icons.shield_outlined,
+                title: '신고 처리',
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('신고 처리 화면 연결(예정)')),
                   );
                 },
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _QuickActionButton(
-          icon: Icons.shield_outlined,
-          title: '신고 처리',
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('신고 처리 화면 연결(예정)')),
-            );
-          },
-        ),
-
 
         const SizedBox(height: 18),
         _sectionTitle('최근 처리 로그'),
