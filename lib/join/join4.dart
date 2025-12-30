@@ -71,7 +71,7 @@ class _JoinPage4State extends State<JoinPage4>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 250),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 200),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
 
