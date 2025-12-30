@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" /><!--jgh251230갤러리접근용-->
+
+
     <application
         android:label="flutter_project"
         android:name="${applicationName}"

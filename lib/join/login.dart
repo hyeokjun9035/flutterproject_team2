@@ -24,15 +24,29 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
+    //jgh251230 관리자 로그인 끌어올림---S
+    if (email == "admin" && password == "admin") {
+      _showMessage("관리자 로그인 성공!");
+      // mounted 상태 확인
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        // AdminHomePage로 바로 이동
+        MaterialPageRoute(builder: (_) => const AdminHomePage()),
+      );
+      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
+    }
+    //jgh251230 관리자 로그인 끌어올림---E
+    
     final snapshot = await fs
         .collection("users")
         .where("email", isEqualTo: email)
         .get();
 
-    if (snapshot.docs.isEmpty) {
-      _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
-      return;
-    }
+    // if (snapshot.docs.isEmpty) {
+    //   _showMessage("해당 이메일이 존재하지 않습니다"); //사실상 아이디
+    //   return;
+    // }
 
     final userDoc = snapshot.docs.first;
 
@@ -48,17 +62,17 @@ class _LoginPageState extends State<LoginPage> {
     // =========================================================
     // 1. 하드코딩된 관리자 계정 체크 로직 추가
     // =========================================================
-    if (email == "admin" && password == "admin") {
-      _showMessage("관리자 로그인 성공!");
-      // mounted 상태 확인
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        // AdminHomePage로 바로 이동
-        MaterialPageRoute(builder: (_) => const AdminHomePage()),
-      );
-      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
-    }
+    // if (email == "admin" && password == "admin") {
+    //   _showMessage("관리자 로그인 성공!");
+    //   // mounted 상태 확인
+    //   if (!mounted) return;
+    //   Navigator.pushReplacement(
+    //     context,
+    //     // AdminHomePage로 바로 이동
+    //     MaterialPageRoute(builder: (_) => const AdminHomePage()),
+    //   );
+    //   return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
+    // }
     ///////////////////////////////////////////////////////////
 
     if (userDoc["password"] == password ) {
