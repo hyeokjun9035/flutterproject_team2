@@ -26,6 +26,7 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage5 extends StatefulWidget {
+  final String uid;
   final String email;
   final String intro;
   final String profile_image_url;
@@ -38,6 +39,7 @@ class JoinPage5 extends StatefulWidget {
 
   const JoinPage5({
     super.key,
+    required this.uid,
     required this.email,
     required this.intro,
     required this.profile_image_url,
@@ -60,7 +62,12 @@ class _JoinPage5State extends State<JoinPage5>{
 
 
   Future<void> JoinPage5() async{
-    await fs.collection("users").add({
+    //add >> doc으로 변경
+    //add는 자동 uid 값 생성 doc은 기존의 값을 가져오는 방식
+    //저희 authentcation에서 uid를 먼저 생성하고
+    //users 테이블에 받은 uid를 넣는 식이라서 doc을 사용했음
+    await fs.collection("users").doc(widget.uid).set({
+      "uid": widget.uid,
       "email": widget.email,
       "intro": widget.intro,
       "profile_image_url": widget.profile_image_url,
