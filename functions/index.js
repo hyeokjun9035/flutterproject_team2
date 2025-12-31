@@ -735,3 +735,38 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     throw new HttpsError("internal", `getDashboard failed: ${String(e?.message ?? e)}`);
   }
 });
+
+const admin = require("firebase-admin");
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+
+// Firestore의 community 컬렉션에 새 문서가 생성될 때 실행 (v2 방식)
+exports.sendPostNotification = onDocumentCreated({
+  document: "community/{postId}",
+  region: "asia-northeast3"
+}, async (event) => {
+  const snapshot = event.data;
+  if (!snapshot) return;
+
+  const postData = snapshot.data();
+  const nickname = postData.user_nickname || "익명";
+  const content = postData.content || "새로운 제보가 올라왔습니다.";
+
+  const message = {
+    notification: {
+      title: ` 새로운 교통 제보: ${nickname}님`,
+      body: content.length > 30 ? content.substring(0, 30) + "..." : content,
+    },
+    topic: "community_topic",
+  };
+
+  try {
+    await admin.messaging().send(message);
+    console.log("알림 전송 완료");
+  } catch (error) {
+    console.error("알림 전송 오류:", error);
+  }
+});
