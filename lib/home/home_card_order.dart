@@ -36,7 +36,7 @@ class HomeCardOrderStore {
       case HomeCardId.weekly:
         return '주간';
       case HomeCardId.transit:
-        return '출근/즐겨찾기 루트';
+        return '즐겨찾기 루트';
       case HomeCardId.nearbyIssues:
         return '내 주변 이슈';
     }

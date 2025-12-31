@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'admin_board_title/title_list_page.dart';
-import 'notices/adminPostDetailPage.dart';
 import 'notices/notice_create_page.dart';
-
+import 'notices/notice_list_page.dart';
 
 
 // void main() {
@@ -28,8 +26,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
     _AdminPostListPage(),
     const _AdminReportPage(),
     // const _AdminSettingPage(),
-    // _AdminSettingPage(onLogout: _logout),
-    const _AdminUsersPage(), // ✅ 설정 대신 사용자들
+    _AdminSettingPage(onLogout: _logout),
   ];
 
   void _logout() {
@@ -55,7 +52,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const TitleListPage()),
+                MaterialPageRoute(builder: (_) => const NoticeListPage()),
               );
             },
           ),
@@ -136,13 +133,9 @@ class _AdminHomePageState extends State<AdminHomePage> {
             icon: Icon(Icons.report_gmailerrorred_outlined),
             label: '신고',
           ),
-          // BottomNavigationBarItem(
-          //   icon: Icon(Icons.settings_outlined),
-          //   label: '설정',
-          // ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline), // ✅ 아이콘도 사용자로
-            label: '사용자들',
+            icon: Icon(Icons.settings_outlined),
+            label: '설정',
           ),
         ],
       ),
@@ -196,14 +189,14 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
 
       final qs = await FirebaseFirestore.instance
           .collection('community')
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('createdAt', isLessThan: Timestamp.fromDate(startOfTomorrow))
-          .count() // ✅ 서버에서 count만
+      // .where('board_type', isEqualTo: '자유게시판')
+          .where('cdate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('cdate', isLessThan: Timestamp.fromDate(startOfTomorrow))
           .get();
 
       if (!mounted) return;
       setState(() {
-        todayPostCount = qs.count ?? 0; // ✅ 오늘 글 개수
+        todayPostCount = qs.size; // ✅ 오늘 글 개수
         loading = false;
       });
     } catch (e) {
@@ -215,7 +208,6 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
       });
     }
   }
-
 
   Future<void> _loadTotalUserCount() async {
     try {
@@ -304,7 +296,7 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
                 onTap: () async {
                   await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const TitleListPage()),
+                    MaterialPageRoute(builder: (_) => const NoticeListPage()),
                   );
                 },
               ),
@@ -420,32 +412,18 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
     return FirebaseFirestore.instance
         .collection('community')
     // .where('status', isEqualTo: 'active')
-        .orderBy('createdAt', descending: true)
-    //     .orderBy('cdate', descending: true)
+        .orderBy('cdate', descending: true)
         .limit(50)
         .snapshots();
   }
 
   String _fmtTime(dynamic ts) {
     if (ts is Timestamp) {
-      final dt = ts.toDate().toLocal(); // ✅ 로컬시간(KST)로 변환
+      final dt = ts.toDate();
       return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
     return '-';
   }
-
-  String fmtKstFixed(dynamic ts) {
-    if (ts is! Timestamp) return '-';
-
-    // ✅ Timestamp는 본질적으로 UTC 기준
-    final dtKst = DateTime
-        .fromMillisecondsSinceEpoch(ts.millisecondsSinceEpoch, isUtc: true)
-        .add(const Duration(hours: 9)); // KST 고정
-
-    return '${dtKst.year}-${dtKst.month.toString().padLeft(2,'0')}-${dtKst.day.toString().padLeft(2,'0')} '
-        '${dtKst.hour.toString().padLeft(2,'0')}:${dtKst.minute.toString().padLeft(2,'0')}';
-  }
-
 
   Future<void> _hidePost(String docId) async {
     final ok = await showDialog<bool>(
@@ -526,11 +504,9 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
                 : docs.where((d) {
               final data = d.data();
               final title = (data['title'] ?? '').toString().toLowerCase();
-              // final content = (data['content'] ?? '').toString().toLowerCase();
-              final plain = (data['plain'] ?? data['content'] ?? '').toString().toLowerCase();
+              final content = (data['content'] ?? '').toString().toLowerCase();
               final key = _keyword.toLowerCase();
-              // return title.contains(key) || content.contains(key);
-              return title.contains(key) || plain.contains(key);
+              return title.contains(key) || content.contains(key);
             }).toList();
 
             if (filtered.isEmpty) {
@@ -544,59 +520,59 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
               children: filtered.map((doc) {
                 final data = doc.data();
 
-              final title = (data['title'] ?? '(제목 없음)').toString();
+                final boardType = (data['board_type'] ?? '미분류').toString();
+                final isNotice = (data['is_notice'] == true);
+                final title = (data['title'] ?? '(제목 없음)').toString();
+                final userId = (data['user_id'] ?? 'unknown').toString();
+                final cdate = data['cdate'];
+                final reportCount = (data['report_count'] ?? 0);
+                final imageUrls = data['image_urls'];
+                final imgCount = (imageUrls is List) ? imageUrls.length : 0;
 
-// category (new) or board_type (old)
-              final category = (data['category'] ?? data['board_type'] ?? '미분류').toString();
-
-// writer (new: author.nickName) or (old: nickName/user_id)
-              String writer = 'unknown';
-              final author = data['author'];
-              if (author is Map) {
-                writer = (author['nickName'] ?? author['name'] ?? author['uid'] ?? 'unknown').toString();
-              } else {
-                writer = (data['nickName'] ?? data['user_id'] ?? 'unknown').toString();
-              }
-
-// time (new: createdAt) or (old: cdate)
-              final createdAt = data['createdAt'] ?? data['cdate'];
-
-// images (new: images) or (old: image_urls)
-              final imagesRaw = data['images'] ?? data['image_urls'];
-              final imgCount = (imagesRaw is List) ? imagesRaw.length : 0;
-
-// report count (old schema only, 없으면 0)
-              final reportCount = (data['report_count'] ?? 0);
-
-// notice icon 판단
-              final isNotice = category == '공지사항';
-
-              return Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Icon(isNotice ? Icons.campaign : Icons.article),
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      child: Icon(
+                        isNotice || boardType == '공지사항'
+                            ? Icons.campaign
+                            : Icons.article,
+                      ),
+                    ),
+                    title: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '$boardType · $userId · ${_fmtTime(cdate)} · 이미지 $imgCount · 신고 $reportCount',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (v) async {
+                        if (v == '숨김') {
+                          await _hidePost(doc.id);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('$v (예정)')),
+                          );
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: '보기', child: Text('보기')),
+                        PopupMenuItem(value: '숨김', child: Text('숨김')),
+                      ],
+                    ),
+                    onTap: () {
+                      // TODO: 상세보기 화면 연결(원하면 만들어줄게)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('문서ID: ${doc.id}')),
+                      );
+                    },
                   ),
-                  title: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    '$category · $writer · ${fmtKstFixed(createdAt)} · 이미지 $imgCount · 신고 $reportCount',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => AdminPostDetailPage(docId: doc.id)),
-                    );
-                  },
-                ),
-              );
-
+                );
               }).toList(),
             );
           },
@@ -935,112 +911,6 @@ class _SearchBar extends StatelessWidget {
         filled: true,
         fillColor: Colors.black.withOpacity(0.04),
       ),
-    );
-  }
-}
-
-
-class _AdminUsersPage extends StatefulWidget {
-  const _AdminUsersPage();
-
-  @override
-  State<_AdminUsersPage> createState() => _AdminUsersPageState();
-}
-
-class _AdminUsersPageState extends State<_AdminUsersPage> {
-  String _keyword = '';
-
-  Stream<QuerySnapshot<Map<String, dynamic>>> _streamUsers() {
-    return FirebaseFirestore.instance
-        .collection('users')
-        .orderBy('name') // ✅ name 없으면 nickName 등으로 바꿔도 됨
-        .limit(100)
-        .snapshots();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: [
-        _sectionTitle('사용자들'),
-        const SizedBox(height: 10),
-        _SearchBar(
-          hintText: '이름/닉네임/이메일 검색',
-          onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase()),
-        ),
-        const SizedBox(height: 12),
-
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: _streamUsers(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (snapshot.hasError) {
-              return const Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: Text('사용자 목록 로딩 에러 (콘솔 확인)'),
-              );
-            }
-
-            final docs = snapshot.data?.docs ?? [];
-
-            final filtered = _keyword.isEmpty
-                ? docs
-                : docs.where((d) {
-              final data = d.data();
-              final name = (data['name'] ?? '').toString().toLowerCase();
-              final nick = (data['nickName'] ?? '').toString().toLowerCase();
-              final email = (data['email'] ?? '').toString().toLowerCase();
-              return name.contains(_keyword) ||
-                  nick.contains(_keyword) ||
-                  email.contains(_keyword);
-            }).toList();
-
-            if (filtered.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.only(top: 30),
-                child: Center(child: Text('사용자가 없습니다')),
-              );
-            }
-
-            return Column(
-              children: filtered.map((doc) {
-                final data = doc.data();
-                final name = (data['name'] ?? '(이름없음)').toString();
-                final nick = (data['nickName'] ?? '').toString();
-                final email = (data['email'] ?? '').toString();
-                final phone = (data['phone'] ?? '').toString();
-
-                return Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.person)),
-                    title: Text(nick.isNotEmpty ? '$name ($nick)' : name,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                      [email, phone].where((v) => v.isNotEmpty).join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      // TODO: 사용자 상세 화면 연결
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('user docId: ${doc.id}')),
-                      );
-                    },
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ],
     );
   }
 }

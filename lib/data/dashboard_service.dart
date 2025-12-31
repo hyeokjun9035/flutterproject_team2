@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/cupertino.dart';
 import 'models.dart';
 import 'dart:io';
 
@@ -130,7 +131,6 @@ class DashboardService {
     });
 
     final data = Map<String, dynamic>.from(res.data as Map);
-
     // === 아래 파싱 로직은 기존과 동일 ===
     final nowItems = (data['weatherNow'] ?? data['weather'] ?? []) as List;
     final nowMap = <String, String>{};

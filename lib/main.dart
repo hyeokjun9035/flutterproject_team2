@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_project/mypage/locationSettings.dart';
 // import 'package:flutter_project/admin/admin_home_page.dart';
 import 'firebase_options.dart';
 import 'home/home_page.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_project/community/Community.dart';
 import 'package:flutter_project/mypage/userMypage.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 
 Future<void> main() async {
@@ -25,9 +27,28 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  await messaging.subscribeToTopic('community_topic');
+  print('✅ 알람 설정 완료!');
+
+  bool isDebugMode = true; // 로컬 테스트 중이면 true, 실제 배포 서버 테스트면 false
+
   // ✅ Functions 에뮬레이터로 연결 (개발할 때만)
-  FirebaseFunctions.instanceFor(region: 'asia-northeast3')
-      .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
+  if (isDebugMode) {
+    // 로컬 에뮬레이터 연결 (날씨 가져오기 등 기존 기능용)
+    FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+        .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
+    print("⚠️ 로컬 에뮬레이터 모드로 동작 중");
+  } else {
+    print("🚀 실제 Firebase 서버 모드로 동작 중");
+  }
 
   runApp(const MyApp());
 }
@@ -51,7 +72,6 @@ class MyApp extends StatelessWidget {
         Locale('ko'),
       ],
 
-
       // ✅ 라우트는 유지하되, 시작은 로그인으로
       initialRoute: '/login',
       routes: {
@@ -59,6 +79,7 @@ class MyApp extends StatelessWidget {
         '/home': (_) => const HomePage(),
         '/community': (context) => const CommunityPage(),
         '/mypage': (context) => const UserMypage(),
+        '/locationSettings': (context) => const LocationSettings(),
         // '/notice': (context) => const NoticePage(),
       },
 

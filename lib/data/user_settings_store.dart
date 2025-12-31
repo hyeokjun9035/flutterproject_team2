@@ -66,4 +66,21 @@ class UserSettingsStore {
       return _decode(raw);
     });
   }
+
+  static const String _fieldSelectedFavoriteId = 'selectedFavoriteId';
+
+  Future<String?> loadSelectedFavoriteId(String uid) async {
+    final snap = await _db.collection('user_settings').doc(uid).get();
+    final data = snap.data();
+    final v = data?[_fieldSelectedFavoriteId];
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
+  Future<void> saveSelectedFavoriteId(String uid, String? favoriteId) async {
+    await _db.collection('user_settings').doc(uid).set({
+      _fieldSelectedFavoriteId: favoriteId, // null이면 필드가 null로 저장됨(원하면 FieldValue.delete로 바꿔도 됨)
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
 }

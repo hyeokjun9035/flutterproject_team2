@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_project/data/favorite_route.dart';
 import 'package:flutter_project/home/ui_helpers.dart';
 import 'package:flutter_project/utils/launcher.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +14,7 @@ import '../carry/checklist_models.dart';
 import '../carry/checklist_rules.dart';
 import '../data/dashboard_service.dart';
 import '../data/models.dart';
+import '../data/bus_arrival_service.dart';
 // 2025-12-23 jgh251223---S
 import '../data/transit_service.dart';
 // 2025-12-23 jgh251223---E
@@ -37,14 +39,18 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final DashboardService _service;
-  // 2025-12-23 jgh251223---S
-  late final TransitService _transitService;
   late final ChecklistService _checklistService;
   late final UserSettingsStore _settingsStore;
   late Future<List<ChecklistItem>> _checkFuture;
-  Future<TransitRouteResult>? _transitFuture;
-  // 2025-12-23 jgh251223---E
+  late final String _tmapApiKey;
+  late final BusArrivalService _busArrivalService;
+  StreamSubscription? _favSub;
+  List<FavoriteRoute> _favorites = [];
+  FavoriteRoute? _selectedFavorite;
+  late Future<TransitRouteResult> _transitFuture;
   Future<DashboardData>? _future;
+  String? _savedFavoriteId;
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
   Future<void> _openForecastWeb() async {
     if (_lat == null || _lon == null) return;
@@ -54,6 +60,206 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _openAirKoreaWeb() async {
     await openExternal(airKoreaMyNeighborhoodUrl());
+  }
+
+  void _listenFavoritesAndBindTransit() {
+    final uid = _uid;
+    if (uid == null) return;
+
+    _favSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('favorites')
+        .orderBy('cdate', descending: true)
+        .snapshots()
+        .listen((snap) {
+      final list = snap.docs.map((d) => FavoriteRoute.fromDoc(d.id, d.data())).toList();
+
+      FavoriteRoute? nextSelected;
+
+      if (list.isEmpty) {
+        nextSelected = null;
+        _savedFavoriteId = null;
+      } else {
+        // 1) 현재 선택이 살아있으면 유지
+        final currentId = _selectedFavorite?.id;
+        if (currentId != null && list.any((e) => e.id == currentId)) {
+          nextSelected = list.firstWhere((e) => e.id == currentId);
+        }
+        // 2) 없으면 저장된 id로 선택
+        else if (_savedFavoriteId != null &&
+            list.any((e) => e.id == _savedFavoriteId)) {
+          nextSelected = list.firstWhere((e) => e.id == _savedFavoriteId);
+        }
+        // 3) 그것도 없으면 최신 1개
+        else {
+          nextSelected = list.first;
+        }
+      }
+
+      setState(() {
+        _favorites = list;
+        _selectedFavorite = nextSelected;
+        _transitFuture = _buildTransitFutureFromSelectedFavorite();
+      });
+
+      final decidedId = nextSelected?.id;
+      if (decidedId != _savedFavoriteId) {
+        _savedFavoriteId = decidedId;
+        _settingsStore.saveSelectedFavoriteId(uid, decidedId);
+      }
+    });
+  }
+
+  Future<void> _initFavoritesBinding() async {
+    final uid = _uid;
+    if (uid == null) return;
+    _savedFavoriteId = await _settingsStore.loadSelectedFavoriteId(uid);
+    _listenFavoritesAndBindTransit(); // 기존 함수
+  }
+
+  Future<TransitRouteResult> _buildTransitFutureFromSelectedFavorite() {
+    final fav = _selectedFavorite;
+    if (fav == null) {
+      return Future.error('즐겨찾기 루트를 먼저 추가해주세요.');
+    }
+
+    final dest = TransitDestination(
+      name: fav.end.label.isEmpty ? fav.title : fav.end.label,
+      lat: fav.end.lat,
+      lon: fav.end.lng,
+    );
+
+    final service = TransitService(
+      apiKey: _tmapApiKey,
+      destination: dest,
+    );
+
+    return service.fetchRoute(
+      startLat: fav.start.lat,
+      startLon: fav.start.lng,
+      startName: fav.start.label.isEmpty ? fav.title : fav.start.label,
+      count: 10,
+    );
+  }
+
+  Future<void> _pickFavorite() async {
+    if (_favorites.isEmpty) return;
+
+    final picked = await showModalBottomSheet<FavoriteRoute>(
+      context: context,
+      builder: (_) => ListView(
+        children: _favorites.map((f) {
+          return ListTile(
+            title: Text(f.title),
+            subtitle: Text(f.subtitle),
+            onTap: () => Navigator.pop(context, f),
+          );
+        }).toList(),
+      ),
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _selectedFavorite = picked;
+      _transitFuture = _buildTransitFutureFromSelectedFavorite();
+    });
+
+    _savedFavoriteId = picked.id;
+    final uid = _uid;
+    if (uid == null) return;
+    await _settingsStore.saveSelectedFavoriteId(uid, picked.id);
+  }
+
+  Future<void> _goToLocationSettings() async {
+    // ✅ 너 프로젝트의 실제 route name으로 바꿔줘
+    await Navigator.pushNamed(context, '/locationSettings');
+    // 돌아오면 favorites stream이 갱신되면서 _transitFuture도 자동 갱신됨
+  }
+
+  Future<void> _deleteSelectedFavorite() async {
+    final fav = _selectedFavorite;
+    if (fav == null) return;
+    final uid = _uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('favorites')
+        .doc(fav.id)
+        .delete();
+  }
+
+  Future<void> _openFavoriteActionsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+
+              // ✅ 즐겨찾기 변경(있을 때만)
+              if (_favorites.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz, color: Colors.white),
+                  title: const Text('즐겨찾기 변경', style: TextStyle(color: Colors.white)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _pickFavorite();
+                  },
+                ),
+
+              // ✅ 즐겨찾기 추가
+              ListTile(
+                leading: const Icon(Icons.add, color: Colors.white),
+                title: const Text('즐겨찾기 추가', style: TextStyle(color: Colors.white)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _goToLocationSettings();
+                },
+              ),
+
+              // ✅ 즐겨찾기 관리(마이페이지/설정 화면)
+              ListTile(
+                leading: const Icon(Icons.settings, color: Colors.white),
+                title: const Text('즐겨찾기 관리', style: TextStyle(color: Colors.white)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _goToLocationSettings();
+                },
+              ),
+
+              // ✅ 선택된 즐겨찾기 삭제(있을 때만)
+              if (_selectedFavorite != null)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  title: const Text('선택된 즐겨찾기 삭제', style: TextStyle(color: Colors.redAccent)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _deleteSelectedFavorite();
+                  },
+                ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _favSub?.cancel();
+    super.dispose();
   }
 
   static const double kDefaultLat = 37.5665; // 서울시청
@@ -73,17 +279,6 @@ class _HomePageState extends State<HomePage> {
   List<HomeCardId> _order = [...HomeCardOrderStore.defaultOrder];
   List<ChecklistItem> _lastChecklist = const [];
   bool _isRefreshing = false;
-
-  Widget tappableCard({required Widget child, required VoidCallback onTap}) {
-    return IgnorePointer(
-      ignoring: _editMode,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: child,
-      ),
-    );
-  }
 
   Widget _buildHomeCard(HomeCardId id, DashboardData? data, bool isFirstLoading) {
     switch (id) {
@@ -156,25 +351,130 @@ class _HomePageState extends State<HomePage> {
         return _Card(
           child: isFirstLoading
               ? const _Skeleton(height: 130)
-              : FutureBuilder<TransitRouteResult>(
-            future: _transitFuture,
-            builder: (context, transitSnap) {
-              final isTransitLoading =
-                  transitSnap.connectionState != ConnectionState.done;
-              if (isTransitLoading) {
-                return const _Skeleton(height: 120);
-              }
-              if (transitSnap.hasError || !transitSnap.hasData) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                );
-              }
-              return _TransitCard(data: transitSnap.data!);
-            },
+              : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ✅ [추가 1] 즐겨찾기 선택 헤더 (제목/출발→도착 + 변경 버튼)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 왼쪽 텍스트
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _selectedFavorite == null
+                                ? '즐겨찾기 루트'
+                                : '즐겨찾기 루트 (${_selectedFavorite!.title})',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _selectedFavorite?.subtitle ?? '즐겨찾기를 추가해 루트를 만들어보세요',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    // ✅ favorites가 있으면 '변경' -> _pickFavorite
+                    // ✅ 없으면 '추가' -> locationSettings로 이동
+                    if (_favorites.isEmpty)
+                      ElevatedButton(
+                        onPressed: _goToLocationSettings,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF1976D2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          elevation: 0,
+                        ),
+                        child: const Text('추가'),
+                      )
+                    else
+                      OutlinedButton(
+                        onPressed: _pickFavorite,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withOpacity(0.45)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        child: const Text('변경'),
+                      ),
+                  ],
+                ),
+              ),
+
+              // ✅ divider 느낌(선택)
+              Container(
+                height: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                color: Colors.white.withOpacity(0.10),
+              ),
+
+              // ✅ 기존 FutureBuilder 그대로
+              FutureBuilder<TransitRouteResult>(
+                future: _transitFuture,
+                builder: (context, transitSnap) {
+                  final isTransitLoading =
+                      transitSnap.connectionState != ConnectionState.done;
+                  if (isTransitLoading) {
+                    return const _Skeleton(height: 120);
+                  }
+                  if (transitSnap.hasError || !transitSnap.hasData) {
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '교통 정보를 불러오지 못했습니다.\n${transitSnap.error}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 10),
+                          // ✅ 에러 상태에서도 즐겨찾기 관리/추가로 바로 이동 가능하게
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.settings, size: 16),
+                            label: const Text('즐겨찾기 관리'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(color: Colors.white.withOpacity(0.45)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: _goToLocationSettings,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return _TransitCard(data: transitSnap.data!, onFavoritePressed: _openFavoriteActionsSheet, busArrivalService: _busArrivalService);
+                },
+              ),
+            ],
           ),
         );
 
@@ -206,7 +506,8 @@ class _HomePageState extends State<HomePage> {
     _settingsStore = UserSettingsStore();
     _loadOrderFromDb();
 
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _uid;
+    if (uid == null) return;
     debugPrint("✅ HomePage currentUser uid = $uid");
 
     // 로그인 필수로 막는다면 (추천)
@@ -219,13 +520,19 @@ class _HomePageState extends State<HomePage> {
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _fetchChecklistKeepingCache();
-    // 2025-12-23 jgh251223---S
-    final apiKey = dotenv.env['TMAP_API_KEY'] ??
+    _tmapApiKey = dotenv.env['TMAP_API_KEY'] ??
         const String.fromEnvironment('TMAP_API_KEY', defaultValue: '');
-    _transitService = TransitService(
-      apiKey: apiKey,
-      destination: _defaultDestination,
-    );
+
+    // ✅ transitFuture 초기값(즐겨찾기 없을 때 메시지)
+    _transitFuture = Future.error('즐겨찾기 루트를 먼저 추가해주세요.');
+
+    // ✅ 즐겨찾기 구독 시작 (B안: start->end)
+    _initFavoritesBinding();
+
+    final rawKey = dotenv.env['TAGO_SERVICE_KEY'] ?? '';
+    final tagoKey = Uri.decodeFull(rawKey);
+
+    _busArrivalService = BusArrivalService(serviceKey: tagoKey);
 
     // 2025-12-23 jgh251223---E
     if (DashboardCache.isFresh()) {
@@ -234,11 +541,7 @@ class _HomePageState extends State<HomePage> {
       _lon = DashboardCache.lon;
       _locationLabel = DashboardCache.locationLabel ?? _locationLabel;
       _airAddr = DashboardCache.airAddr ?? _airAddr;
-
-      // ✅ 대시보드 즉시 표시
       _future = Future.value(DashboardCache.data!);
-
-      // ✅ 뒤에서 조용히 최신화(선택: 체감 좋아짐)
       _refreshInBackground();
     } else {
       _future = _initLocationAndFetch();
@@ -260,8 +563,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadOrderFromDb() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    final loaded = await _settingsStore.loadHomeCardOrder(uid!);
+    final uid = _uid;
+    if (uid == null) return;
+    final loaded = await _settingsStore.loadHomeCardOrder(uid);
     if (!mounted) return;
     setState(() => _order = loaded);
   }
@@ -289,9 +593,9 @@ class _HomePageState extends State<HomePage> {
     if (result == null) return;
 
     setState(() => _order = result);
-
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    await _settingsStore.saveHomeCardOrder(uid!, _order);
+    final uid = _uid;
+    if (uid == null) return;
+    await _settingsStore.saveHomeCardOrder(uid, _order);
 
     // await HomeCardOrderStore.save(_order);
 
@@ -534,10 +838,6 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    final uiLabel = (locationGateReason == null)
-        ? label
-        : '$label · $locationGateReason';
-
     setState(() {
       _sunrise = ss.sunrise;
       _sunset = ss.sunset;
@@ -545,14 +845,6 @@ class _HomePageState extends State<HomePage> {
       _locationLabel = label;
       _airAddr = addr;
       _adminArea = adminArea;
-      // _locationName = [admin, locality, _umdName].where((e) => e.isNotEmpty).join(' ');
-      // 2025-12-23 jgh251223---S
-      _transitFuture = _transitService.fetchRoute(
-        startLat: _lat!,
-        startLon: _lon!,
-        startName: _locationLabel,
-      );
-      // 2025-12-23 jgh251223---E
     });
 
     // ✅ 3) Functions 호출: state 말고 지역 변수로 넘기기(안전)
@@ -588,8 +880,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF1E88E5);
-
     return PutterScaffold(
       currentIndex: 0,
       body: Scaffold(
@@ -621,11 +911,6 @@ class _HomePageState extends State<HomePage> {
             }
 
             final now = data?.now;
-
-            // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
-            final isLoading =
-                snapshot.connectionState != ConnectionState.done || data == null;
-
             final safeData = snapshot.data ?? DashboardCache.data;
             final updatedAt = safeData?.updatedAt ?? DateTime.now();
 
@@ -1573,7 +1858,8 @@ class _AlertBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final first = alerts.first;
-    final more = alerts.length > 1 ? ' · ${alerts.length - 1}건 더' : '';
+    final mainTitle = prettyAlertTitle(first.title);
+    final more = alerts.length - 1;
     final t = Theme.of(context).textTheme;
 
     return InkWell(
@@ -1599,19 +1885,33 @@ class _AlertBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('기상 특보',
-                      style: t.titleSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+                  Text(
+                    '기상 특보',
+                    style: t.titleSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // ✅ 1) 메인 특보명(짧게)
+                  Text(
+                    mainTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+
+                  // ✅ 2) 외 n건 + 발표시각
                   const SizedBox(height: 4),
                   Text(
-                    '${first.title}$more',
-                    maxLines: 2,
+                    '${more > 0 ? '외 ${more}건 · ' : ''}발표 ${_prettyTime(first.timeText)}',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.bodySmall?.copyWith(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '발표 ${_prettyTime(first.timeText)}',
-                    style: t.labelSmall?.copyWith(color: Colors.white70),
                   ),
                 ],
               ),
@@ -1623,6 +1923,7 @@ class _AlertBanner extends StatelessWidget {
     );
   }
 }
+
 
 class AlertDetailPage extends StatelessWidget {
   const AlertDetailPage({super.key, required this.alerts});
@@ -1638,6 +1939,17 @@ class AlertDetailPage extends StatelessWidget {
       return '$yy-$mm-$dd $hh:$mi';
     }
     return s;
+  }
+
+  String _prettyTitle(String raw) {
+    var s = raw.trim();
+    s = s.replaceAll(RegExp(r'^\[특보\]\s*'), '');
+    s = s.replaceAll(RegExp(r'^제\d+[-–]\d+호\s*:\s*'), '');
+    s = s.replaceAll(RegExp(r'^\d{4}\.\d{2}\.\d{2}\.\d{2}:\d{2}\s*/\s*'), '');
+    s = s.replaceAll(RegExp(r'\s*발표\s*\(\*\)\s*'), '');
+    s = s.replaceAll(RegExp(r'\(\*\)\s*'), '');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s.isEmpty ? raw : s;
   }
 
   @override
@@ -1664,10 +1976,17 @@ class AlertDetailPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(a.title,
-                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  _prettyTitle(a.title),
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 8),
                 Text('발표: ${_prettyTime(a.timeText)}', style: t.bodySmall),
+
+                // (선택) 원문도 보고 싶으면 주석 해제
+                // const SizedBox(height: 6),
+                // Text(a.title, style: t.bodySmall?.copyWith(color: Colors.white70)),
+
                 if ((a.region ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text('지역: ${a.region}', style: t.bodySmall),
@@ -1679,6 +1998,28 @@ class AlertDetailPage extends StatelessWidget {
       ),
     );
   }
+}
+
+String prettyAlertTitle(String raw) {
+  var s = raw.trim();
+
+  // 예: "[특보]" 제거
+  s = s.replaceAll(RegExp(r'^\[특보\]\s*'), '');
+
+  // 예: "제12-85호 :" 같은 번호 제거
+  s = s.replaceAll(RegExp(r'^제\d+[-–]\d+호\s*:\s*'), '');
+
+  // 예: "2025.12.31.17:01 / " 같은 날짜/슬래시 제거
+  s = s.replaceAll(RegExp(r'^\d{4}\.\d{2}\.\d{2}\.\d{2}:\d{2}\s*/\s*'), '');
+
+  // 예: "발표(*)" / "발표 (*)" / "(*)" 정리
+  s = s.replaceAll(RegExp(r'\s*발표\s*\(\*\)\s*'), '');
+  s = s.replaceAll(RegExp(r'\(\*\)\s*'), '');
+
+  // 남는 앞/뒤 공백, 기호 정리
+  s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  return s.isEmpty ? raw : s;
 }
 
 class _WeatherIcon extends StatelessWidget {
@@ -1734,103 +2075,313 @@ class _Skeleton extends StatelessWidget {
 }
 
 // 2025-12-23 jgh251223---S
-class _TransitCard extends StatelessWidget {
-  const _TransitCard({required this.data});
+class _TransitCard extends StatefulWidget {
+  const _TransitCard({required this.data, this.onFavoritePressed, required this.busArrivalService});
   final TransitRouteResult data;
+  final VoidCallback? onFavoritePressed;
+  final BusArrivalService busArrivalService;
+  @override
+  State<_TransitCard> createState() => _TransitCardState();
+}
+
+class _TransitCardState extends State<_TransitCard> {
+  TransitVariant _selected = TransitVariant.fastest;
+
+  Future<String?> _fetchBusArrivalForVariant(TransitVariant v) async {
+    try {
+      final idx = widget.data.indexOf(v);
+
+      // raw → metaData/meta → plan → itineraries[idx] → legs
+      final raw = widget.data.raw;
+      final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
+      final plan = (meta['plan'] ?? {}) as Map? ?? {};
+      final itineraries = (plan['itineraries'] ?? []) as List? ?? const [];
+      if (itineraries.isEmpty || idx < 0 || idx >= itineraries.length) return null;
+
+      final it = Map<String, dynamic>.from(itineraries[idx] as Map);
+      final legs = (it['legs'] as List?) ?? const [];
+      if (legs.isEmpty) return null;
+
+      Map<String, dynamic>? busLeg;
+      for (final e in legs) {
+        final m = Map<String, dynamic>.from(e as Map);
+        final mode = (m['mode'] ?? '').toString().toUpperCase();
+        if (mode == 'BUS') {
+          busLeg = m;
+          break;
+        }
+      }
+      if (busLeg == null) return null;
+
+      // ✅ 버스번호: "광역:1400" → "1400"
+      final routeStr = (busLeg['route'] ?? busLeg['routeName'] ?? '').toString();
+      final busNo = _extractRouteNo(routeStr);
+      if (busNo.isEmpty) return null;
+
+      // ✅ 승차 정류장 좌표
+      final start = (busLeg['start'] as Map?)?.cast<String, dynamic>() ?? {};
+      final startLat = (start['lat'] as num?)?.toDouble();
+      final startLon = (start['lon'] as num?)?.toDouble();
+      if (startLat == null || startLon == null) return null;
+
+      // 1) 근처 정류장 nodeId/cityCode 찾기
+      final stop = await widget.busArrivalService.findNearestStop(
+        lat: startLat,
+        lon: startLon,
+      );
+      if (stop == null) return null;
+
+      // 2) 해당 정류장 도착목록에서 busNo 필터 → 가장 빠른 것
+      final text = await widget.busArrivalService.fetchNextArrivalText(
+        cityCode: stop.cityCode,
+        nodeId: stop.nodeId,
+        routeNo: busNo,
+      );
+
+      return text; // 예: "버스 1400 · 5분 후 (2정거장 전)"
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _extractRouteNo(String routeStr) {
+    // 예: "광역:1400" -> "1400"
+    // 예: "간선:273" -> "273"
+    // 예: "광역:M6405" -> "M6405"
+    // 예: "M6724" -> "M6724"
+    // 예: "G6000" -> "G6000"
+    final s = routeStr.trim();
+
+    // ":" 뒤를 우선 사용 (광역:1400 같은 케이스)
+    final core = s.contains(':') ? s.split(':').last.trim() : s;
+
+    // 공백/특수문자 정리(필요 최소)
+    final cleaned = core.replaceAll(RegExp(r'\s+'), '');
+
+    // 알파벳(optional) + 숫자 + (optional -숫자)
+    final m = RegExp(r'^[A-Za-z]*\d+(?:-\d+)?').firstMatch(cleaned);
+    return m?.group(0) ?? '';
+  }
+
+  List<_LegUiStep> _buildLegSteps(TransitVariant v) {
+    final raw = widget.data.raw;
+    if (raw.isEmpty) return const [];
+
+    final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
+    final plan = (meta['plan'] ?? {}) as Map? ?? {};
+    final itineraries = (plan['itineraries'] ?? []) as List? ?? const [];
+    if (itineraries.isEmpty) return const [];
+
+    final idx = widget.data.indexOf(v);
+    if (idx < 0 || idx >= itineraries.length) return const [];
+
+    final it = Map<String, dynamic>.from(itineraries[idx] as Map);
+    final legs = (it['legs'] as List?) ?? const [];
+    if (legs.isEmpty) return const [];
+
+    String routeDisplay(dynamic route) {
+      final s = (route ?? '').toString().trim();
+      if (s.isEmpty) return '';
+      // "직행좌석:G8808" / "광역:1400" 같은 경우 ':' 뒤만
+      return s.contains(':') ? s.split(':').last.trim() : s;
+    }
+
+    String subwayDisplay(Map<String, dynamic> leg) {
+      // TMAP에서 보통 route/routeName에 "수도권 1호선" 같은 이름이 들어옴
+      final s = (leg['route'] ?? leg['routeName'] ?? leg['lineName'] ?? '').toString().trim();
+      if (s.isNotEmpty) return s;
+      return '지하철';
+    }
+
+    String busDisplay(Map<String, dynamic> leg) {
+      final s = routeDisplay(leg['route'] ?? leg['routeName']);
+      return s.isNotEmpty ? s : '버스';
+    }
+
+    final steps = <_LegUiStep>[];
+    for (final e in legs) {
+      final leg = Map<String, dynamic>.from(e as Map);
+      final mode = (leg['mode'] ?? '').toString().toUpperCase();
+
+      if (mode == 'WALK') {
+        // 연속 WALK는 하나로 합치기(아이콘 깔끔)
+        if (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) continue;
+        steps.add(_LegUiStep(Icons.directions_walk, '도보'));
+      } else if (mode == 'SUBWAY') {
+        steps.add(_LegUiStep(Icons.directions_subway, subwayDisplay(leg)));
+      } else if (mode == 'BUS') {
+        steps.add(_LegUiStep(Icons.directions_bus, busDisplay(leg)));
+      } else {
+        // 기타 모드가 있으면 필요 시 추가
+      }
+    }
+
+    // 앞/뒤가 WALK만 남는 경우도 있어서 정리(선택)
+    while (steps.isNotEmpty && steps.first.icon == Icons.directions_walk) {
+      steps.removeAt(0);
+    }
+    while (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) {
+      steps.removeLast();
+    }
+
+    return steps;
+  }
+
+  final Map<TransitVariant, Future<String?>> _busArrivalFutureByVariant = {};
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
 
-    Widget badge(String label) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          style: textTheme.labelSmall?.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+    Widget _buildFlowRow(List<_LegUiStep> steps, TextTheme textTheme) {
+      if (steps.isEmpty) return const SizedBox.shrink();
+
+      Widget node(_LegUiStep s) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(s.icon, size: 18, color: Colors.white),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 84,
+              child: Text(
+                s.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      Widget arrow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.white54),
+      );
+
+      final children = <Widget>[];
+      for (int i = 0; i < steps.length; i++) {
+        children.add(node(steps[i]));
+        if (i != steps.length - 1) children.add(arrow());
+      }
+
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: children),
       );
     }
 
-    final arrivalText = [data.firstArrivalText, data.secondArrivalText]
+    final textTheme = Theme.of(context).textTheme;
+
+    final s = widget.data.summaryOf(_selected);
+    final flowSteps = _buildLegSteps(_selected);
+    final arrivalText = [s.firstArrivalText, s.secondArrivalText]
         .where((e) => e.isNotEmpty)
         .join(' / ');
+
+    final busFuture = _busArrivalFutureByVariant.putIfAbsent(
+      _selected,
+          () => _fetchBusArrivalForVariant(_selected),
+    );
+
+    ChoiceChip chip(String label, TransitVariant v) {
+      return ChoiceChip(
+        label: Text(label),
+        selected: _selected == v,
+        onSelected: (_) => setState(() => _selected = v),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            data.title,
-            style: textTheme.titleMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
-              badge('최소 도보'),
+              Expanded(child: chip('최소 도보', TransitVariant.minWalk)),
               const SizedBox(width: 8),
-              badge('최소 시간'),
+              Expanded(child: chip('최소 시간', TransitVariant.fastest)),
               const SizedBox(width: 8),
-              badge('최소 환승'),
+              Expanded(child: chip('최소 환승', TransitVariant.minTransfer)),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            data.summary,
-            style: textTheme.bodyMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          const SizedBox(height: 12),
+          _buildFlowRow(flowSteps, textTheme),
+          const SizedBox(height: 12),
+          Text(s.summary, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(
-            arrivalText.isEmpty ? '도착 정보 없음' : arrivalText,
-            style: textTheme.bodySmall?.copyWith(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
-            ),
+          Text(arrivalText.isEmpty ? '도착 정보 없음' : arrivalText,
+              style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600)),
+          // ✅ 실시간 버스 도착정보(추가)
+          FutureBuilder<String?>(
+            future: busFuture,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '버스 도착정보 불러오는 중…',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                );
+              }
+              final live = snap.data?.trim() ?? '';
+              if (live.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '버스 도착정보를 찾지 못했습니다',
+                    style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  live,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 10),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               ElevatedButton.icon(
                 icon: const Icon(Icons.route, size: 15),
                 label: const Text('경로 보기'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
-                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => Routeview(raw: data.raw)),
+                    MaterialPageRoute(
+                      builder: (_) => Routeview(
+                        raw: widget.data.raw,
+                        initialItineraryIndex: widget.data.indexOf(_selected), // ✅ 추가
+                      ),
+                    ),
                   );
                 },
               ),
-
               OutlinedButton.icon(
                 icon: const Icon(Icons.bookmark_border, size: 15),
                 label: const Text('즐겨찾기'),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white, // 카드가 파란색이라 흰색이 잘 보임
-                  foregroundColor: const Color(0xFF1976D2), // 글자/아이콘 색
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF1976D2),
                   side: BorderSide(color: Colors.white.withOpacity(0.7)),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   shape: RoundedRectangleBorder(
@@ -1838,7 +2389,7 @@ class _TransitCard extends StatelessWidget {
                   ),
                 ),
                 onPressed: () {
-                  // TODO: 즐겨찾기 저장/삭제 로직 연결
+                  widget.onFavoritePressed?.call();
                 },
               ),
             ],
@@ -1848,7 +2399,12 @@ class _TransitCard extends StatelessWidget {
     );
   }
 }
-// 2025-12-23 jgh251223---E
+
+class _LegUiStep {
+  _LegUiStep(this.icon, this.label);
+  final IconData icon;
+  final String label;
+}
 
 // ChecklistItem, DashboardData 타입은 너 프로젝트에 이미 있는 걸 사용
 class _CarryCardFromFirestore extends StatefulWidget {

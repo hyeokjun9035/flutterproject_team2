@@ -1,6 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'CommunityAdd.dart';
 import '../headandputter/putter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'CommunityEdit.dart';
 
 class Event extends StatelessWidget {
   const Event({super.key});
@@ -8,39 +11,28 @@ class Event extends StatelessWidget {
   // ✅ 일단 하드코딩 데이터
   static const List<Map<String, dynamic>> posts = [
     {
-      "title": "출근길에 폭설이 왔어요",
-      "author": "반딧이",
+      "author": "KIMFATION2",
+      "title": "오늘 많이 춥네요 오늘은 패딩 입고 출근합니다~",
+      "image": "assets/joinIcon/cloud.png", // ✅ 추가
       "time": "3분전",
       "views": 3,
       "comments": 0,
     },
     {
-      "title": "눈때문에 길이 미끄러워서 차사고가 났네요",
-      "author": "초코볼",
+      "author": "SONGWINTER",
+      "title": "저는 겨울이 제일 좋은거 같아요~",
+      "image": "assets/joinIcon/cloud.png",
       "time": "8분전",
       "views": 12,
       "comments": 2,
     },
     {
-      "title": "눈 때문에 전철 멈췄어요!",
-      "author": "이보리",
-      "time": "13분전",
-      "views": 41,
-      "comments": 5,
-    },
-    {
-      "title": "미세먼지 심해요… 마스크 꼭 쓰세요",
-      "author": "구름",
-      "time": "20분전",
-      "views": 18,
-      "comments": 1,
-    },
-    {
-      "title": "사거리 신호 고장났대요 우회하세요",
-      "author": "도토리",
-      "time": "32분전",
-      "views": 27,
-      "comments": 3,
+      "author": "SONGWINTER",
+      "title": "저는 겨울이 제일 좋은거 같아요~",
+      "image": "assets/joinIcon/sun.png",
+      "time": "1분전",
+      "views": 12,
+      "comments": 10,
     },
   ];
 
@@ -75,86 +67,197 @@ class Event extends StatelessWidget {
             ),
           ],
         ),
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: ListView.separated(
-              itemCount: posts.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final post = posts[index];
+        body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("community")
+              .where("category", isEqualTo: "사건/이슈")
+              .orderBy("createdAt", descending: true)
+              .snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-                return InkWell(
-                  onTap: () {
-                    // ✅ 나중에 상세페이지 만들면 여기서 push
-                    // Navigator.push(...);
-                  },
-                  child: Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          post["title"],
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+            final docs = snap.data!.docs;
+
+            return ListView.separated(
+              itemCount: docs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final doc = docs[index];
+                final data = doc.data() as Map<String, dynamic>;
+
+                final title = (data["title"] ?? "").toString();
+
+                // author는 Map으로 저장했으니 문자열로 바로 못 씀
+                final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
+                final authorName = (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
+
+                final views = (data["viewCount"] ?? 0);
+                final comments = (data["commentCount"] ?? 0);
+
+                // 이미지: images 리스트의 첫번째를 보여주는 예시(없으면 null)
+                final images = (data["images"] as List?) ?? [];
+                final firstImageUrl = images.isNotEmpty ? images.first.toString() : null;
+                final videos = (data["videos"] as List?) ?? [];
+                final firstVideoUrl = videos.isNotEmpty ? videos.first.toString() : null;
+                final videoThumbs = (data["videoThumbs"] as List?) ?? [];
+                final firstVideoThumb = videoThumbs.isNotEmpty ? videoThumbs.first.toString() : null;
+                Widget? videoPreview;
+                if (firstVideoThumb != null && firstVideoThumb.isNotEmpty) {
+                  videoPreview = ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Image.network(firstVideoThumb, fit: BoxFit.cover),
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.35),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                } else if (firstVideoUrl != null && firstVideoUrl.isNotEmpty) {
+                  videoPreview = ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Container(
+                        color: Colors.black12,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.play_circle_fill, size: 64),
+                      ),
+                    ),
+                  );
+                }
+
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Colors.black12,
+                            child: Icon(Icons.person, size: 16, color: Colors.black54),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(authorName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert),
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                );
+                                // TODO: 나중에 수정 화면 이동
+                              } else if (value == 'delete') {
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      title: const Text("삭제?"),
+                                      content: const Text("정말 삭제하시겠습니까?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () {
+                                            debugPrint('삭제 확정: docId=${doc.id}');
+                                            Navigator.of(context).pop();
+                                            // TODO: 나중에 실제 삭제 처리
+                                          },
+                                          child: const Text("삭제"),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text("취소"),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              }
+
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('수정')
+                              ),
+                              PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('삭제'),
+                              ),
+                            ],
+                          ),
+
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(title, style: const TextStyle(fontSize: 14)),
+
+                      const SizedBox(height: 10),
+
+                      // ✅ Firestore 이미지 URL이면 Image.network
+                      if (firstImageUrl != null && firstImageUrl.isNotEmpty)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: Image.network(
+                              firstImageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: Colors.black12,
+                                alignment: Alignment.center,
+                                child: const Text("이미지 없음"),
+                              ),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(
-                              post["author"],
-                              style: TextStyle(
-                                color: Colors.grey[700],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              post["time"],
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const Spacer(),
-                            Icon(Icons.remove_red_eye_outlined,
-                                size: 16, color: Colors.grey[600]),
-                            const SizedBox(width: 4),
-                            Text(
-                              "${post["views"]}",
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Icon(Icons.comment_outlined,
-                                size: 16, color: Colors.grey[600]),
-                            const SizedBox(width: 4),
-                            Text(
-                              "${post["comments"]}",
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
+
+                      if (videoPreview != null) ...[
+                        const SizedBox(height: 10),
+                        videoPreview,
                       ],
-                    ),
+
+                      const SizedBox(height: 10),
+
+                      Row(
+                        children: [
+                          // createdAt을 time(“3분전”)으로 만들려면 따로 변환 로직 필요
+                          Text("", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          const Spacer(),
+                          Icon(Icons.remove_red_eye_outlined, size: 16, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text("$views", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          const SizedBox(width: 10),
+                          Icon(Icons.comment_outlined, size: 16, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text("$comments", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               },
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
