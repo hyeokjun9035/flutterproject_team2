@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'CommunityAdd.dart';
 import '../headandputter/putter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'CommunityEdit.dart';
 
 class Event extends StatelessWidget {
   const Event({super.key});
@@ -154,7 +156,56 @@ class Event extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(authorName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                           const Spacer(),
-                          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert),
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                );
+                                // TODO: 나중에 수정 화면 이동
+                              } else if (value == 'delete') {
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      title: const Text("삭제?"),
+                                      content: const Text("정말 삭제하시겠습니까?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () {
+                                            debugPrint('삭제 확정: docId=${doc.id}');
+                                            Navigator.of(context).pop();
+                                            // TODO: 나중에 실제 삭제 처리
+                                          },
+                                          child: const Text("삭제"),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text("취소"),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              }
+
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('수정')
+                              ),
+                              PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('삭제'),
+                              ),
+                            ],
+                          ),
+
                         ],
                       ),
                       const SizedBox(height: 8),
