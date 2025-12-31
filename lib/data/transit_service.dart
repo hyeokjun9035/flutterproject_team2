@@ -2,6 +2,25 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+enum TransitVariant { minWalk, fastest, minTransfer }
+
+class TransitItinerarySummary {
+  const TransitItinerarySummary({
+    required this.totalMinutes,
+    required this.walkMinutes,
+    required this.transfers,
+    required this.firstArrivalText,
+    required this.secondArrivalText,
+  });
+
+  final int totalMinutes;
+  final int walkMinutes;
+  final int transfers;
+  final String firstArrivalText;
+  final String secondArrivalText;
+
+  String get summary => '총 ${totalMinutes}분 · 도보 ${walkMinutes}분 · 환승 $transfers';
+}
 
 /// 목적지 정보
 class TransitDestination {
@@ -20,94 +39,128 @@ class TransitDestination {
 class TransitRouteResult {
   const TransitRouteResult({
     required this.title,
-    required this.totalMinutes,
-    required this.walkMinutes,
-    required this.transfers,
-    required this.firstArrivalText,
-    required this.secondArrivalText,
     required this.raw,
+    required this.itineraries,
+    required this.idxFastest,
+    required this.idxMinWalk,
+    required this.idxMinTransfer,
   });
 
   final String title;
-  final int totalMinutes;
-  final int walkMinutes;
-  final int transfers;
-  final String firstArrivalText;
-  final String secondArrivalText;
-
   final Map<String, dynamic> raw;
+  final List<TransitItinerarySummary> itineraries;
 
-  String get summary =>
-      '총 ${totalMinutes}분 · 도보 ${walkMinutes}분 · 환승 $transfers';
+  final int idxFastest;
+  final int idxMinWalk;
+  final int idxMinTransfer;
+
+  int indexOf(TransitVariant v) => switch (v) {
+    TransitVariant.fastest => idxFastest,
+    TransitVariant.minWalk => idxMinWalk,
+    TransitVariant.minTransfer => idxMinTransfer,
+  };
+
+  TransitItinerarySummary summaryOf(TransitVariant v) => itineraries[indexOf(v)];
 
   /// API 키가 없을 때 사용할 샘플 데이터
-  factory TransitRouteResult.placeholder(String destinationName) {
-    return TransitRouteResult(
-      title: '출근 / 즐겨찾기 루트 #1 ($destinationName)',
-      totalMinutes: 42,
-      walkMinutes: 4,
-      transfers: 1,
-      firstArrivalText: '버스 ???분 후',
-      secondArrivalText: '지하철 ???분 후',
-      raw: const {},
-    );
-  }
+  // factory TransitRouteResult.placeholder(String destinationName) {
+  //   return TransitRouteResult(
+  //     title: '출근 / 즐겨찾기 루트 #1 ($destinationName)',
+  //     totalMinutes: 42,
+  //     walkMinutes: 4,
+  //     transfers: 1,
+  //     firstArrivalText: '버스 ???분 후',
+  //     secondArrivalText: '지하철 ???분 후',
+  //     raw: const {},
+  //     itineraries: []
+  //   );
+  // }
 
   /// TMAP 응답을 최대한 안전하게 파싱
   factory TransitRouteResult.fromTmap(
-    Map<String, dynamic> json, {
-    required String destinationName,
-  }) {
+      Map<String, dynamic> json, {
+        required String destinationName,
+      }) {
     final meta = (json['metaData'] ?? json['meta']) as Map? ?? {};
     final plan = (meta['plan'] ?? {}) as Map;
-    final itineraries = (plan['itineraries'] ?? []) as List;
-    if (itineraries.isEmpty) {
-      final message =
-          meta['error']?['message'] ?? '경로가 없습니다. (${destinationName})';
+    final itinerariesRaw = (plan['itineraries'] ?? []) as List;
+
+    if (itinerariesRaw.isEmpty) {
+      final message = meta['error']?['message'] ?? '경로가 없습니다. ($destinationName)';
       throw Exception(message.toString());
     }
 
-    final first = Map<String, dynamic>.from(itineraries.first as Map);
-    int _asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
-    int _toMinutes(int seconds) {
-      final m = (seconds / 60).round();
-      return m < 0 ? 0 : m;
-    }
+    int asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+    int toMinutes(int seconds) => ((seconds / 60).round()).clamp(0, 1 << 30);
 
-    final totalSec = _asInt(first['totalTime']);
-    final walkSec = _asInt(first['totalWalkTime']);
-    final transfers = _asInt(
-      first['transfer'] ?? first['transferCount'] ?? first['transfers'],
-    );
-
-    String _arrivalTextFromLeg(Map<String, dynamic> leg) {
+    String arrivalTextFromLeg(Map<String, dynamic> leg) {
       final mode = (leg['mode'] ?? '').toString().toUpperCase();
+      if (mode == 'WALK') return '';
       final route = leg['route'] ?? leg['routeName'] ?? '';
       final headsign = leg['headsign'] ?? '';
-      final interval = _asInt(leg['interval']);
+      final interval = asInt(leg['interval']); // ※ 이건 보통 배차간격(실시간 아님)
       final sb = StringBuffer();
       if (mode.isNotEmpty) sb.write(mode == 'BUS' ? '버스' : mode);
       if ('$route'.isNotEmpty) sb.write(' $route');
       if ('$headsign'.isNotEmpty) sb.write(' $headsign');
-      if (interval > 0) sb.write(' ${interval}분 후');
-      return sb.isEmpty ? '' : sb.toString();
+      if (interval > 0) sb.write(' ${interval}분 간격');
+      return sb.toString().trim();
     }
 
-    final legs = (first['legs'] ?? []) as List;
-    final legTexts = legs
-        .map((e) => _arrivalTextFromLeg(Map<String, dynamic>.from(e as Map)))
-        .where((e) => e.isNotEmpty)
+    TransitItinerarySummary parseOne(Map<String, dynamic> it) {
+      final totalSec = asInt(it['totalTime']);
+      final walkSec  = asInt(it['totalWalkTime']);
+      final transfers = asInt(it['transferCount'] ?? it['transfer'] ?? it['transfers']);
+
+      final legs = (it['legs'] ?? []) as List;
+      final legTexts = legs
+          .map((e) => arrivalTextFromLeg(Map<String, dynamic>.from(e as Map)))
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      return TransitItinerarySummary(
+        totalMinutes: toMinutes(totalSec),
+        walkMinutes:  toMinutes(walkSec),
+        transfers: transfers,
+        firstArrivalText: legTexts.isNotEmpty ? legTexts.first : '',
+        secondArrivalText: legTexts.length >= 2 ? legTexts[1] : '',
+      );
+    }
+
+    final summaries = itinerariesRaw
+        .map((e) => parseOne(Map<String, dynamic>.from(e as Map)))
         .toList();
 
+    // ✅ 3개 대표 인덱스 고르기
+    int idxFast = 0;
+    int idxWalk = 0;
+    int idxTr = 0;
+
+    for (int i = 1; i < summaries.length; i++) {
+      final s = summaries[i];
+
+      if (s.totalMinutes < summaries[idxFast].totalMinutes) idxFast = i;
+      if (s.walkMinutes  < summaries[idxWalk].walkMinutes)  idxWalk = i;
+
+      final curTr = s.transfers;
+      final bestTr = summaries[idxTr].transfers;
+      if (curTr < bestTr) {
+        idxTr = i;
+      } else if (curTr == bestTr) {
+        // tie-break: time -> walk
+        if (s.totalMinutes < summaries[idxTr].totalMinutes) idxTr = i;
+        else if (s.totalMinutes == summaries[idxTr].totalMinutes &&
+            s.walkMinutes < summaries[idxTr].walkMinutes) idxTr = i;
+      }
+    }
+
     return TransitRouteResult(
-      title: '출근 / 즐겨찾기 루트 #1 ($destinationName)',
-      totalMinutes: _toMinutes(totalSec),
-      walkMinutes: _toMinutes(walkSec),
-      transfers: transfers,
-      firstArrivalText:
-          legTexts.isNotEmpty ? legTexts.first : '도착 정보 없음',
-      secondArrivalText: legTexts.length >= 2 ? legTexts[1] : '',
-      raw: json, // 여기 !
+      title: '출근 / 즐겨찾기 루트 ($destinationName)',
+      raw: json,
+      itineraries: summaries,
+      idxFastest: idxFast,
+      idxMinWalk: idxWalk,
+      idxMinTransfer: idxTr,
     );
   }
 }
@@ -129,7 +182,7 @@ class TransitService {
     required double startLon,
     required String startName,
     DateTime? searchTime,
-    int count = 3,
+    int count = 10,
     int lang = 0,
   }) async {
     if (apiKey.isEmpty) {
