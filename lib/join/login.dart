@@ -28,35 +28,32 @@ class _LoginPageState extends State<LoginPage> {
     final pwd = _pwdController.text.trim();
 
     //--------------관리자 로그인---------------
-    if (email == "admin@gmail.com" && pwd == "admin1") {
-      _showMessage("관리자 로그인 성공!");
-      // mounted 상태 확인
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        // AdminHomePage로 바로 이동
-        MaterialPageRoute(builder: (_) => const AdminHomePage()),
-      );
-
-      return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
-    }
-
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
           email: email,
-          password: pwd,
+          password: pwd
       );
 
-      _showMessage("로그인 성공!");
+      //이 시점에서 관리자는 인증된 상태가 됨
+      final uid = userCredential.user!.uid;    //final = 한 번 할당하면 변경 불가, !uid = uid가 null이 아님
 
-      //mounted상태 확인
-      if(!mounted) return;
-
-      //HomePage로 이동(로그인 성공 시)
-      Navigator.pushReplacement(
+      if(email == "admin@gmail.com") {
+        _showMessage("관리자 로그인 성공!");
+        if(!mounted) return;
+        Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => HomePage()),
-      );
+          MaterialPageRoute(builder: (_) => const AdminHomePage()),
+        );
+      } else {
+        //일반 사용자 로그인
+        _showMessage("로그인 성공!");
+        if(!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+      }
+
     } on FirebaseAuthException catch (e) {
       String message;
       if(e.code == 'user-not-found') {
@@ -74,6 +71,9 @@ class _LoginPageState extends State<LoginPage> {
       _showMessage("알 수 없는 오류 발생");
     }
   }
+
+
+
 
   void _showMessage(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
