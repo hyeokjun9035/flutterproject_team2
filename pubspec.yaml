@@ -51,7 +51,7 @@ dependencies:
   path_provider_android: ^2.2.14
   path: ^1.9.0
   chewie: ^1.8.5
-
+  google_sign_in: ^5.4.4
 
 
   # The following adds the Cupertino Icons font to your application.

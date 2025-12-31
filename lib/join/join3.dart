@@ -48,9 +48,11 @@ class JoinPage3 extends StatefulWidget {
   @override
   State<JoinPage3> createState() => _JoinPage3State();
 }
+
+
 class _JoinPage3State extends State<JoinPage3>{
   final FirebaseFirestore fs = FirebaseFirestore.instance;
-  String? _gender;
+  String _gender = "male";
 
   @override
   Widget build(BuildContext context){
@@ -84,7 +86,8 @@ class _JoinPage3State extends State<JoinPage3>{
                 DropdownMenuItem(value: "male", child: Text("남")),
                 DropdownMenuItem(value: "female", child: Text("녀")),
               ],
-              onChanged: (value) {
+              onChanged: (String? value) {
+                if(value != null)
                 setState(() {
                   _gender = value;
                 });
@@ -94,7 +97,6 @@ class _JoinPage3State extends State<JoinPage3>{
             const SizedBox(height: 24,),
             ElevatedButton(
                 onPressed: ()  {
-
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(
