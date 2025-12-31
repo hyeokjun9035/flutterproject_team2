@@ -1858,7 +1858,8 @@ class _AlertBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final first = alerts.first;
-    final more = alerts.length > 1 ? ' · ${alerts.length - 1}건 더' : '';
+    final mainTitle = prettyAlertTitle(first.title);
+    final more = alerts.length - 1;
     final t = Theme.of(context).textTheme;
 
     return InkWell(
@@ -1884,19 +1885,33 @@ class _AlertBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('기상 특보',
-                      style: t.titleSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+                  Text(
+                    '기상 특보',
+                    style: t.titleSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // ✅ 1) 메인 특보명(짧게)
+                  Text(
+                    mainTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+
+                  // ✅ 2) 외 n건 + 발표시각
                   const SizedBox(height: 4),
                   Text(
-                    '${first.title}$more',
-                    maxLines: 2,
+                    '${more > 0 ? '외 ${more}건 · ' : ''}발표 ${_prettyTime(first.timeText)}',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.bodySmall?.copyWith(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '발표 ${_prettyTime(first.timeText)}',
-                    style: t.labelSmall?.copyWith(color: Colors.white70),
                   ),
                 ],
               ),
@@ -1908,6 +1923,7 @@ class _AlertBanner extends StatelessWidget {
     );
   }
 }
+
 
 class AlertDetailPage extends StatelessWidget {
   const AlertDetailPage({super.key, required this.alerts});
@@ -1923,6 +1939,17 @@ class AlertDetailPage extends StatelessWidget {
       return '$yy-$mm-$dd $hh:$mi';
     }
     return s;
+  }
+
+  String _prettyTitle(String raw) {
+    var s = raw.trim();
+    s = s.replaceAll(RegExp(r'^\[특보\]\s*'), '');
+    s = s.replaceAll(RegExp(r'^제\d+[-–]\d+호\s*:\s*'), '');
+    s = s.replaceAll(RegExp(r'^\d{4}\.\d{2}\.\d{2}\.\d{2}:\d{2}\s*/\s*'), '');
+    s = s.replaceAll(RegExp(r'\s*발표\s*\(\*\)\s*'), '');
+    s = s.replaceAll(RegExp(r'\(\*\)\s*'), '');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s.isEmpty ? raw : s;
   }
 
   @override
@@ -1949,10 +1976,17 @@ class AlertDetailPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(a.title,
-                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  _prettyTitle(a.title),
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 8),
                 Text('발표: ${_prettyTime(a.timeText)}', style: t.bodySmall),
+
+                // (선택) 원문도 보고 싶으면 주석 해제
+                // const SizedBox(height: 6),
+                // Text(a.title, style: t.bodySmall?.copyWith(color: Colors.white70)),
+
                 if ((a.region ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text('지역: ${a.region}', style: t.bodySmall),
@@ -1964,6 +1998,28 @@ class AlertDetailPage extends StatelessWidget {
       ),
     );
   }
+}
+
+String prettyAlertTitle(String raw) {
+  var s = raw.trim();
+
+  // 예: "[특보]" 제거
+  s = s.replaceAll(RegExp(r'^\[특보\]\s*'), '');
+
+  // 예: "제12-85호 :" 같은 번호 제거
+  s = s.replaceAll(RegExp(r'^제\d+[-–]\d+호\s*:\s*'), '');
+
+  // 예: "2025.12.31.17:01 / " 같은 날짜/슬래시 제거
+  s = s.replaceAll(RegExp(r'^\d{4}\.\d{2}\.\d{2}\.\d{2}:\d{2}\s*/\s*'), '');
+
+  // 예: "발표(*)" / "발표 (*)" / "(*)" 정리
+  s = s.replaceAll(RegExp(r'\s*발표\s*\(\*\)\s*'), '');
+  s = s.replaceAll(RegExp(r'\(\*\)\s*'), '');
+
+  // 남는 앞/뒤 공백, 기호 정리
+  s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  return s.isEmpty ? raw : s;
 }
 
 class _WeatherIcon extends StatelessWidget {

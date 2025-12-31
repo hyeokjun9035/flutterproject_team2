@@ -575,8 +575,15 @@ async function callKmaWthrWrnList({ fromTmFc, toTmFc, stnId }) {
   if (stnId) params.stnId = stnId; // 옵션
 
   const res = await ax.get(url, { params });
-  const items = res.data?.response?.body?.items?.item ?? [];
-  return items;
+  const header = res.data?.response?.header;
+  const code = String(header?.resultCode ?? "00");
+  const msg = String(header?.resultMsg ?? "");
+
+  // ✅ 핵심: NO_DATA는 정상 상황으로 보고 빈 배열 리턴
+  if (code === "03") return [];
+  if (code !== "00") throw new Error(`KMA WRN ${code} ${header?.resultMsg ?? ""}`);
+
+  return res.data?.response?.body?.items?.item ?? [];
 }
 
 function compactRegion(s) {
@@ -597,6 +604,10 @@ function buildAlertKeywords(administrativeArea, addr) {
     // “부산광역시” -> “부산” 같은 1단어도 추가
     const first = raw.split(/\s+/)[0];
     if (first) out.add(compactRegion(first));
+    const short = raw
+      .replace(/특별시|광역시|자치시|자치도|도/g, "")
+      .trim();
+    if (short) out.add(short);
   };
 
   add(administrativeArea); // 예: "인천광역시"
@@ -609,32 +620,48 @@ function buildAlertKeywords(administrativeArea, addr) {
   return [...out].filter(Boolean);
 }
 
-// title에 지역 키워드가 들어오는 경우가 많아서(예: “... 인천 ...”), 간단 필터
 function buildAlertsFromWrnList(items, { keywords = [] } = {}) {
   const kw = keywords.map(k => String(k).replace(/\s+/g, "")).filter(Boolean);
 
-  return (items ?? [])
+  const cleaned = (items ?? [])
     .map(it => ({
       title: String(it.title ?? "특보"),
-      region: "", // title에서 뽑아도 되고, 여기선 비워도 됨
-      timeText: String(it.tmFc ?? ""), // ✅ tmFc가 발표시각(년월일시분) :contentReference[oaicite:1]{index=1}
+      region: "",
+      timeText: String(it.tmFc ?? ""),
       tmSeq: String(it.tmSeq ?? ""),
       stnId: String(it.stnId ?? ""),
     }))
-    // 해제/취소는 배너에서 제외하고 싶으면:
     .filter(a => !a.title.includes("해제") && !a.title.includes("취소"))
-    // 지역 키워드 매칭
-    .filter(a => {
-      if (kw.length === 0) return true;
-      const t = a.title.replace(/\s+/g, "");
-      return kw.some(k => k && t.includes(k));
-    })
-    // 최신순(내림차순)
-    .sort((a, b) => (a.timeText < b.timeText ? 1 : -1))
-    .slice(0, 5);
+    .sort((a, b) => (a.timeText < b.timeText ? 1 : -1));
+
+  if (cleaned.length === 0) return [];
+
+  // ✅ 1차: 키워드 매칭
+  const matched = kw.length
+      ? cleaned.filter(a => {
+          const t = a.title.replace(/\s+/g, "");
+          return kw.some(k => k && t.includes(k));
+        })
+      : cleaned;
+
+  // ✅ 핵심: 매칭이 0개면 그냥 최신 특보라도 내려줘서 배너가 뜨게
+  const finalList = (matched.length > 0) ? matched : cleaned;
+
+  return finalList.slice(0, 5);
 }
 
-
+function guessWthrWrnStnId(administrativeArea) {
+  const s = String(administrativeArea ?? "").replace(/\s/g, "");
+  if (s.includes("서울")) return "108";
+  if (s.includes("인천")) return "112";
+  if (s.includes("부산")) return "159";
+  if (s.includes("대구")) return "143";
+  if (s.includes("대전")) return "133";
+  if (s.includes("광주")) return "156";
+  if (s.includes("울산")) return "152";
+  if (s.includes("제주")) return "184";
+  return null;
+}
 
 /** -----------------------------
  *  메인: getDashboard
@@ -692,10 +719,24 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     // 특보도 safe로 (너는 현재 try/catch로 감싸고 있음):contentReference[oaicite:6]{index=6}
     const alertsP = safe((async () => {
       const todayYmd = ymdKst(new Date());
-      const fromYmd = addDaysYmd(todayYmd, -14);
-      const wrnItems = await callKmaWthrWrnList({ fromTmFc: fromYmd, toTmFc: todayYmd });
+      const fromYmd = addDaysYmd(todayYmd, -3);
+
+      const wrnItems = await callKmaWthrWrnList({
+        fromTmFc: fromYmd,
+        toTmFc: todayYmd,
+      });
+
       const keywords = buildAlertKeywords(administrativeArea, addr);
-      return buildAlertsFromWrnList(wrnItems, { keywords });
+
+      // ✅ 키워드 매칭 0이면 최신 특보 fallback
+      const alerts = buildAlertsFromWrnList(wrnItems, { keywords });
+
+      // 혹시 still empty면 그냥 최신 1개라도
+      if (!alerts || alerts.length === 0) {
+        return buildAlertsFromWrnList(wrnItems, { keywords: [] }).slice(0, 1);
+      }
+
+      return alerts;
     })(), [], "alerts");
 
     const [midLand, midTa, airRes, alerts] = await Promise.all([midLandP, midTaP, airP, alertsP]);
