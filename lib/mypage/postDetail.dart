@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:intl/intl.dart'; // ✅ 날짜 포맷팅을 위해 추가
 import 'package:flutter_project/data/dashboard_service.dart';
 import 'package:flutter_project/data/models.dart';
 
@@ -28,7 +29,7 @@ class _PostDetailState extends State<PostDetail> {
   Map<String, dynamic>? _selectedLocation;
   DashboardData? _weatherData;
 
-
+  // 🔍 구글 맵 검색 모달 열기
   void _openGoogleMapSearch() {
     showModalBottomSheet(
       context: context,
@@ -39,14 +40,13 @@ class _PostDetailState extends State<PostDetail> {
           setState(() {
             _selectedLocation = data;
           });
-
           _fetchWeather(data['LAT'], data['LNG'], data['SI']);
         },
       ),
     );
   }
 
-
+  // 🌤 날짜 및 날씨 가져오기
   Future<void> _fetchWeather(double lat, double lon, String locName) async {
     if (!mounted) return;
     setState(() => _isWeatherLoading = true);
@@ -65,7 +65,7 @@ class _PostDetailState extends State<PostDetail> {
     }
   }
 
-
+  // 💾 게시글 저장 로직
   Future<void> _savePost() async {
     if (_selectedBoard == null || _contentController.text.trim().isEmpty || _selectedLocation == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("모든 정보를 입력해주세요!")));
@@ -76,9 +76,21 @@ class _PostDetailState extends State<PostDetail> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("로그인이 필요합니다.");
+
+
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      String nickname = "익명";
+      String realName ="익명";
+
+      if (userDoc.exists && userDoc.data() != null) {
+        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+        realName = userData['name'] ?? "이름 없음";
+        nickname = userData['nickName'] ?? userData['name'] ?? "익명";
+      }
+
+
       List<String> uploadedUrls = [];
-
-
       for (var imageFile in widget.images) {
         String fileName = '${DateTime.now().millisecondsSinceEpoch}_${widget.images.indexOf(imageFile)}.jpg';
         Reference storageRef = FirebaseStorage.instance.ref().child('post_images').child(fileName);
@@ -87,8 +99,10 @@ class _PostDetailState extends State<PostDetail> {
         uploadedUrls.add(url);
       }
 
-
+      // Firestore 저장
       await FirebaseFirestore.instance.collection('community').add({
+        'user_name': realName,
+        'user_nickname': nickname,
         'board_type': _selectedBoard,
         'title': '교통 제보',
         'content': _contentController.text.trim(),
@@ -101,7 +115,7 @@ class _PostDetailState extends State<PostDetail> {
           'pty': _weatherData!.now.pty,
           'air_grade': _weatherData!.air.gradeText,
         } : null,
-        'cdate': FieldValue.serverTimestamp(),
+        'cdate': FieldValue.serverTimestamp(), // 정렬용 타임스탬프
         'report_count': 0,
       });
 
@@ -167,6 +181,7 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
+  // 상단 요약 카드 (이미지 + 날씨 + 현재시간 표시 가능)
   Widget _buildSummaryCard() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -210,7 +225,8 @@ class _PostDetailState extends State<PostDetail> {
                       ],
                     ),
                     Text("미세먼지: ${_weatherData!.air.gradeText}", style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                    Text("습도: ${_weatherData!.now.humidity}%", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    // ✅ 사용자가 요청한 시간 형식 예시 (현재 시간 기준)
+                    Text(DateFormat('yyyy년 MM월 dd일 a h:mm', 'ko_KR').format(DateTime.now()), style: const TextStyle(fontSize: 10, color: Colors.grey)),
                   ],
                 ),
               ],
@@ -221,6 +237,7 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
+  // 게시판 선택 드롭다운
   Widget _buildBoardDropdown() {
     return ListTile(
       leading: const Icon(Icons.layers_outlined, color: Colors.blueAccent),
@@ -236,6 +253,7 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
+  // 위치 선택 행
   Widget _buildLocationPicker() {
     return ListTile(
       onTap: _openGoogleMapSearch,
@@ -255,6 +273,7 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
+  // 내용 입력창
   Widget _buildContentInput() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -270,6 +289,7 @@ class _PostDetailState extends State<PostDetail> {
     );
   }
 
+  // 날씨 아이콘 매칭
   IconData _getWeatherIcon(int? pty, int? sky) {
     if (pty == null || pty == 0) {
       if (sky == 4) return Icons.cloud;
@@ -286,8 +306,19 @@ class _PostDetailState extends State<PostDetail> {
   }
 }
 
+// ✅ 헬퍼 함수: Firestore Timestamp를 요청하신 형식의 문자열로 변환
+// (이 함수를 커뮤니티 리스트 화면에서 사용하세요)
+String formatTrafficReportDate(Timestamp? timestamp) {
+  if (timestamp == null) return "";
+  DateTime dt = timestamp.toDate();
 
+  // 포맷: 2025년 12월 31일 AM 11시 35분 33초 UTC+9
+  // intl 패키지의 DateFormat 사용
+  String formatted = DateFormat('yyyy년 MM월 dd일 a h시 m분 s초', 'ko_KR').format(dt);
+  return "$formatted UTC+9";
+}
 
+// 🗺 구글 맵 검색 모달 클래스
 class _GoogleMapSearchModal extends StatefulWidget {
   final Function(Map<String, dynamic>) onLocationSelected;
   const _GoogleMapSearchModal({required this.onLocationSelected});
@@ -366,10 +397,7 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
                 backgroundColor: Colors.blueAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
                 try {

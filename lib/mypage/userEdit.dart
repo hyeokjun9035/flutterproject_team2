@@ -29,21 +29,21 @@ class _UserEditState extends State<UserEdit> {
     _loadUserData();
   }
 
-
+  // 1. 데이터 불러오기: 'nickName' 필드 사용
   Future<void> _loadUserData() async {
     if (user == null) return;
     var snapshot = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
     if (snapshot.exists) {
       setState(() {
         _nameController.text = snapshot['name'] ?? "";
-        _nicknameController.text = snapshot['nickName'] ?? "";
+        _nicknameController.text = snapshot['nickName'] ?? ""; // 수정됨
         _introController.text = snapshot['intro'] ?? "";
         _profileImageUrl = snapshot['profile_image_url'];
       });
     }
   }
 
-
+  // 이미지 선택
   Future<void> _pickImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
     if (pickedFile != null) {
@@ -53,12 +53,11 @@ class _UserEditState extends State<UserEdit> {
     }
   }
 
-
+  // 2. 프로필 업데이트: 'nickName' 필드 사용 및 Batch 처리
   Future<void> _updateProfile() async {
     setState(() => _isLoading = true);
     try {
       String? finalImageUrl = _profileImageUrl;
-
 
       if (_image != null) {
         Reference ref = FirebaseStorage.instance.ref().child('profiles/${user!.uid}.jpg');
@@ -68,20 +67,22 @@ class _UserEditState extends State<UserEdit> {
 
       final userDoc = FirebaseFirestore.instance.collection('users').doc(user!.uid);
       var snapshot = await userDoc.get();
-      String oldNickname = snapshot.exists ? (snapshot.data()?['nickname'] ?? "") : "";
+
+      // 기존 닉네임 가져오기
+      String oldNickname = snapshot.exists ? (snapshot.data()?['nickName'] ?? "") : "";
       String newNickname = _nicknameController.text.trim();
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
-
+      // users 문서 업데이트
       batch.update(userDoc, {
         'name': _nameController.text,
-        'nickname': newNickname,
+        'nickName': newNickname, // 수정됨
         'intro': _introController.text,
         'profile_image_url': finalImageUrl,
       });
 
-
+      // usernames 컬렉션 중복 방지 로직
       if (oldNickname != newNickname && newNickname.isNotEmpty) {
         if (oldNickname.isNotEmpty) {
           batch.delete(FirebaseFirestore.instance.collection('usernames').doc(oldNickname));
@@ -104,7 +105,7 @@ class _UserEditState extends State<UserEdit> {
     }
   }
 
-
+  // 3. 회원 탈퇴: 실제 DB의 'nickName' 문서를 삭제하도록 보강
   Future<void> _deleteAccount() async {
     bool confirm = await showDialog(
       context: context,
@@ -114,7 +115,7 @@ class _UserEditState extends State<UserEdit> {
         content: const Text("정말로 탈퇴하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("취소", style: TextStyle(color: Colors.grey))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("탈tile", style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("탈퇴", style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -124,21 +125,22 @@ class _UserEditState extends State<UserEdit> {
     setState(() => _isLoading = true);
     try {
       final uid = user!.uid;
-      final nickname = _nicknameController.text.trim();
 
+      // 입력창 값이 아닌 DB의 현재 닉네임 정보를 가져옴
+      var userSnap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      String? currentNickname = userSnap.data()?['nickName'];
 
-      if (nickname.isNotEmpty) {
-        await FirebaseFirestore.instance.collection('usernames').doc(nickname).delete();
+      if (currentNickname != null && currentNickname.isNotEmpty) {
+        await FirebaseFirestore.instance.collection('usernames').doc(currentNickname).delete();
       }
-      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
 
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
 
       if (_profileImageUrl != null) {
         try {
           await FirebaseStorage.instance.ref().child('profiles/$uid.jpg').delete();
         } catch (_) {}
       }
-
 
       await user!.delete();
 
@@ -182,7 +184,6 @@ class _UserEditState extends State<UserEdit> {
         child: Column(
           children: [
             const SizedBox(height: 30),
-
             Center(
               child: Stack(
                 children: [
@@ -216,14 +217,10 @@ class _UserEditState extends State<UserEdit> {
               ),
             ),
             const SizedBox(height: 30),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
                 child: Column(
                   children: [
                     _buildInputField("이름", _nameController, Icons.person_outline),
@@ -236,7 +233,6 @@ class _UserEditState extends State<UserEdit> {
               ),
             ),
             const SizedBox(height: 40),
-
             TextButton(
               onPressed: _deleteAccount,
               child: const Text("회원 탈퇴", style: TextStyle(color: Colors.redAccent, decoration: TextDecoration.underline, fontSize: 14)),
