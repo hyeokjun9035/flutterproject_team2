@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_project/mypage/locationSettings.dart';
 // import 'package:flutter_project/admin/admin_home_page.dart';
 import 'firebase_options.dart';
 import 'home/home_page.dart';
@@ -59,6 +60,7 @@ class MyApp extends StatelessWidget {
         '/home': (_) => const HomePage(),
         '/community': (context) => const CommunityPage(),
         '/mypage': (context) => const UserMypage(),
+        '/locationSettings': (context) => const LocationSettings(),
         // '/notice': (context) => const NoticePage(),
       },
 

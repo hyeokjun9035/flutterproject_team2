@@ -11,7 +11,8 @@ import 'package:flutter/services.dart'; //251229
 
 class Routeview extends StatefulWidget {
   final Map<String, dynamic> raw;
-  const Routeview({super.key, required this.raw});
+  final int? initialItineraryIndex;
+  const Routeview({super.key, required this.raw, this.initialItineraryIndex});
 
   @override
   State<Routeview> createState() => _RouteviewState();
@@ -23,6 +24,20 @@ class _RouteviewState extends State<Routeview> {
   String debugMsg = 'init...';
   BitmapDescriptor? _cctvIcon; //251229
 
+  int _selectedIdx = 0;
+
+  int? _idxFastest;
+  int? _idxMinWalk;
+  int? _idxMinTransfer;
+
+  List<Map<String, dynamic>> _itineraries = const [];
+
+  int _asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  int _toMin(dynamic sec) => ((_asInt(sec) / 60).round()).clamp(0, 1 << 30);
+
+  int _totalMin(Map it) => _toMin(it['totalTime']);
+  int _walkMin(Map it) => _toMin(it['totalWalkTime']);
+  int _transferCount(Map it) => _asInt(it['transferCount'] ?? it['transfer'] ?? it['transfers']);
 
   //251229
   Future<BitmapDescriptor> _bmpFromAsset(String path, int targetWidth) async {
@@ -68,42 +83,89 @@ class _RouteviewState extends State<Routeview> {
   void initState() {
     super.initState();
     _loadMarkerIcons();   // ✅ 추가 251229
-    _buildSegments();
+    _initItinerariesAndSelect();
+    _buildSegmentsForSelected();
   }
 
-  void _buildSegments() {
+  void _initItinerariesAndSelect() {
+    // metaData 또는 meta 방어
+    final meta = (widget.raw['metaData'] ?? widget.raw['meta']);
+    if (meta is! Map) {
+      debugMsg = 'raw.metaData/meta 없음\nkeys=${widget.raw.keys.toList()}';
+      return;
+    }
+
+    final plan = meta['plan'];
+    if (plan is! Map) {
+      debugMsg = 'meta.plan 없음\nmeta keys=${(meta as Map).keys.toList()}';
+      return;
+    }
+
+    final its = plan['itineraries'];
+    if (its is! List || its.isEmpty) {
+      debugMsg = 'plan.itineraries 없음/비어있음\nplan keys=${plan.keys.toList()}';
+      return;
+    }
+
+    _itineraries = its.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    if (_itineraries.isEmpty) {
+      debugMsg = 'itineraries가 Map 리스트가 아님';
+      return;
+    }
+
+    // 대표 3개 뽑기
+    int bestFast = 0, bestWalk = 0, bestTr = 0;
+    for (int i = 1; i < _itineraries.length; i++) {
+      final it = _itineraries[i];
+
+      // 최소 시간
+      if (_totalMin(it) < _totalMin(_itineraries[bestFast])) bestFast = i;
+
+      // 최소 도보
+      if (_walkMin(it) < _walkMin(_itineraries[bestWalk])) bestWalk = i;
+
+      // 최소 환승 (tie: 시간 -> 도보)
+      final curTr = _transferCount(it);
+      final bestTrTr = _transferCount(_itineraries[bestTr]);
+      if (curTr < bestTrTr) {
+        bestTr = i;
+      } else if (curTr == bestTrTr) {
+        final curT = _totalMin(it);
+        final bestT = _totalMin(_itineraries[bestTr]);
+        if (curT < bestT) bestTr = i;
+        else if (curT == bestT && _walkMin(it) < _walkMin(_itineraries[bestTr])) bestTr = i;
+      }
+    }
+
+    _idxFastest = bestFast;
+    _idxMinWalk = bestWalk;
+    _idxMinTransfer = bestTr;
+
+    // 카드에서 넘긴 initialItineraryIndex 우선
+    final initIdx = widget.initialItineraryIndex;
+    if (initIdx != null && initIdx >= 0 && initIdx < _itineraries.length) {
+      _selectedIdx = initIdx;
+    } else {
+      _selectedIdx = _idxFastest ?? 0;
+    }
+  }
+
+  void _buildSegmentsForSelected() => _buildSegmentsForIndex(_selectedIdx);
+
+  void _buildSegmentsForIndex(int idx) {
     try {
-      final meta = widget.raw['metaData'];
-      if (meta is! Map) {
-        debugMsg = 'raw.metaData 없음\nkeys=${widget.raw.keys.toList()}';
+      if (_itineraries.isEmpty) {
+        debugMsg = 'itineraries 초기화 안됨';
         setState(() {});
         return;
       }
 
-      final plan = meta['plan'];
-      if (plan is! Map) {
-        debugMsg = 'metaData.plan 없음\nmeta keys=${meta.keys.toList()}';
-        setState(() {});
-        return;
-      }
+      if (idx < 0 || idx >= _itineraries.length) idx = 0;
+      final selected = _itineraries[idx];
 
-      final itineraries = plan['itineraries'];
-      if (itineraries is! List || itineraries.isEmpty) {
-        debugMsg = 'plan.itineraries 없음/비어있음\nplan keys=${plan.keys.toList()}';
-        setState(() {});
-        return;
-      }
-
-      final first = itineraries.first;
-      if (first is! Map) {
-        debugMsg = 'itineraries.first가 Map이 아님';
-        setState(() {});
-        return;
-      }
-
-      final legs = first['legs'];
+      final legs = selected['legs'];
       if (legs is! List || legs.isEmpty) {
-        debugMsg = 'itinerary.legs 없음/비어있음\nitinerary keys=${first.keys.toList()}';
+        debugMsg = 'itinerary[$idx].legs 없음/비어있음\nitinerary keys=${selected.keys.toList()}';
         setState(() {});
         return;
       }
@@ -120,11 +182,21 @@ class _RouteviewState extends State<Routeview> {
 
       final allPts = segments.expand((e) => e.points).toList();
       debugMsg =
-      'OK: segments=${segments.length}, points=${allPts.length}\n'
-          'walk=${summary.walkMin}m bus=${summary.busMin}m subway=${summary.subwayMin}m transfer=${summary.transferCount}\n'
-          'first=${allPts.first}\nlast=${allPts.last}';
+      'OK idx=$idx / itineraries=${_itineraries.length}\n'
+          'segments=${segments.length}, points=${allPts.length}\n'
+          'walk=${summary.walkMin}m bus=${summary.busMin}m subway=${summary.subwayMin}m transfer=${summary.transferCount}';
+
+      // ✅ 경로 바뀌면 CCTV 마커/상태도 리셋하고 다시 로드
+      _cctvMarkers.clear();
+      _cctvDebug = '';
 
       setState(() {});
+
+      // 지도 이미 만들어졌으면 즉시 맞추고 CCTV도 재조회
+      if (_mapCtrl != null) {
+        _fitToRoute();
+        _loadCctvNearRoute();
+      }
     } catch (e) {
       debugMsg = '예외: $e';
       setState(() {});
@@ -343,7 +415,58 @@ class _RouteviewState extends State<Routeview> {
 
 
   //jgh251226-----------------------------------------E
+  Widget _chips() {
+    if (_itineraries.isEmpty) return const SizedBox.shrink();
 
+    ChoiceChip chip({
+      required String label,
+      required int? idx,
+      required String meta,
+    }) {
+      final valid = idx != null && idx >= 0 && idx < _itineraries.length;
+      return ChoiceChip(
+        label: Text('$label · $meta'),
+        selected: valid && _selectedIdx == idx,
+        onSelected: valid
+            ? (_) {
+          setState(() => _selectedIdx = idx);
+          _buildSegmentsForSelected();
+        }
+            : null,
+      );
+    }
+
+    String metaFast() {
+      final i = _idxFastest!;
+      final it = _itineraries[i];
+      return '${_totalMin(it)}분';
+    }
+
+    String metaWalk() {
+      final i = _idxMinWalk!;
+      final it = _itineraries[i];
+      return '도보 ${_walkMin(it)}분';
+    }
+
+    String metaTr() {
+      final i = _idxMinTransfer!;
+      final it = _itineraries[i];
+      return '환승 ${_transferCount(it)}회';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip(label: '최소 도보', idx: _idxMinWalk, meta: metaWalk()),
+          chip(label: '최소 시간', idx: _idxFastest, meta: metaFast()),
+          chip(label: '최소 환승', idx: _idxMinTransfer, meta: metaTr()),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -414,6 +537,7 @@ class _RouteviewState extends State<Routeview> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _chips(),
               // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
