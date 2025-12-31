@@ -260,8 +260,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadOrderFromDb() async {
-    final uid = widget.userUid; // HomePage가 uid를 받는 구조면
-    final loaded = await _settingsStore.loadHomeCardOrder(uid);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final loaded = await _settingsStore.loadHomeCardOrder(uid!);
     if (!mounted) return;
     setState(() => _order = loaded);
   }
@@ -290,7 +290,8 @@ class _HomePageState extends State<HomePage> {
 
     setState(() => _order = result);
 
-    await _settingsStore.saveHomeCardOrder(widget.userUid, _order);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await _settingsStore.saveHomeCardOrder(uid!, _order);
 
     // await HomeCardOrderStore.save(_order);
 
