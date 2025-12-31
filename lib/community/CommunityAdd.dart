@@ -19,7 +19,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'Community.dart';
 import 'Event.dart';
 import 'Chatter.dart';
 import 'Fashion.dart';
@@ -29,61 +28,6 @@ class Communityadd extends StatefulWidget {
 
   @override
   State<Communityadd> createState() => _CommunityaddState();
-}
-
-class VideoPlayerPage extends StatefulWidget {
-  final String path;
-  final String title;
-
-  const VideoPlayerPage({super.key, required this.path, required this.title});
-
-  @override
-  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
-}
-
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
-  VideoPlayerController? _vp;
-  ChewieController? _chewie;
-
-  @override
-  void initState() {
-    super.initState();
-    _vp = VideoPlayerController.file(File(widget.path));
-    _vp!.initialize().then((_) {
-      _chewie = ChewieController(
-        videoPlayerController: _vp!,
-        autoPlay: true,
-        looping: false,
-        allowFullScreen: true,
-        allowPlaybackSpeedChanging: true,
-      );
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _chewie?.dispose();
-    _vp?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ready = _chewie != null && _vp!.value.isInitialized;
-
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: Center(
-        child: ready
-            ? AspectRatio(
-          aspectRatio: _vp!.value.aspectRatio,
-          child: Chewie(controller: _chewie!),
-        )
-            : const CircularProgressIndicator(),
-      ),
-    );
-  }
 }
 
 class _WeatherItem extends StatelessWidget {
@@ -135,6 +79,28 @@ String _guessVideoContentType(String path) {
   return 'video/mp4';
 }
 
+// ✅✅✅ 여기 추가하면 됨 (클래스 밖)
+String? _extractLocalVideoRawFromInsertMap(Map insert) {
+  const kType = 'local_video';
+  // 케이스 A) {"insert": {"local_video": "..."}}
+  if (insert.containsKey(kType)) {
+    return insert[kType]?.toString();
+  }
+
+  if (insert.containsKey('custom')) {
+    final customStr = insert['custom']?.toString();
+    if (customStr == null || customStr.isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(customStr);
+      if (decoded is Map && decoded.containsKey(kType)) {
+        return decoded[kType]?.toString();
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
 
 class _MiniQuillToolbar extends StatelessWidget {
   final QuillController controller;
@@ -246,122 +212,6 @@ class _MiniQuillToolbar extends StatelessWidget {
         );
       },
       icon: Icon(icon),
-    );
-  }
-}
-
-class _VideoEmbedBuilder extends EmbedBuilder {
-  @override
-  String get key => 'local_video';
-
-  final Map<String, Future<Uint8List?>> _thumbCache = {}; // ✅ 캐시
-
-  Future<Uint8List?> _thumb(String path) {
-    return _thumbCache.putIfAbsent(
-      path,
-          () => VideoThumbnail.thumbnailData(
-        video: path,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 900,
-        quality: 75,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context, EmbedContext embedContext) {
-    final embed = embedContext.node as Embed;
-    final String path = embed.value.data.toString();
-
-    debugPrint("VIDEO PATH=$path exists=${File(path).existsSync()}");
-
-    if (path.isEmpty || !File(path).existsSync()) {
-      return _fallback(path);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: FutureBuilder<Uint8List?>(
-          future: _thumb(path),
-          builder: (context, snap) {
-            // ✅ 로딩 UI
-            if (snap.connectionState != ConnectionState.done) {
-              return _loadingThumb();
-            }
-
-            // ✅ 에러/실패 시 fallback
-            if (snap.hasError || snap.data == null) {
-              return _fallback(path);
-            }
-
-            final bytes = snap.data!;
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: Image.memory(
-                    bytes,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                  ),
-                ),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.35),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _loadingThumb() {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: Container(
-        color: Colors.black12,
-        alignment: Alignment.center,
-        child: const SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _fallback(String path) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.movie_outlined),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              path.split('/').last,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -559,11 +409,9 @@ class _CommunityaddState extends State<Communityadd> {
     final List<Map<String, dynamic>> blocks = [];
     final List<String> imageUrls = [];
     final List<String> videoUrls = [];
+    final List<String> videoThumbUrls = [];
 
-    // Quill delta json
     final deltaJson = _editorController.document.toDelta().toJson();
-
-    // 텍스트 검색/요약용 (선택)
     final plain = _editorController.document.toPlainText();
 
     for (final op in deltaJson) {
@@ -577,14 +425,13 @@ class _CommunityaddState extends State<Communityadd> {
         continue;
       }
 
-      // 2) 임베드(이미지/비디오 등)
+      // 2) 임베드(이미지/비디오)
       if (insert is Map) {
         // 2-1) image
         if (insert.containsKey('image')) {
           final localPath = insert['image']?.toString() ?? '';
           if (localPath.isEmpty) continue;
 
-          // 이미 업로드한 적 있으면 그 index 재사용
           if (_imageIndexByLocalPath.containsKey(localPath)) {
             blocks.add({'t': 'image', 'v': _imageIndexByLocalPath[localPath]});
             continue;
@@ -611,12 +458,9 @@ class _CommunityaddState extends State<Communityadd> {
           continue;
         }
 
-        // 2-2) local_video (네 커스텀 embed)
-        if (insert.containsKey(VideoBlockEmbed.kType)) {
-          final raw = insert[VideoBlockEmbed.kType]?.toString() ?? '';
-          if (raw.isEmpty) continue;
-
-          // payload가 JSON이면 path/name 꺼내기
+        // 2-2) local_video
+        final raw = _extractLocalVideoRawFromInsertMap(insert);
+        if (raw != null && raw.isNotEmpty) {
           String localPath = raw;
           String name = p.basename(raw);
 
@@ -628,7 +472,6 @@ class _CommunityaddState extends State<Communityadd> {
 
           if (localPath.isEmpty) continue;
 
-          // 이미 업로드한 적 있으면 재사용
           if (_videoIndexByLocalPath.containsKey(localPath)) {
             blocks.add({
               't': 'video',
@@ -651,8 +494,37 @@ class _CommunityaddState extends State<Communityadd> {
             contentType: _guessVideoContentType(localPath),
           );
 
+          // ✅ 썸네일 생성 + 업로드 (비디오에서만!)
+          String thumbUrl = '';
+          try {
+            final thumbBytes = await VideoThumbnail.thumbnailData(
+              video: localPath,
+              imageFormat: ImageFormat.JPEG,
+              maxWidth: 900,
+              quality: 75,
+            );
+
+            if (thumbBytes != null) {
+              final tempDir = await getTemporaryDirectory();
+              final thumbPath = p.join(
+                tempDir.path,
+                '${DateTime.now().millisecondsSinceEpoch}_thumb.jpg',
+              );
+              final thumbFile = File(thumbPath);
+              await thumbFile.writeAsBytes(thumbBytes, flush: true);
+
+              thumbUrl = await _uploadFileToStorage(
+                file: thumbFile,
+                storagePath:
+                'community/$docId/video_thumbs/${p.basenameWithoutExtension(safeName)}.jpg',
+                contentType: 'image/jpeg',
+              );
+            }
+          } catch (_) {}
+
           final idx = videoUrls.length;
           videoUrls.add(url);
+          videoThumbUrls.add(thumbUrl); // idx랑 항상 같은 순서로 맞춤
           _videoIndexByLocalPath[localPath] = idx;
 
           blocks.add({'t': 'video', 'v': idx, 'name': name});
@@ -665,15 +537,9 @@ class _CommunityaddState extends State<Communityadd> {
       'blocks': blocks,
       'images': imageUrls,
       'videos': videoUrls,
+      'videoThumbs': videoThumbUrls,
       'plain': plain.trim(),
     };
-  }
-
-  Future<void> _ensureSignedIn() async {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser == null) {
-      await auth.signInAnonymously();
-    }
   }
 
   Future<void> _openVideoPlayerSheet({
@@ -784,8 +650,7 @@ class _CommunityaddState extends State<Communityadd> {
   }
 
   Future<void> _addCommunity() async {
-    await _ensureSignedIn();
-
+    debugPrint('[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
     final categoryAtSubmit = selectedCategory;
     final title = _title.text.trim();
     final plain = _editorController.document.toPlainText().trim();
@@ -799,11 +664,44 @@ class _CommunityaddState extends State<Communityadd> {
     final docRef = fs.collection("community").doc(); // docId 미리 생성
     final docId = docRef.id;
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // 로그인 안 된 상태면 막기
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+
+    final uid = user.uid;
+
+// users/{uid} 에서 프로필 가져오기
+    final userSnap = await fs.collection('users').doc(uid).get();
+    if (!userSnap.exists) {
+      // 프로필이 아직 저장 안 됐거나 삭제된 상태
+      // 여기서 막거나, 기본값으로 생성하거나 선택
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('프로필 정보를 찾을 수 없어요. 다시 로그인/회원가입을 확인해주세요.')),
+      );
+      return;
+    }
+    final userData = userSnap.data() ?? {};
+
+// 네 users 문서에 nickname/name 이 있으니 그걸 우선 사용
+    final author = {
+      'uid': uid,
+      'nickName': (userData['nickName'] ?? userData['nickname'] ?? '').toString(),
+      'name': (userData['name'] ?? '').toString(),
+      'email': (userData['email'] ?? '').toString(),
+      'profile_image_url': (userData['profile_image_url'] ?? '').toString(),
+    };
+
     // ✅ delta를 읽어서 “저장용 blocks + images + videos” 생성(업로드 포함)
-    final built = await _buildBlocksAndUpload(docId: docId);
+    final built  = await _buildBlocksAndUpload(docId: docId);
     final blocks = built['blocks'] as List<dynamic>;
     final imageUrls = built['images'] as List<String>;
     final videoUrls = built['videos'] as List<String>;
+    final videoThumbUrls = built['videoThumbs'] as List<String>;
     final plainForSearch = (built['plain'] as String?) ?? '';
 
     // ✅ Firestore 저장
@@ -811,12 +709,16 @@ class _CommunityaddState extends State<Communityadd> {
       'title': title,
       'category': categoryAtSubmit,
 
+      'createdBy': uid,
+      'author': author,
+
       // ✅ 핵심: 순서 정보
       'blocks': blocks,
 
       // ✅ 미디어 URL 따로
       'images': imageUrls,
       'videos': videoUrls,
+      'videoThumbs': videoThumbUrls,
 
       // (선택) 검색/리스트 요약용
       'plain': plainForSearch,
@@ -839,6 +741,12 @@ class _CommunityaddState extends State<Communityadd> {
       },
       'air': {'pm10': _pm10, 'pm25': _pm25},
 
+      'viewCount': 0,
+
+      'commentCount': 0,
+
+      'likeCount': 0,
+
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -848,8 +756,6 @@ class _CommunityaddState extends State<Communityadd> {
     setState(() {
       selectedCategory = categories.first;
       selectedPlace = null;
-      _images.clear();
-      _videos.clear();
       _temp = null;
       _wind = null;
       _rainChance = null;
@@ -880,6 +786,7 @@ class _CommunityaddState extends State<Communityadd> {
         target = const Event();
     }
 
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => target),
@@ -887,8 +794,6 @@ class _CommunityaddState extends State<Communityadd> {
   }
 
   final ImagePicker _picker = ImagePicker();
-  final List<XFile> _images = [];
-  final List<XFile> _videos = [];
 
   Future<void> _pickFromGalleryAndInsert() async {
     try {
@@ -925,7 +830,6 @@ class _CommunityaddState extends State<Communityadd> {
     if (!mounted || file == null) return;
 
     final localPath = await _ensureLocalPath(file);
-    setState(() => _videos.add(file));
 
     _insertVideoIntoEditor(
       videoPath: localPath,
@@ -938,7 +842,6 @@ class _CommunityaddState extends State<Communityadd> {
     if (!mounted || file == null) return;
 
     final localPath = await _ensureLocalPath(file);
-    setState(() => _videos.add(file));
 
     _insertVideoIntoEditor(
       videoPath: localPath,
@@ -1162,17 +1065,17 @@ class _CommunityaddState extends State<Communityadd> {
     setState(() => _isOpen = true);
   }
 
-  void _removeDropdown() {
+  void _removeDropdown({bool notify = true}) {
     _overlayEntry?.remove();
     _overlayEntry = null;
-    setState(() => _isOpen = false);
+    if (notify && mounted) {
+      setState(() => _isOpen = false);
+    } else {
+      _isOpen = false;
+    }
   }
 
   OverlayEntry _createOverlayEntry() {
-    final RenderBox renderBox =
-        context.findRenderObject() as RenderBox; // scaffold context
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-
     // 선택박스 위치를 얻기 위해 CompositedTransformTarget로 연결할 거라
     // 여기서는 “너비”만 잡아주면 됨
     final double dropdownWidth = 400; // 필요하면 double.infinity 대신 박스 너비로 맞춰도 됨
@@ -1233,7 +1136,7 @@ class _CommunityaddState extends State<Communityadd> {
     _scrollController.dispose();
     _title.dispose();
     _editorController.dispose();
-    _removeDropdown();
+    _removeDropdown(notify: false);
     super.dispose();
   }
 
