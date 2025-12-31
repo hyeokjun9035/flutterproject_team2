@@ -76,7 +76,9 @@ class _JoinPage5State extends State<JoinPage5>{
       "gender": widget.gender,
       "isLocationChecked": widget.isLocationChecked,
       "isCameraChecked": widget.isCameraChecked,
-      "isAlramChecked": widget.isAlramChecked
+      "isAlramChecked": widget.isAlramChecked,
+      //가입시 가입시간 기록용 컬럼
+      "createdAt": FieldValue.serverTimestamp(),
     });
 
   }
