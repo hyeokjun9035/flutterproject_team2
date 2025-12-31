@@ -28,7 +28,7 @@ class _LoginPageState extends State<LoginPage> {
     final pwd = _pwdController.text.trim();
 
     //--------------관리자 로그인---------------
-    if (email == "admin" && pwd == "admin") {
+    if (email == "admin@gmail.com" && pwd == "admin1") {
       _showMessage("관리자 로그인 성공!");
       // mounted 상태 확인
       if (!mounted) return;
@@ -42,8 +42,8 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: pwd,
+          email: email,
+          password: pwd,
       );
 
       final String uid = userCredential.user!.uid;
@@ -56,8 +56,8 @@ class _LoginPageState extends State<LoginPage> {
 
       //HomePage로 이동(로그인 성공 시)
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomePage(userUid: uid)),
+          context,
+          MaterialPageRoute(builder: (_) => HomePage(userUid: uid)),
       );
     } on FirebaseAuthException catch (e) {
       String message;
@@ -125,25 +125,31 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 24),
 
 
-            ElevatedButton(
-              onPressed: _login,
-              child: const Text("로그인"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const JoinPage1(
-                    email: "",
-                    pwd: "",
-                    checkPwd: "",
-                  )
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _login,
+                  child: const Text("로그인"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const JoinPage1(
+                        email: "",
+                        pwd: "",
+                        checkPwd: "",
+                      )
 
-                  ),
-                );
-              },
-              child: const Text("회원가입"),
-            ),
+                      ),
+                    );
+                  },
+                  child: const Text("회원가입"),
+                ),
+              ],
+            )
+
           ],
 
 
