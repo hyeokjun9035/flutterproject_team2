@@ -36,7 +36,7 @@ class _UserEditState extends State<UserEdit> {
     if (snapshot.exists) {
       setState(() {
         _nameController.text = snapshot['name'] ?? "";
-        _nicknameController.text = snapshot['nickname'] ?? "";
+        _nicknameController.text = snapshot['nickName'] ?? "";
         _introController.text = snapshot['intro'] ?? "";
         _profileImageUrl = snapshot['profile_image_url'];
       });

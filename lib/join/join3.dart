@@ -26,6 +26,8 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage3 extends StatefulWidget {
+  //authcation 과 동일한 uid 사용을 위해서 끌어옴
+  final String uid;
   final String email;
   final String name;
   final String intro;
@@ -34,6 +36,8 @@ class JoinPage3 extends StatefulWidget {
 
   const JoinPage3({
     super.key,
+    //authcation 과 동일한 uid 사용을 위해서 끌어옴
+    required this.uid,
     required this.email,
     required this.name,
     required this.intro,
@@ -94,6 +98,8 @@ class _JoinPage3State extends State<JoinPage3>{
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage4(
+                        //authcation 과 동일한 uid 사용을 위해서 끌어옴
+                        uid: widget.uid,
                         email: widget.email,
                         name: widget.name,
                         intro: widget.intro,

@@ -165,29 +165,31 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
             ElevatedButton(
-              onPressed: ()  { //async
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => JoinPage2(
-                        email: "",
-                        uid: ""
-                    ))
-                );
-                // bool success = await _join();
-                // if (success) {
-                //   String? uid = _auth.currentUser?.uid;
-                //   if (mounted && uid != null) {
-                //     Navigator.push(
-                //       context,
-                //       MaterialPageRoute(builder: (_) =>
-                //           JoinPage2(
-                //             email: _email.text.trim(),
-                //             uid: uid,
-                //           ),
-                //       ),
-                //     );
-                //   }
-                // }
+              onPressed: ()  async{ //async
+                // Navigator.push(
+                //     context,
+                //     MaterialPageRoute(builder: (_) => JoinPage2(
+                //         email: "",
+                //         uid: ""
+                //     ))
+                // );
+                bool success = await _join();
+                //authcation 과 동일한 uid 사용을 위해서 끌어옴
+                if (success) {
+                  String? uid = _auth.currentUser?.uid;
+                  if (mounted && uid != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) =>
+                          JoinPage2(
+                            email: _email.text.trim(),
+                            //authcation 과 동일한 uid 사용을 위해서 끌어옴
+                            uid: uid,
+                          ),
+                      ),
+                    );
+                  }
+                }
               },
                 child: Text("다음"),
                 )
