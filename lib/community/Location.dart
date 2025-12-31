@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../headandputter/putter.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'place_result.dart';
 
 class Location extends StatefulWidget {
@@ -16,26 +17,36 @@ class Location extends StatefulWidget {
 }
 
 class _LocationState extends State<Location> {
-  // 🔑 카카오 REST API 키
   late final String kakaoRestKey;
-
-  @override
-  void initState() {
-    super.initState();
-    kakaoRestKey = dotenv.env['KAKAO_REST_KEY'] ?? '';
-    _loadMyLocation();
-  }
 
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
 
   bool _hasText = false;
   bool _loading = false;
+
   List<PlaceResult> _results = [];
+  List<PlaceResult> _recent = []; // ✅ 추가
+  String _lastQuery = ''; // ✅ 추가
 
   PlaceResult? _selected;
   double? _myLat;
   double? _myLng;
+
+  @override
+  void initState() {
+    super.initState();
+    kakaoRestKey = dotenv.env['KAKAO_REST_KEY'] ?? '';
+    _loadMyLocation();
+    _loadRecentHistory(); // ✅ 최근 기록 불러오기
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
 
   Future<void> _loadMyLocation() async {
     final perm = await Geolocator.checkPermission();
@@ -50,12 +61,67 @@ class _LocationState extends State<Location> {
     });
   }
 
+  Future<void> _loadRecentHistory() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
+    final qs = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('location_history')
+        .orderBy('searchedAt', descending: true)
+        .limit(10)
+        .get();
+
+    final items = qs.docs.map((d) {
+      final m = d.data();
+      return PlaceResult(
+        name: (m['name'] ?? '').toString(),
+        address: (m['address'] ?? '').toString(),
+        lat: (m['lat'] as num).toDouble(),
+        lng: (m['lng'] as num).toDouble(),
+      );
+    }).toList();
+
+    if (!mounted) return;
+    setState(() => _recent = items);
+  }
+
+  Future<void> _saveHistory(PlaceResult p) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final col = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('location_history');
+
+    final dup = await col
+        .where('lat', isEqualTo: p.lat)
+        .where('lng', isEqualTo: p.lng)
+        .limit(1)
+        .get();
+
+    if (dup.docs.isNotEmpty) {
+      await dup.docs.first.reference.update({
+        'name': p.name,
+        'address': p.address,
+        'query': _lastQuery,
+        'searchedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await col.add({
+        'name': p.name,
+        'address': p.address,
+        'lat': p.lat,
+        'lng': p.lng,
+        'query': _lastQuery,
+        'searchedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // ✅ 저장 후 최근 리스트 갱신(선택)
+    _loadRecentHistory();
   }
 
   void _onQueryChanged(String value) {
@@ -64,6 +130,8 @@ class _LocationState extends State<Location> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () async {
       final q = value.trim();
+      _lastQuery = q;
+
       if (q.isEmpty) {
         setState(() => _results = []);
         return;
@@ -78,10 +146,6 @@ class _LocationState extends State<Location> {
         _loading = false;
         _results = [];
       });
-      // 원하면 여기서 SnackBar로 알려도 됨
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   const SnackBar(content: Text("KAKAO_REST_KEY가 설정되어 있지 않습니다.")),
-      // );
       return;
     }
 
@@ -143,10 +207,11 @@ class _LocationState extends State<Location> {
     setState(() {
       _hasText = false;
       _results = [];
+      _selected = null;
     });
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
     if (_selected == null) return;
 
     int? distM;
@@ -158,6 +223,9 @@ class _LocationState extends State<Location> {
       distM = meters.round();
     }
 
+    await _saveHistory(_selected!);
+
+    if (!mounted) return;
     Navigator.pop(
       context,
       PlaceResult(
@@ -165,13 +233,16 @@ class _LocationState extends State<Location> {
         address: _selected!.address,
         lat: _selected!.lat,
         lng: _selected!.lng,
-        distanceM: distM, // ✅ 거리 포함
+        distanceM: distM,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // ✅ showList는 build() 안에서 계산해야 함
+    final showList = _hasText ? _results : _recent;
+
     return PutterScaffold(
       currentIndex: 1,
       body: Scaffold(
@@ -206,43 +277,44 @@ class _LocationState extends State<Location> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               if (_loading) const LinearProgressIndicator(),
-
               Expanded(
                 child: ListView.separated(
-                  itemCount: _results.length,
+                  itemCount: showList.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) {
-                    final p = _results[i];
-                    final bool isSelected = _selected != null && _selected!.lat == p.lat && _selected!.lng == p.lng;
+                    final p = showList[i];
+                    final bool isSelected = _selected != null &&
+                        _selected!.lat == p.lat &&
+                        _selected!.lng == p.lng;
+
                     String distText = "";
                     if (_myLat != null && _myLng != null) {
                       final meters = Geolocator.distanceBetween(
-                        _myLat!, _myLng!,
-                        p.lat, p.lng,
+                        _myLat!, _myLng!, p.lat, p.lng,
                       );
                       distText = " · ${(meters / 1000).toStringAsFixed(1)}km";
                     }
+
                     return ListTile(
                       title: Text(p.name),
                       subtitle: Text("${p.address}$distText"),
+                      leading: !_hasText ? const Icon(Icons.history) : null,
                       trailing: isSelected ? const Icon(Icons.check) : null,
                       onTap: () => setState(() => _selected = p),
                     );
                   },
                 ),
               ),
-              SizedBox(height: 12,),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                    onPressed: _selected == null ? null : _confirm,
-                    child: const Text("위치 추가")
+                  onPressed: _selected == null ? null : _confirm,
+                  child: const Text("위치 추가"),
                 ),
-              )
+              ),
             ],
           ),
         ),

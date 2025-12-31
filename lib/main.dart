@@ -72,7 +72,6 @@ class MyApp extends StatelessWidget {
         Locale('ko'),
       ],
 
-
       // ✅ 라우트는 유지하되, 시작은 로그인으로
       initialRoute: '/login',
       routes: {
