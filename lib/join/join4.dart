@@ -26,6 +26,8 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage4 extends StatefulWidget {
+  //authcation 과 동일한 uid 사용을 위해서 끌어옴
+  final String uid;
   final String email;
   final String intro;
   final String name;
@@ -40,7 +42,9 @@ class JoinPage4 extends StatefulWidget {
     required this.name,
     required this.profile_image_url,
     required this.nickName,
-    required this.gender
+    required this.gender,
+    //authcation 과 동일한 uid 사용을 위해서 끌어옴
+    required this.uid
   });
 
   @override
@@ -80,7 +84,7 @@ class _JoinPage4State extends State<JoinPage4>{
             ),
             //이미지 추가
             Padding(
-              padding: const EdgeInsets.fromLTRB(10,0,350,200),
+              padding: const EdgeInsets.fromLTRB(10,0,350,180),
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
             Padding(
@@ -131,6 +135,8 @@ class _JoinPage4State extends State<JoinPage4>{
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage5(
+                        //authcation 과 동일한 uid 사용을 위해서 끌어옴
+                          uid: widget.uid,
                           email: widget.email,
                           intro: widget.intro,
                           name: widget.name,

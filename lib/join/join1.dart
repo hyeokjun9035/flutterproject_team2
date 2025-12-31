@@ -12,7 +12,7 @@ void main() async{
   );
   runApp(const MyApp());
 }
-
+//
 class MyApp extends StatelessWidget {
 
   const MyApp({super.key});
@@ -114,7 +114,7 @@ class _JoinPage1State extends State<JoinPage1> {
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,200),
+        padding: const EdgeInsets.fromLTRB(10,0,0,200),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -165,8 +165,16 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
             ElevatedButton(
-              onPressed: () async {
+              onPressed: ()  async{ //async
+                // Navigator.push(
+                //     context,
+                //     MaterialPageRoute(builder: (_) => JoinPage2(
+                //         email: "",
+                //         uid: ""
+                //     ))
+                // );
                 bool success = await _join();
+                //authcation 과 동일한 uid 사용을 위해서 끌어옴
                 if (success) {
                   String? uid = _auth.currentUser?.uid;
                   if (mounted && uid != null) {
@@ -175,6 +183,7 @@ class _JoinPage1State extends State<JoinPage1> {
                       MaterialPageRoute(builder: (_) =>
                           JoinPage2(
                             email: _email.text.trim(),
+                            //authcation 과 동일한 uid 사용을 위해서 끌어옴
                             uid: uid,
                           ),
                       ),
