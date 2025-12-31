@@ -39,6 +39,9 @@ class _RouteviewState extends State<Routeview> {
   int _walkMin(Map it) => _toMin(it['totalWalkTime']);
   int _transferCount(Map it) => _asInt(it['transferCount'] ?? it['transfer'] ?? it['transfers']);
 
+  bool _showCctv = false;     // 화면에 CCTV 표시 여부
+  bool _cctvLoaded = false;   // 현재 경로 기준으로 한 번이라도 로드했는지(선택)
+
   //251229
   Future<BitmapDescriptor> _bmpFromAsset(String path, int targetWidth) async {
     final data = await rootBundle.load(path);
@@ -189,13 +192,16 @@ class _RouteviewState extends State<Routeview> {
       // ✅ 경로 바뀌면 CCTV 마커/상태도 리셋하고 다시 로드
       _cctvMarkers.clear();
       _cctvDebug = '';
+      _cctvLoaded = false;
 
       setState(() {});
 
       // 지도 이미 만들어졌으면 즉시 맞추고 CCTV도 재조회
       if (_mapCtrl != null) {
         _fitToRoute();
-        _loadCctvNearRoute();
+        if (_showCctv) {
+          _loadCctvNearRoute();
+        }
       }
     } catch (e) {
       debugMsg = '예외: $e';
@@ -294,9 +300,16 @@ class _RouteviewState extends State<Routeview> {
     });
 
     try {
-      final base = _boundsForPoints(allPts);
+      final LatLngBounds base;
 
-      // ✅ 너무 타이트하면 CCTV가 안 잡힐 수 있어서 약간 확장 (0.01 ≒ 1km 내외)
+      if (_mapCtrl != null) {
+        // ✅ 현재 화면 영역 기준 (줌인하고 누르면 훨씬 적게 뜸)
+        base = await _mapCtrl!.getVisibleRegion();
+      } else {
+        // fallback
+        base = _boundsForPoints(allPts);
+      }
+
       final b = _expandBounds(base, 0.01, 0.01);
 
       final uri = Uri.parse('https://openapi.its.go.kr:9443/cctvInfo').replace(
@@ -508,7 +521,9 @@ class _RouteviewState extends State<Routeview> {
         ),
       );
     }
-    markers.addAll(_cctvMarkers);
+    if (_showCctv) {
+      markers.addAll(_cctvMarkers);
+    }
     //251229
 
     return PutterScaffold(
@@ -521,6 +536,37 @@ class _RouteviewState extends State<Routeview> {
             onPressed: () => Navigator.pop(context),
           ),
           actions: [
+            IconButton(
+              tooltip: _showCctv ? 'CCTV 숨기기' : 'CCTV 보기',
+              icon: _loadingCctv
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+                  : Icon(_showCctv ? Icons.visibility_off : Icons.visibility),
+              onPressed: _loadingCctv
+                  ? null
+                  : () async {
+                if (_showCctv) {
+                  setState(() {
+                    _showCctv = false;
+                    _cctvMarkers.clear();
+                    _cctvDebug = '';
+                    _cctvLoaded = false;
+                  });
+                  return;
+                }
+
+                setState(() {
+                  _showCctv = true;
+                  _cctvDebug = 'CCTV 조회중...';
+                });
+
+                await _loadCctvNearRoute();
+                setState(() => _cctvLoaded = true);
+              },
+            ),
             IconButton(
               tooltip: '경로에 맞추기',
               icon: const Icon(Icons.center_focus_strong),
@@ -573,7 +619,7 @@ class _RouteviewState extends State<Routeview> {
                               onMapCreated: (c) async {
                                 _mapCtrl = c;
                                 await _fitToRoute();
-                                await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
+                                // await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
                               },
 
                               // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
@@ -591,24 +637,25 @@ class _RouteviewState extends State<Routeview> {
                         ),
 
                         // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
-                        Positioned(
-                          left: 10,
-                          right: 10,
-                          top: 55,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.45),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              _cctvDebug,
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                        if (_showCctv && _cctvDebug.trim().isNotEmpty)
+                          Positioned(
+                            left: 10,
+                            right: 10,
+                            top: 55,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.45),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                _cctvDebug,
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),

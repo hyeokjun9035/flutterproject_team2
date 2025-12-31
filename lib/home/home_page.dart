@@ -2107,14 +2107,123 @@ class _TransitCardState extends State<_TransitCard> {
     return m?.group(0) ?? '';
   }
 
+  List<_LegUiStep> _buildLegSteps(TransitVariant v) {
+    final raw = widget.data.raw;
+    if (raw.isEmpty) return const [];
+
+    final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
+    final plan = (meta['plan'] ?? {}) as Map? ?? {};
+    final itineraries = (plan['itineraries'] ?? []) as List? ?? const [];
+    if (itineraries.isEmpty) return const [];
+
+    final idx = widget.data.indexOf(v);
+    if (idx < 0 || idx >= itineraries.length) return const [];
+
+    final it = Map<String, dynamic>.from(itineraries[idx] as Map);
+    final legs = (it['legs'] as List?) ?? const [];
+    if (legs.isEmpty) return const [];
+
+    String routeDisplay(dynamic route) {
+      final s = (route ?? '').toString().trim();
+      if (s.isEmpty) return '';
+      // "직행좌석:G8808" / "광역:1400" 같은 경우 ':' 뒤만
+      return s.contains(':') ? s.split(':').last.trim() : s;
+    }
+
+    String subwayDisplay(Map<String, dynamic> leg) {
+      // TMAP에서 보통 route/routeName에 "수도권 1호선" 같은 이름이 들어옴
+      final s = (leg['route'] ?? leg['routeName'] ?? leg['lineName'] ?? '').toString().trim();
+      if (s.isNotEmpty) return s;
+      return '지하철';
+    }
+
+    String busDisplay(Map<String, dynamic> leg) {
+      final s = routeDisplay(leg['route'] ?? leg['routeName']);
+      return s.isNotEmpty ? s : '버스';
+    }
+
+    final steps = <_LegUiStep>[];
+    for (final e in legs) {
+      final leg = Map<String, dynamic>.from(e as Map);
+      final mode = (leg['mode'] ?? '').toString().toUpperCase();
+
+      if (mode == 'WALK') {
+        // 연속 WALK는 하나로 합치기(아이콘 깔끔)
+        if (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) continue;
+        steps.add(_LegUiStep(Icons.directions_walk, '도보'));
+      } else if (mode == 'SUBWAY') {
+        steps.add(_LegUiStep(Icons.directions_subway, subwayDisplay(leg)));
+      } else if (mode == 'BUS') {
+        steps.add(_LegUiStep(Icons.directions_bus, busDisplay(leg)));
+      } else {
+        // 기타 모드가 있으면 필요 시 추가
+      }
+    }
+
+    // 앞/뒤가 WALK만 남는 경우도 있어서 정리(선택)
+    while (steps.isNotEmpty && steps.first.icon == Icons.directions_walk) {
+      steps.removeAt(0);
+    }
+    while (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) {
+      steps.removeLast();
+    }
+
+    return steps;
+  }
+
   final Map<TransitVariant, Future<String?>> _busArrivalFutureByVariant = {};
 
   @override
   Widget build(BuildContext context) {
+
+    Widget _buildFlowRow(List<_LegUiStep> steps, TextTheme textTheme) {
+      if (steps.isEmpty) return const SizedBox.shrink();
+
+      Widget node(_LegUiStep s) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(s.icon, size: 18, color: Colors.white),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 84,
+              child: Text(
+                s.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      Widget arrow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.white54),
+      );
+
+      final children = <Widget>[];
+      for (int i = 0; i < steps.length; i++) {
+        children.add(node(steps[i]));
+        if (i != steps.length - 1) children.add(arrow());
+      }
+
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: children),
+      );
+    }
+
     final textTheme = Theme.of(context).textTheme;
 
     final s = widget.data.summaryOf(_selected);
-
+    final flowSteps = _buildLegSteps(_selected);
     final arrivalText = [s.firstArrivalText, s.secondArrivalText]
         .where((e) => e.isNotEmpty)
         .join(' / ');
@@ -2146,7 +2255,9 @@ class _TransitCardState extends State<_TransitCard> {
               Expanded(child: chip('최소 환승', TransitVariant.minTransfer)),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          _buildFlowRow(flowSteps, textTheme),
+          const SizedBox(height: 12),
           Text(s.summary, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(arrivalText.isEmpty ? '도착 정보 없음' : arrivalText,
@@ -2232,7 +2343,12 @@ class _TransitCardState extends State<_TransitCard> {
     );
   }
 }
-// 2025-12-23 jgh251223---E
+
+class _LegUiStep {
+  _LegUiStep(this.icon, this.label);
+  final IconData icon;
+  final String label;
+}
 
 // ChecklistItem, DashboardData 타입은 너 프로젝트에 이미 있는 걸 사용
 class _CarryCardFromFirestore extends StatefulWidget {
