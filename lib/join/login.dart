@@ -42,12 +42,9 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-          email: email,
-          password: pwd,
+        email: email,
+        password: pwd,
       );
-
-      final String uid = userCredential.user!.uid;
-      debugPrint("✅ login uid = $uid");
 
       _showMessage("로그인 성공!");
 
@@ -56,8 +53,8 @@ class _LoginPageState extends State<LoginPage> {
 
       //HomePage로 이동(로그인 성공 시)
       Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => HomePage(userUid: uid)),
+        context,
+        MaterialPageRoute(builder: (_) => HomePage()),
       );
     } on FirebaseAuthException catch (e) {
       String message;
