@@ -81,7 +81,7 @@ class _JoinPage2State extends State<JoinPage2>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,200),
+        padding: const EdgeInsets.fromLTRB(10,0,10,180),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -92,7 +92,7 @@ class _JoinPage2State extends State<JoinPage2>{
             ),
             //이미지 추가
             Padding(
-              padding: const EdgeInsets.fromLTRB(10,0,350,75),
+              padding: const EdgeInsets.fromLTRB(10,0,350,100),
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
 
