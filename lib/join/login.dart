@@ -37,6 +37,7 @@ class _LoginPageState extends State<LoginPage> {
         // AdminHomePage로 바로 이동
         MaterialPageRoute(builder: (_) => const AdminHomePage()),
       );
+
       return; // 관리자 로그인이 성공했으므로 함수를 종료합니다.
     }
 
@@ -92,7 +93,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: AppBar(title: const Text("로그인")),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16,16,16,150),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
