@@ -22,11 +22,12 @@ class _LocationAddState extends State<LocationAdd> {
     String si = data['SI'] ?? "";
     String gun = data['GUN'] ?? "";
     String gil = data['GIL'] ?? "";
-    // ROADNO가 있으면 한 칸 띄우고 결합
     String roadNo = (data['ROADNO'] != null && data['ROADNO'].toString().isNotEmpty)
         ? " ${data['ROADNO']}"
         : "";
-    return "$si $gun $gil$roadNo".trim();
+
+    String fullAddr = "$si $gun $gil$roadNo".trim();
+    return fullAddr.isEmpty ? (data['NAME'] ?? "위치 정보 없음") : fullAddr;
   }
 
   void _openGoogleMapSearch(bool isStart) {
@@ -112,96 +113,19 @@ class _LocationAddState extends State<LocationAdd> {
       return;
     }
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('favorites').add({
-      'title': _titleController.text.trim().isEmpty ? "미지정" : _titleController.text.trim(),
-      'start': _startPoint,
-      'end': _endPoint,
-      'cdate': FieldValue.serverTimestamp(),
-    });
-    Navigator.pop(context);
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('favorites').add({
+        'title': _titleController.text.trim().isEmpty ? "미지정" : _titleController.text.trim(),
+        'start': _startPoint,
+        'end': _endPoint,
+        'cdate': FieldValue.serverTimestamp(),
+      });
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("저장 실패: $e")));
+    }
   }
 }
-
-
-class FavoriteListItem extends StatelessWidget {
-  final String docId;
-  final Map<String, dynamic> data;
-
-  const FavoriteListItem({super.key, required this.docId, required this.data});
-
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("즐겨찾기 삭제"),
-        content: const Text("정말 삭제하시겠습니까?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소")),
-          TextButton(
-            onPressed: () async {
-              final uid = FirebaseAuth.instance.currentUser?.uid;
-              await FirebaseFirestore.instance
-                  .collection('users').doc(uid!)
-                  .collection('favorites').doc(docId).delete();
-              Navigator.pop(context);
-            },
-            child: const Text("삭제", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatAddr(Map<String, dynamic>? point) {
-    if (point == null) return "정보 없음";
-
-    String base = "${point['SI']} ${point['GUN']} ${point['GIL']}".trim();
-    String roadNo = (point['ROADNO'] != null && point['ROADNO'].toString().isNotEmpty)
-        ? " ${point['ROADNO']}"
-        : "";
-    return "$base$roadNo";
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-            color: Colors.grey[400],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(data['title'] ?? "제목 없음", style: const TextStyle(fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: () => _showDeleteDialog(context),
-                  child: const Icon(Icons.star, color: Colors.orange),
-                ),
-              ],
-            ),
-          ),
-          _buildInfoRow("출발지", _formatAddr(data['start'])),
-          const Divider(height: 1, color: Colors.black),
-          _buildInfoRow("도착지", _formatAddr(data['end'])),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String address) {
-    return Padding(
-      padding: const EdgeInsets.all(15),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text("$label : $address", style: const TextStyle(fontSize: 13)),
-      ),
-    );
-  }
-}
-
 
 class _GoogleMapSearchModal extends StatefulWidget {
   final Function(Map<String, dynamic>) onLocationSelected;
@@ -216,6 +140,27 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
   GoogleMapController? _controller;
   final TextEditingController _searchController = TextEditingController();
   Set<Marker> _markers = {};
+
+  void _searchAddress() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        final loc = locations.first;
+        final target = LatLng(loc.latitude, loc.longitude);
+        _controller?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+        setState(() {
+          _selectedCenter = target;
+          _markers = {Marker(markerId: const MarkerId("selected"), position: target)};
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("검색 결과를 찾을 수 없습니다.")));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -265,44 +210,40 @@ class _GoogleMapSearchModalState extends State<_GoogleMapSearchModal> {
                   List<Placemark> p = await placemarkFromCoordinates(_selectedCenter.latitude, _selectedCenter.longitude);
                   if (p.isNotEmpty) {
                     Placemark place = p[0];
+
+                    // ✅ 주소 추출 보강 로직
+                    String si = place.administrativeArea ?? "";
+
+                    // 군/구 추출 (locality가 없으면 subLocality 확인)
+                    String gun = place.locality ?? "";
+                    if (gun.isEmpty) gun = place.subAdministrativeArea ?? "";
+
+                    // 동/로/길 추출 (thoroughfare가 없으면 subLocality 확인)
+                    String gil = place.thoroughfare ?? "";
+                    if (gil.isEmpty) gil = place.subLocality ?? "";
+
                     widget.onLocationSelected({
-                      'SI': place.administrativeArea ?? "",
-                      'GUN': place.locality ?? place.subAdministrativeArea ?? "",
-                      'GIL': place.thoroughfare ?? place.subLocality ?? "",
+                      'SI': si,
+                      'GUN': gun,
+                      'GIL': gil,
                       'ROADNO': place.subThoroughfare ?? "",
                       'LAT': _selectedCenter.latitude,
                       'LNG': _selectedCenter.longitude,
+                      'NAME': place.name ?? "",
                     });
-                    Navigator.pop(context);
+                    if (mounted) Navigator.pop(context);
                   }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("주소를 가져올 수 없습니다.")));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("주소를 가져올 수 없습니다.")));
+                  }
                 }
               },
-              child: const Text("이 위치 선택", style: TextStyle(color: Colors.white)),
+              child: const Text("이 위치 선택", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
       ),
     );
-  }
-
-  void _searchAddress() async {
-    final query = _searchController.text.trim();
-    if (query.isEmpty) return;
-    try {
-      List<Location> locations = await locationFromAddress(query);
-      if (locations.isNotEmpty) {
-        final loc = locations.first;
-        final target = LatLng(loc.latitude, loc.longitude);
-        _controller?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
-        setState(() {
-          _selectedCenter = target;
-          _markers = {Marker(markerId: const MarkerId("selected"), position: target)};
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("검색 결과를 찾을 수 없습니다.")));
-    }
   }
 }

@@ -97,7 +97,7 @@ class _DetailmypostState extends State<Detailmypost> {
 
                   if (snapshot.hasData && snapshot.data!.exists) {
                     var userData = snapshot.data!.data() as Map<String, dynamic>;
-                    userNickname = userData['nickname'] ?? "이름없음";
+                    userNickname = userData['nickName'] ?? "이름없음";
                     profileImg = userData['profile_image_url'] ?? profileImg;
                   }
 
