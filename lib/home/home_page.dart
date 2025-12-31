@@ -21,6 +21,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../carry/checklist_service.dart';
+import '../data/user_settings_store.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
@@ -39,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   // 2025-12-23 jgh251223---S
   late final TransitService _transitService;
   late final ChecklistService _checklistService;
+  late final UserSettingsStore _settingsStore;
   late Future<List<ChecklistItem>> _checkFuture;
   Future<TransitRouteResult>? _transitFuture;
   // 2025-12-23 jgh251223---E
@@ -201,6 +203,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _settingsStore = UserSettingsStore();
+    _loadOrderFromDb();
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     debugPrint("✅ HomePage currentUser uid = $uid");
@@ -212,8 +216,6 @@ class _HomePageState extends State<HomePage> {
         Navigator.pushReplacementNamed(context, '/login');
       }
     });
-
-    _loadOrder();
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _fetchChecklistKeepingCache();
@@ -257,8 +259,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadOrder() async {
-    final loaded = await HomeCardOrderStore.load();
+  Future<void> _loadOrderFromDb() async {
+    final uid = widget.userUid; // HomePage가 uid를 받는 구조면
+    final loaded = await _settingsStore.loadHomeCardOrder(uid);
     if (!mounted) return;
     setState(() => _order = loaded);
   }
@@ -286,7 +289,10 @@ class _HomePageState extends State<HomePage> {
     if (result == null) return;
 
     setState(() => _order = result);
-    await HomeCardOrderStore.save(_order);
+
+    await _settingsStore.saveHomeCardOrder(widget.userUid, _order);
+
+    // await HomeCardOrderStore.save(_order);
 
     debugPrint('[HomeOrder] saved: ${_order.map((e) => e.name).toList()}');
   }
