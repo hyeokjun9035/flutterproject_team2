@@ -52,11 +52,13 @@ class _JoinPage2State extends State<JoinPage2>{
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _name = TextEditingController();
   final TextEditingController _nickName = TextEditingController();
-  final TextEditingController _intro = TextEditingController();
+  final TextEditingController _intro = TextEditingController(text: "hi!");
+
 
   File? _profile_image_file;
   String defaultImageUrl =
       "https://example.com/default_avatar.png"; // 기본 아바타 URL
+
 
   Future<void> _pickImage() async {
     final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
@@ -74,6 +76,12 @@ class _JoinPage2State extends State<JoinPage2>{
 
     await ref.putFile(file); //실제업로드
     return await ref.getDownloadURL(); //다운로드 URL반환
+  }
+  
+  void _showmessage(String msg){
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg))
+    );
   }
 
   @override
@@ -134,13 +142,34 @@ class _JoinPage2State extends State<JoinPage2>{
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.person_add_alt_rounded, size: 30,) ,
                 labelText: "자기소개를 적어주세요!",
-                hintText: "hi!",
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () async {
+                //빈 값 조사
+                if(_name.text.trim().isEmpty){
+                  _showmessage("이름을 입력해주세요");
+                  return;
+                }
+                if(_nickName.text.trim().isEmpty){
+                  _showmessage("닉네임을 입력해주세요");
+                  return;
+                }
+
+                //닉네임 체크
+                final result = await fs
+                    .collection('users')
+                    .where('nickName', isEqualTo: _nickName.text.trim())
+                    .get();
+
+                if(result.docs.isNotEmpty){
+                  _showmessage("중복된 닉네임 입니다.");
+                  return;
+                }
+
+                //닉네임 중복아닐때 아래코드 실행됨
                 String imageUrl;
                 if(_profile_image_file != null){
                   imageUrl = await uploadToStorage(_profile_image_file!);
@@ -161,6 +190,7 @@ class _JoinPage2State extends State<JoinPage2>{
                   )
                   )
                 );
+
               },
               child: const Text("다음"),
             ),

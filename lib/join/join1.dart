@@ -59,8 +59,25 @@ class _JoinPage1State extends State<JoinPage1> {
   final TextEditingController _checkPwd = TextEditingController(); //db에 들어갈건지 말건지 결정
 
 
+
+
   //trim() == 공백제거
   Future<bool> _join() async {
+    //빈값 확인
+    if(_email.text.trim().isEmpty) {
+      _showMessage("이메일을 입력해주세요");
+      return false;
+    }
+    if(_pwd.text.trim().isEmpty) {
+      _showMessage("비밀번호를 입력해주세요");
+      return false;
+    }
+    if(_checkPwd.text.trim().isEmpty) {
+      _showMessage("비밀번호 확인을 해주세요");
+      return false;
+    }
+
+
     if (_pwd.text.trim() != _checkPwd.text.trim()) {
       _showMessage("비밀번호를 다시 확인해주세요");
       return false; //실패
@@ -165,7 +182,8 @@ class _JoinPage1State extends State<JoinPage1> {
 
 
             ElevatedButton(
-              onPressed: ()  async{ //async
+              onPressed: () async{ //async
+                //테스트용 코드
                 // Navigator.push(
                 //     context,
                 //     MaterialPageRoute(builder: (_) => JoinPage2(
@@ -173,6 +191,8 @@ class _JoinPage1State extends State<JoinPage1> {
                 //         uid: ""
                 //     ))
                 // );
+
+
                 bool success = await _join();
                 //authcation 과 동일한 uid 사용을 위해서 끌어옴
                 if (success) {

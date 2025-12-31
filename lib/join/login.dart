@@ -41,16 +41,16 @@ class _LoginPageState extends State<LoginPage> {
         _showMessage("관리자 로그인 성공!");
         if(!mounted) return;
         Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminHomePage()),
+            context,
+            MaterialPageRoute(builder: (_) => const AdminHomePage()),
         );
       } else {
         //일반 사용자 로그인
-        _showMessage("로그인 성공!");
+        // _showMessage("로그인 성공!");
         if(!mounted) return;
         Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomePage()),
+            context,
+            MaterialPageRoute(builder: (_) => const HomePage()),
         );
       }
 

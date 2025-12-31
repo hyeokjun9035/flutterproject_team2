@@ -66,6 +66,12 @@ class _JoinPage4State extends State<JoinPage4>{
     });
 
   }
+
+  void _showmessage(String msg){
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg))
+    );
+  }
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -132,6 +138,10 @@ class _JoinPage4State extends State<JoinPage4>{
 
             ElevatedButton(
                 onPressed: () {
+                  if(isLocationChecked == false || isCameraChecked == false){
+                      _showmessage("필수사항은 반드시 체크하셔야 합니다.");
+                      return;
+                  }
                   Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_)=>JoinPage5(
