@@ -106,7 +106,7 @@ class UserMypage extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        userData['nickname'] ?? "닉네임 없음",
+                        userData['nickName'] ?? "닉네임 없음",
                         style: const TextStyle(fontSize: 16, color: Colors.black),
                       ),
                     ],
