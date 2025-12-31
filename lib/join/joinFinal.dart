@@ -26,7 +26,6 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage5 extends StatefulWidget {
-  final String uid;
   final String email;
   final String intro;
   final String profile_image_url;
@@ -39,7 +38,6 @@ class JoinPage5 extends StatefulWidget {
 
   const JoinPage5({
     super.key,
-    required this.uid,
     required this.email,
     required this.intro,
     required this.profile_image_url,
@@ -62,8 +60,7 @@ class _JoinPage5State extends State<JoinPage5>{
 
 
   Future<void> JoinPage5() async{
-    await fs.collection("users").doc(widget.uid).set({
-      "uid": widget.uid,
+    await fs.collection("users").add({
       "email": widget.email,
       "intro": widget.intro,
       "profile_image_url": widget.profile_image_url,
@@ -72,8 +69,7 @@ class _JoinPage5State extends State<JoinPage5>{
       "gender": widget.gender,
       "isLocationChecked": widget.isLocationChecked,
       "isCameraChecked": widget.isCameraChecked,
-      "isAlramChecked": widget.isAlramChecked,
-      "createdAt": FieldValue.serverTimestamp(),
+      "isAlramChecked": widget.isAlramChecked
     });
 
   }

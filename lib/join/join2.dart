@@ -35,9 +35,9 @@ class JoinPage2 extends StatefulWidget {
   const JoinPage2({
     super.key,
     required this.email,
-    required this.uid,
-  });
-
+    required this.uid
+  }
+      );
 
 
 
@@ -80,7 +80,7 @@ class _JoinPage2State extends State<JoinPage2>{
         title: Text("회원가입"),
       ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(10,0,10,180),
+        padding: const EdgeInsets.fromLTRB(10,0,10,225),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -137,10 +137,10 @@ class _JoinPage2State extends State<JoinPage2>{
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 String imageUrl;
                 if(_profile_image_file != null){
-                  imageUrl = _profile_image_file!.path;
+                  imageUrl = await uploadToStorage(_profile_image_file!);
                 }else{
                   imageUrl = defaultImageUrl; //기본 아바타
                 }
@@ -148,7 +148,6 @@ class _JoinPage2State extends State<JoinPage2>{
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_)=> JoinPage3(
-                    uid: widget.uid,
                     email: widget.email,
                     name: _name.text,
                     profile_image_url: imageUrl,

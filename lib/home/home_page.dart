@@ -21,6 +21,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../carry/checklist_service.dart';
+import '../data/user_settings_store.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
@@ -28,8 +29,7 @@ import 'home_card_order.dart'; //jgh251226
 
 
 class HomePage extends StatefulWidget {
-  final String userUid;
-  const HomePage({super.key, required this.userUid});
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -40,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   // 2025-12-23 jgh251223---S
   late final TransitService _transitService;
   late final ChecklistService _checklistService;
+  late final UserSettingsStore _settingsStore;
   late Future<List<ChecklistItem>> _checkFuture;
   Future<TransitRouteResult>? _transitFuture;
   // 2025-12-23 jgh251223---E
@@ -202,8 +203,19 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadOrder();
-    debugPrint("✅ HomePage received uid = ${widget.userUid}");
+    _settingsStore = UserSettingsStore();
+    _loadOrderFromDb();
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    debugPrint("✅ HomePage currentUser uid = $uid");
+
+    // 로그인 필수로 막는다면 (추천)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final u = FirebaseAuth.instance.currentUser;
+      if (u == null) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    });
     _service = DashboardService(region: 'asia-northeast3');
     _checklistService = ChecklistService();
     _checkFuture = _fetchChecklistKeepingCache();
@@ -247,8 +259,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadOrder() async {
-    final loaded = await HomeCardOrderStore.load();
+  Future<void> _loadOrderFromDb() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final loaded = await _settingsStore.loadHomeCardOrder(uid!);
     if (!mounted) return;
     setState(() => _order = loaded);
   }
@@ -276,7 +289,11 @@ class _HomePageState extends State<HomePage> {
     if (result == null) return;
 
     setState(() => _order = result);
-    await HomeCardOrderStore.save(_order);
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    await _settingsStore.saveHomeCardOrder(uid!, _order);
+
+    // await HomeCardOrderStore.save(_order);
 
     debugPrint('[HomeOrder] saved: ${_order.map((e) => e.name).toList()}');
   }
@@ -384,7 +401,7 @@ class _HomePageState extends State<HomePage> {
     bool forceFreshPosition = false, // ✅ 새로고침이면 true
     bool ignoreDashboardCache = false,
     bool ignoreGeocodeCache = false,
-}) async {
+  }) async {
     // 권한/서비스 체크
     final enabled = await Geolocator.isLocationServiceEnabled();
 
@@ -590,84 +607,84 @@ class _HomePageState extends State<HomePage> {
             if (snapshot.hasError && data == null) {
               final err = snapshot.error;
               return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline, size: 36),
-                    const SizedBox(height: 12),
-                    Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    ElevatedButton(onPressed: _reload, child: const Text('다시시도'))
-                  ],
-                )
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline, size: 36),
+                      const SizedBox(height: 12),
+                      Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      ElevatedButton(onPressed: _reload, child: const Text('다시시도'))
+                    ],
+                  )
               );
             }
 
             final now = data?.now;
-      
+
             // ✅ 로딩 조건 강화: done이 아니거나 data가 없으면 로딩
             final isLoading =
                 snapshot.connectionState != ConnectionState.done || data == null;
 
             final safeData = snapshot.data ?? DashboardCache.data;
             final updatedAt = safeData?.updatedAt ?? DateTime.now();
-      
+
             return Stack(
               children: [
                 // ✅ 1) 배경 (낮/밤/구름/맑음)
                 WeatherBackground(now: now, lat: _lat, lon: _lon),
-      
+
                 // ✅ 2) 비/눈 효과(PTY 기반)
                 if (now != null) PrecipitationLayer(now: now),
-      
+
                 // ✅ 3) 기존 UI
                 SafeArea(
-                  child: RefreshIndicator(
-                    onRefresh: () async => _reload(),
-                    child: CustomScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                            child: _TopBar(
-                              locationName: _locationLabel,
-                              updatedAt: updatedAt,
-                              onRefresh: _reload,
-                              isRefreshing: isRefreshing,
-                              editMode: _editMode,
-                              onToggleEditMode: _toggleEditMode,
-                              onOpenOrderSheet: _openOrderSheet,
-                            ),
-                          ),
-                        ),
-
-                        if (safeData != null && safeData.alerts.isNotEmpty)
+                    child: RefreshIndicator(
+                      onRefresh: () async => _reload(),
+                      child: CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
                           SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: _AlertBanner(alerts: safeData.alerts),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              child: _TopBar(
+                                locationName: _locationLabel,
+                                updatedAt: updatedAt,
+                                onRefresh: _reload,
+                                isRefreshing: isRefreshing,
+                                editMode: _editMode,
+                                onToggleEditMode: _toggleEditMode,
+                                onOpenOrderSheet: _openOrderSheet,
+                              ),
                             ),
                           ),
-      
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                final id = _order[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _buildHomeCard(id, data, isFirstLoading),
-                                );
-                              },
-                              childCount: _order.length,
+
+                          if (safeData != null && safeData.alerts.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: _AlertBanner(alerts: safeData.alerts),
+                              ),
+                            ),
+
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                    (context, index) {
+                                  final id = _order[index];
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _buildHomeCard(id, data, isFirstLoading),
+                                  );
+                                },
+                                childCount: _order.length,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
+                        ],
+                      ),
+                    )
                 ),
               ],
             );
@@ -1152,13 +1169,13 @@ class _WeatherHero extends StatelessWidget {
 
                 // ✅ 칩: 습도/바람/강수/일출/일몰
                 SizedBox(
-                height: 34, // ✅ 칩 높이에 맞춰 조절
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: chips.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) => chips[i],
-                ),
+                  height: 34, // ✅ 칩 높이에 맞춰 조절
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: chips.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) => chips[i],
+                  ),
                 ),
               ],
             ),
@@ -1930,18 +1947,18 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
                           width: 38,
                           height: 38,
                           decoration: BoxDecoration(
-                            color: s.bg,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: s.border)
+                              color: s.bg,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: s.border)
                           ),
                           child: Icon(iconFromKey(e.icon), color: s.fg, size: 22),
                         ),
                         const SizedBox(height: 8),
 
                         Text(
-                            e.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12),
+                          e.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12),
                         ),
                         const SizedBox(height: 6),
 
@@ -1953,10 +1970,10 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
                           maxLines: 5,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xB3FFFFFF),
-                            fontSize: 11,
-                            height: 1.2,
-                            fontWeight: FontWeight.w700
+                              color: Color(0xB3FFFFFF),
+                              fontSize: 11,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700
                           ),
                         ),
                       ],
@@ -2250,4 +2267,3 @@ class _CardOrderSheetState extends State<_CardOrderSheet> {
     );
   }
 }
-
