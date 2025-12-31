@@ -648,9 +648,26 @@ class _CommunityaddState extends State<Communityadd> {
     await File(outPath).writeAsBytes(await xf.readAsBytes(), flush: true);
     return outPath;
   }
+  //함수 추가
+  Future<void> _ensureSignedIn() async {
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      // 로그인이 안 되어 있다면 익명 로그인을 시도합니다.
+      await auth.signInAnonymously();
+    }
+  }
 
   Future<void> _addCommunity() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+    final uid = user.uid;
+    await _ensureSignedIn();
     debugPrint('[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
+
     final categoryAtSubmit = selectedCategory;
     final title = _title.text.trim();
     final plain = _editorController.document.toPlainText().trim();
@@ -661,18 +678,18 @@ class _CommunityaddState extends State<Communityadd> {
     }
 
     final fs = FirebaseFirestore.instance;
+    final userDoc = await fs.collection('users').doc(user.uid).get();
+    final String nickname = userDoc.data()?['nickname'] ?? "익명 제보자";
+
     final docRef = fs.collection("community").doc(); // docId 미리 생성
     final docId = docRef.id;
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // 로그인 안 된 상태면 막기
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/login');
-      return;
-    }
 
-    final uid = user.uid;
+
+
+
+
+
 
 // users/{uid} 에서 프로필 가져오기
     final userSnap = await fs.collection('users').doc(uid).get();
@@ -687,10 +704,12 @@ class _CommunityaddState extends State<Communityadd> {
     }
     final userData = userSnap.data() ?? {};
 
+    final String myNickName = (userData['nickName'] ?? userData['nickname'] ?? '익명').toString();
 // 네 users 문서에 nickname/name 이 있으니 그걸 우선 사용
     final author = {
       'uid': uid,
-      'nickName': (userData['nickName'] ?? userData['nickname'] ?? '').toString(),
+
+      'nickName': myNickName,
       'name': (userData['name'] ?? '').toString(),
       'email': (userData['email'] ?? '').toString(),
       'profile_image_url': (userData['profile_image_url'] ?? '').toString(),
@@ -708,7 +727,7 @@ class _CommunityaddState extends State<Communityadd> {
     await docRef.set({
       'title': title,
       'category': categoryAtSubmit,
-
+      'user_nickname': myNickName,
       'createdBy': uid,
       'author': author,
 
