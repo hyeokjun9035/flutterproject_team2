@@ -14,12 +14,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_project/notifications/notions.dart';
+import 'package:flutter_project/mypage/DetailMypost.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // .env 없을 수도 있으면 try/catch로 안전하게
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {}
@@ -30,28 +32,105 @@ Future<void> main() async {
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
-  await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
+  // 1. 권한 요청
+  await messaging.requestPermission(alert: true, badge: true, sound: true);
+
+  // 2. 알림 채널 설정 (Android)
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'community_notification',
+    '교통 제보 알림',
+    description: '새로운 교통 제보 게시글에 대한 알림입니다.',
+    importance: Importance.max,
   );
 
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  // 3. ✅ [필수 추가] 로컬 알림 플러그인 초기화
+  // 이 코드가 있어야 알림을 눌렀을 때 반응합니다.
+  const AndroidInitializationSettings initializationSettingsAndroid =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  await flutterLocalNotificationsPlugin.initialize(
+    const InitializationSettings(android: initializationSettingsAndroid),
+    onDidReceiveNotificationResponse: (NotificationResponse response) {
+      // ✅ 여기서 클릭 시 이동 처리
+      if (response.payload != null && response.payload!.isNotEmpty) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => Detailmypost(
+              postId: response.payload!,
+              imageUrl: '',
+              postData: const {},
+            ),
+          ),
+        );
+      }
+    },
+  );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  // 4. ✅ [추가] 포그라운드 수신 리스너
+  // 앱이 켜져 있을 때도 알림을 띄우고 싶다면 이 코드가 필요합니다.
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    RemoteNotification? notification = message.notification;
+    AndroidNotification? android = message.notification?.android;
+
+    if (notification != null && android != null) {
+      flutterLocalNotificationsPlugin.show(
+        notification.hashCode,
+        notification.title,
+        notification.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            channel.id,
+            channel.name,
+            channelDescription: channel.description,
+            icon: android.smallIcon,
+          ),
+        ),
+        payload: message.data['postId'], // 클릭 시 전달할 데이터
+      );
+    }
+  });
+
+  // 5. 백그라운드/종료 상태에서 클릭 처리
   await messaging.subscribeToTopic('community_topic');
-  print('✅ 알람 설정 완료!');
 
-  bool isDebugMode = true; // 로컬 테스트 중이면 true, 실제 배포 서버 테스트면 false
+  RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) _handleMessage(initialMessage);
 
-  // ✅ Functions 에뮬레이터로 연결 (개발할 때만)
+  FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+
+  // 에뮬레이터 설정 등...
+  bool isDebugMode = true;
   if (isDebugMode) {
-    // 로컬 에뮬레이터 연결 (날씨 가져오기 등 기존 기능용)
     FirebaseFunctions.instanceFor(region: 'asia-northeast3')
         .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
-    print("⚠️ 로컬 에뮬레이터 모드로 동작 중");
-  } else {
-    print("🚀 실제 Firebase 서버 모드로 동작 중");
   }
 
   runApp(const MyApp());
+
+
+}
+
+void _handleMessage(RemoteMessage message) {
+  final String? postId = message.data['postId'];
+
+  if (postId != null && postId.isNotEmpty) {
+    // navigatorKey를 사용하여 전역적으로 상세 페이지로 push
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => Detailmypost(
+          postId: postId,
+          imageUrl: '',
+          postData: const {}, // Detailmypost가 내부에서 스스로 데이터를 가져옴
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -60,6 +139,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Weather Dashboard',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const [
