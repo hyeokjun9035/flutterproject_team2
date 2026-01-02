@@ -40,6 +40,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="com.google.android.gms.client.id"
+            android:value="@string/default_web_client_id"/>
     </application>
 
     <queries>

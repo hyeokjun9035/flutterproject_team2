@@ -21,19 +21,19 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const LoginPage(),
+      home: const GoogleLogin(),
     );
   }
 }
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class GoogleLogin extends StatefulWidget {
+  const GoogleLogin({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<GoogleLogin> createState() => _GoogleLoginState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _GoogleLoginState extends State<GoogleLogin> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<UserCredential?> googleLogin() async {
@@ -100,8 +100,10 @@ class _LoginPageState extends State<LoginPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('${user?.displayName ?? "사용자"}님 환영합니다!'),
+
                 ),
               );
+
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('로그인 취소 or 실패')),
