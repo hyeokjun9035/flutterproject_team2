@@ -23,8 +23,16 @@ class _AdminHomePageState extends State<AdminHomePage> {
 
   int _currentIndex = 0;
 
+  // ✅ 여기 추가 260102
+  void _goToReportTab() {
+    setState(() => _currentIndex = 2);
+  }
+
   late final List<Widget> _pages = [
-    _AdminDashboardPage(key: _dashboardKey),
+    _AdminDashboardPage(
+          key: _dashboardKey,
+          onGoReport: _goToReportTab, // ✅ 추가
+     ),
     _AdminPostListPage(),
     const _AdminReportPage(),
     // const _AdminSettingPage(),
@@ -153,7 +161,13 @@ class _AdminHomePageState extends State<AdminHomePage> {
 /* -------------------- 1) 대시보드 -------------------- */
 class _AdminDashboardPage extends StatefulWidget {
   // const _AdminDashboardPage();
-  const _AdminDashboardPage({super.key}); // ✅ key 받도록 변경
+  // const _AdminDashboardPage({super.key}); // ✅ key 받도록 변경
+  final VoidCallback onGoReport; // ✅ 추가
+
+  const _AdminDashboardPage({
+    super.key,
+    required this.onGoReport,
+  });
 
   @override
   State<_AdminDashboardPage> createState() => _AdminDashboardPageState();
@@ -316,9 +330,11 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
           icon: Icons.shield_outlined,
           title: '신고 처리',
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('신고 처리 화면 연결(예정)')),
-            );
+            // 260102 주석처리
+            // ScaffoldMessenger.of(context).showSnackBar(
+              //const SnackBar(content: Text('신고 처리 화면 연결(예정)')),
+            // );
+            widget.onGoReport(); // ✅ 신고 탭으로 전환 260102
           },
         ),
 
