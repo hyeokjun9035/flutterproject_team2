@@ -13,6 +13,7 @@ import 'package:flutter_project/mypage/userMypage.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_project/notifications/notions.dart';
 
 
 Future<void> main() async {
@@ -80,7 +81,7 @@ class MyApp extends StatelessWidget {
         '/community': (context) => const CommunityPage(),
         '/mypage': (context) => const UserMypage(),
         '/locationSettings': (context) => const LocationSettings(),
-        // '/notice': (context) => const NoticePage(),
+        '/notice': (context) =>  NotificationScreen(),
       },
 
       theme: ThemeData(
