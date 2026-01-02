@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/notice_repository.dart';
 import '../notices/notice_create_page.dart';
 import '../notices/notice_edit_page.dart';
-import '../notices/adminPostDetailPage.dart';
+import '../postDetailPage.dart';
 
 // class NoticeListPage extends StatelessWidget {
 class TitleListPage extends StatelessWidget {
