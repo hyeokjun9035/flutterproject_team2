@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_project/data/favorite_route.dart';
 import 'package:flutter_project/home/ui_helpers.dart';
@@ -587,7 +588,7 @@ class _HomePageState extends State<HomePage> {
       _locationLabel = DashboardCache.locationLabel ?? _locationLabel;
       _airAddr = DashboardCache.airAddr ?? _airAddr;
       _future = Future.value(DashboardCache.data!);
-      _refreshInBackground();
+      // _refreshInBackground();
     } else {
       _future = _initLocationAndFetch();
     }
@@ -1132,39 +1133,73 @@ class WeatherBackground extends StatelessWidget {
   final double? lat;
   final double? lon;
 
-  bool _isNightBySun(double lat, double lon) {
-    final nowTime = DateTime.now();
-
-    // 오늘(로컬 날짜 기준)
-    final today = DateTime(nowTime.year, nowTime.month, nowTime.day);
-
-    final ss = getSunriseSunset(lat, lon, nowTime.timeZoneOffset, today);
-    final sunrise = ss.sunrise;
-    final sunset = ss.sunset;
-
-    // 일출 전/일몰 후 => 밤
-    return nowTime.isBefore(sunrise) || nowTime.isAfter(sunset);
+  bool _isNightFallback(DateTime nowLocal) {
+    final h = nowLocal.hour;
+    return !(h >= 6 && h < 18);
   }
 
-  bool _isNightFallback() {
-    final h = DateTime.now().hour;
-    return !(h >= 6 && h < 18);
+  // ✅ isUtc 플래그를 “제거”하고 벽시계 시간만 살림
+  DateTime _asWallLocal(DateTime dt) {
+    return DateTime(
+      dt.year,
+      dt.month,
+      dt.day,
+      dt.hour,
+      dt.minute,
+      dt.second,
+      dt.millisecond,
+      dt.microsecond,
+    );
+  }
+
+  bool _isNightBySun(double lat, double lon) {
+    final nowLocal = DateTime.now(); // ✅ 그냥 로컬로
+    final todayLocal = DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+
+    final ss = getSunriseSunset(lat, lon, nowLocal.timeZoneOffset, todayLocal);
+
+    // ✅ 여기 핵심: 오프셋 더하지 말고 “벽시계”로만 사용
+    final sunrise = _asWallLocal(ss.sunrise);
+    var sunset = _asWallLocal(ss.sunset);
+
+    // 혹시 sunset이 sunrise보다 이르면(드물게) 다음날로 보정
+    if (sunset.isBefore(sunrise)) {
+      sunset = sunset.add(const Duration(days: 1));
+    }
+
+    // ✅ sanity check(이상하면 fallback)
+    final valid = sunset.isAfter(sunrise) &&
+        sunset.difference(sunrise).inHours >= 6 &&
+        sunrise.hour < 12; // 일출이 오후면 뭔가 꼬인 것
+
+    final night = valid
+        ? (nowLocal.isBefore(sunrise) || nowLocal.isAfter(sunset))
+        : _isNightFallback(nowLocal);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[WB] nowLocal=$nowLocal '
+            'rawUtc(sunrise/sunset)=${ss.sunrise.isUtc}/${ss.sunset.isUtc} '
+            'sunrise=$sunrise sunset=$sunset valid=$valid night=$night',
+      );
+    }
+    return night;
   }
 
   @override
   Widget build(BuildContext context) {
     final hasCoord = lat != null && lon != null;
-    final night = hasCoord ? _isNightBySun(lat!, lon!) : _isNightFallback();
+    final night = hasCoord
+        ? _isNightBySun(lat!, lon!)
+        : _isNightFallback(DateTime.now());
 
-    final sky = now?.sky ?? 3; // 1 맑음 / 3 구름많음 / 4 흐림(기상청 관례)
+    final sky = now?.sky ?? 3;
     final pty = now?.pty ?? 0;
 
-    // 기본 베이스(낮/밤)
     List<Color> colors = night
         ? [const Color(0xFF0B1026), const Color(0xFF1A2A5A)]
         : [const Color(0xFF4FC3F7), const Color(0xFF1976D2)];
 
-    // 구름/흐림이면 조금 회색톤 섞기
     if (sky >= 4) {
       colors = night
           ? [const Color(0xFF0B1026), const Color(0xFF2B2F3A)]
@@ -1175,7 +1210,6 @@ class WeatherBackground extends StatelessWidget {
           : [const Color(0xFF81D4FA), const Color(0xFF455A64)];
     }
 
-    // 비/눈이면 더 어둡고 대비 낮추기
     if (pty != 0) {
       colors = night
           ? [const Color(0xFF070A14), const Color(0xFF1B2233)]

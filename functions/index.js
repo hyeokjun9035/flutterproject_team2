@@ -10,11 +10,11 @@ const https = require("https");
 
 const ax = axios.create({
     timeout: 15000,
-    httpAgent: new http.Agent({ keepAlive: true, maxSockets: 50 }),
-    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 })
+    httpAgent: new http.Agent({ keepAlive: true, maxSockets: 10 }),
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 10 })
 })
 
-setGlobalOptions({ maxInstances: 10 });
+setGlobalOptions({ maxInstances: 2 });
 
 /** -----------------------------
  *  공통 유틸
@@ -40,20 +40,11 @@ function addDaysYmd(ymd, addDays) {
   return `${yy}${mm}${dd}`;
 }
 
-async function retryOnce(fn, tag) {
-  try {
-    return await fn();
-  } catch (e) {
-    logger.warn(`${tag} failed (1st), retrying...`, { msg: String(e?.message ?? e) });
-    return await fn(); // 1회 재시도
-  }
-}
-
 async function safe(promise, fallback, tag) {
   try {
     return await promise;
   } catch (e) {
-    logger.warn(`${tag} failed (ignored)`, { msg: String(e?.message ?? e) });
+    logger.warn(`${tag} failed (ignored)`, summarizeErr(e));
     return fallback;
   }
 }
@@ -62,24 +53,63 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function isAxiosErr(e) {
+  return !!(e && (e.isAxiosError || e.config || e.response));
+}
+
+function summarizeErr(e) {
+  if (!isAxiosErr(e)) {
+    return { msg: String(e?.message ?? e) };
+  }
+
+  const status = e?.response?.status ?? null;
+  const method = e?.config?.method ?? null;
+  const url = e?.config?.url ?? null;
+
+  // KMA는 header.resultCode/resultMsg가 핵심인 경우 많음
+  const header = e?.response?.data?.response?.header;
+  const resultCode = header?.resultCode ? String(header.resultCode) : null;
+  const resultMsg = header?.resultMsg ? String(header.resultMsg) : null;
+
+  const retryAfter = e?.response?.headers?.['retry-after'] ?? null;
+
+  // body가 너무 길면 잘라서
+  const rawMsg = resultMsg || e?.message || '';
+  const msg = String(rawMsg).slice(0, 160);
+
+  return { status, method, url, resultCode, retryAfter, msg };
+}
+
 // 메모리 캐시 + 동시요청 합치기
 const _mem = new Map();      // key -> { exp, value }
 const _inflight = new Map(); // key -> Promise
 
-function cacheGet(key) {
+function cacheGetFresh(key) {
   const v = _mem.get(key);
   if (!v) return null;
-  if (Date.now() > v.exp) { _mem.delete(key); return null; }
+  if (Date.now() > v.exp) return null;
   return v.value;
 }
+
+// 만료됐어도 maxStaleMs 이내면 스테일로 반환
+function cacheGetStale(key, maxStaleMs) {
+  const v = _mem.get(key);
+  if (!v) return null;
+  const age = Date.now() - (v.ts ?? 0);
+  if (age > maxStaleMs) return null;
+  return v.value;
+}
+
 function cacheSet(key, value, ttlMs) {
-  _mem.set(key, { value, exp: Date.now() + ttlMs });
+  _mem.set(key, { value, exp: Date.now() + ttlMs, ts: Date.now() });
   return value;
 }
 
-async function cached(key, ttlMs, fetcher) {
-  const hit = cacheGet(key);
+async function cached(key, ttlMs, fetcher, { staleMs = 15 * 60 * 1000 } = {}) {
+  const hit = cacheGetFresh(key);
   if (hit) return hit;
+
+  const stale = cacheGetStale(key, staleMs);
 
   const p0 = _inflight.get(key);
   if (p0) return p0;
@@ -88,6 +118,20 @@ async function cached(key, ttlMs, fetcher) {
     try {
       const v = await fetcher();
       return cacheSet(key, v, ttlMs);
+    } catch (e) {
+      const status = e?.response?.status;
+
+      // ✅ 429면 "절대 throw 하지 않음"
+      if (status === 429) {
+        if (stale) {
+          logger.warn(`[cache] ${key} 429 -> stale fallback`, summarizeErr(e));
+          return stale;
+        }
+        logger.warn(`[cache] ${key} 429 -> empty fallback`, summarizeErr(e));
+        return { items: [], _fallback: "429_empty" };
+      }
+
+      throw e;
     } finally {
       _inflight.delete(key);
     }
@@ -97,36 +141,63 @@ async function cached(key, ttlMs, fetcher) {
   return p;
 }
 
+function isRetryable(e) {
+  const s = e?.response?.status;
+  // ✅ 429 + 4xx는 재시도 금지
+  if (s === 429) return false;
+  if (s && s >= 400 && s < 500) return false;
+  return true; // 네트워크/5xx만 재시도
+}
+
 async function axGetWithRetry(tag, url, params, { max = 2 } = {}) {
   let lastErr;
-
   for (let i = 0; i <= max; i++) {
     try {
-      return await ax.get(url, { params, timeout: 6000 });
+      return await ax.get(url, { params, timeout: 8000 });
     } catch (e) {
       lastErr = e;
       const status = e?.response?.status;
 
-      // ✅ 429/5xx는 backoff 후 재시도
-      const retryable = status === 429 || (status >= 500 && status < 600);
-      if (retryable && i < max) {
-        // Retry-After 헤더가 있으면 우선 사용
-        const ra = Number(e?.response?.headers?.['retry-after']);
-        const base = ra > 0 ? ra * 1000 : 1200 * Math.pow(2, i); // 1.2s, 2.4s, 4.8s...
-        const jitter = Math.floor(Math.random() * 400);
-        const wait = base + jitter;
-
-        logger.warn(`${tag} failed (${status}), retrying after ${wait}ms...`, {
-          msg: String(e?.message ?? e),
-        });
-        await sleep(wait);
-        continue;
+      // ✅ 429는 “즉시 종료” (재시도하면 더 막힘)
+      if (status === 429) {
+        logger.warn(`${tag} failed (429) - no retry`, summarizeErr(e));
+        throw e;
       }
 
-      throw e;
+      if (!isRetryable(e) || i === max) {
+        throw e;
+      }
+
+      // ✅ 네트워크/5xx만 백오프 재시도
+      const wait = Math.min(800 * (2 ** i) + Math.floor(Math.random() * 300), 8000);
+      logger.warn(`${tag} failed (${status ?? "no-status"}), retrying after ${wait}ms...`, summarizeErr(e));
+      await sleep(wait);
     }
   }
   throw lastErr;
+}
+
+let _kmaChain = Promise.resolve();
+let _lastKmaAt = 0;
+
+function withKmaLock(fn) {
+  const p = _kmaChain.then(async () => {
+    const gap = 1000; // 1초 간격
+    const wait = Math.max(0, gap - (Date.now() - _lastKmaAt));
+    if (wait) await sleep(wait);
+    _lastKmaAt = Date.now();
+    return fn();
+  }, async () => {
+    // 실패해도 체인 유지
+    const gap = 1000;
+    const wait = Math.max(0, gap - (Date.now() - _lastKmaAt));
+    if (wait) await sleep(wait);
+    _lastKmaAt = Date.now();
+    return fn();
+  });
+
+  _kmaChain = p.catch(() => {});
+  return p;
 }
 
 /** -----------------------------
@@ -245,9 +316,10 @@ async function callKmaUltraNcst(nx, ny) {
     nx,
     ny,
   };
-  const key = `kmaNcst:${nx},${ny}:${base_date}${base_time}`;
-  return cached(key, 60 * 1000, async () => { // ✅ 1분 캐시
-    const res = await axGetWithRetry("kmaNcst", url, params, { max: 2 });
+  const key = `kmaNcst:${nx}:${ny}:${base_date}:${base_time}`;
+
+  return cached(key, 2 * 60 * 1000, async () => {
+    const res = await withKmaLock(() => axGetWithRetry("kmaNcst", url, params, { max: 3 }));
     return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
   });
 }
@@ -265,9 +337,11 @@ async function callKmaUltraFcst(nx, ny) {
     nx,
     ny,
   };
-  const key = `kmaUltra:${nx},${ny}:${base_date}${base_time}`;
-  return cached(key, 90 * 1000, async () => { // ✅ 1.5분 캐시
-    const res = await axGetWithRetry("kmaUltra", url, params, { max: 2 });
+
+  const key = `kmaUltra:${nx}:${ny}:${base_date}:${base_time}`;
+
+  return cached(key, 3 * 60 * 1000, async () => {
+    const res = await withKmaLock(() => axGetWithRetry("kmaUltra", url, params, { max: 3 }));
     return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
   });
 }
@@ -285,9 +359,12 @@ async function callKmaVilageFcst(nx, ny) {
     nx,
     ny,
   };
-  const key = `kmaVilage:${nx},${ny}:${base_date}${base_time}`;
-  return cached(key, 5 * 60 * 1000, async () => { // ✅ 5분 캐시
-    const res = await axGetWithRetry("kmaVilage", url, params, { max: 2 });
+
+  const key = `kmaVilage:${nx}:${ny}:${base_date}:${base_time}`;
+
+  // ✅ 단기예보는 TTL을 길게 줘도 체감 문제 거의 없음
+  return cached(key, 15 * 60 * 1000, async () => {
+    const res = await withKmaLock(() => axGetWithRetry("kmaVilage", url, params, { max: 4 }));
     return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
   });
 }
@@ -758,23 +835,22 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const addr = String(request.data?.addr ?? request.data?.locationName ?? "");
     const administrativeArea = String(request.data?.administrativeArea ?? "");
 
-    // ✅ 1) KMA 3종 병렬
-    const [kmaNcst, kmaUltra] = await Promise.all([
-      callKmaUltraNcst(nx, ny),
-      callKmaUltraFcst(nx, ny),
-    ]);
-
-    await sleep(250);
+    const kmaNcst = await callKmaUltraNcst(nx, ny);
+    const kmaUltra = await callKmaUltraFcst(nx, ny);
     const kmaVilage = await callKmaVilageFcst(nx, ny);
 
+    const ncstItems = Array.isArray(kmaNcst?.items) ? kmaNcst.items : [];
+    const ultraItems = Array.isArray(kmaUltra?.items) ? kmaUltra.items : [];
+    const vilageItems = Array.isArray(kmaVilage?.items) ? kmaVilage.items : [];
+
     const hourlyFcst = mergeHourly(
-      buildHourlyUltraRaw(kmaUltra.items),
-      buildHourlyFromVilage(kmaVilage.items),
+      buildHourlyUltraRaw(ultraItems),
+      buildHourlyFromVilage(vilageItems),
       24
     );
 
     // ✅ 2) 주간(단기 먼저)
-    const weeklyShort = buildDailyFromVilage(kmaVilage.items); // (너가 4일로 늘렸으면 그 함수가 알아서 4일 나옴)
+    const weeklyShort = buildDailyFromVilage(vilageItems);
     const baseYmd = weeklyShort[0]?.date ?? ymdKst(new Date());
 
     // ✅ 3) 중기/대기질 병렬
@@ -853,7 +929,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
       },
     };
   } catch (e) {
-    logger.error("getDashboard failed", e);
+    logger.error("getDashboard failed", summarizeErr(e));
     if (e instanceof HttpsError) throw e;
     throw new HttpsError("internal", `getDashboard failed: ${String(e?.message ?? e)}`);
   }
