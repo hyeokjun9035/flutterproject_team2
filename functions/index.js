@@ -58,6 +58,77 @@ async function safe(promise, fallback, tag) {
   }
 }
 
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// 메모리 캐시 + 동시요청 합치기
+const _mem = new Map();      // key -> { exp, value }
+const _inflight = new Map(); // key -> Promise
+
+function cacheGet(key) {
+  const v = _mem.get(key);
+  if (!v) return null;
+  if (Date.now() > v.exp) { _mem.delete(key); return null; }
+  return v.value;
+}
+function cacheSet(key, value, ttlMs) {
+  _mem.set(key, { value, exp: Date.now() + ttlMs });
+  return value;
+}
+
+async function cached(key, ttlMs, fetcher) {
+  const hit = cacheGet(key);
+  if (hit) return hit;
+
+  const p0 = _inflight.get(key);
+  if (p0) return p0;
+
+  const p = (async () => {
+    try {
+      const v = await fetcher();
+      return cacheSet(key, v, ttlMs);
+    } finally {
+      _inflight.delete(key);
+    }
+  })();
+
+  _inflight.set(key, p);
+  return p;
+}
+
+async function axGetWithRetry(tag, url, params, { max = 2 } = {}) {
+  let lastErr;
+
+  for (let i = 0; i <= max; i++) {
+    try {
+      return await ax.get(url, { params, timeout: 6000 });
+    } catch (e) {
+      lastErr = e;
+      const status = e?.response?.status;
+
+      // ✅ 429/5xx는 backoff 후 재시도
+      const retryable = status === 429 || (status >= 500 && status < 600);
+      if (retryable && i < max) {
+        // Retry-After 헤더가 있으면 우선 사용
+        const ra = Number(e?.response?.headers?.['retry-after']);
+        const base = ra > 0 ? ra * 1000 : 1200 * Math.pow(2, i); // 1.2s, 2.4s, 4.8s...
+        const jitter = Math.floor(Math.random() * 400);
+        const wait = base + jitter;
+
+        logger.warn(`${tag} failed (${status}), retrying after ${wait}ms...`, {
+          msg: String(e?.message ?? e),
+        });
+        await sleep(wait);
+        continue;
+      }
+
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 /** -----------------------------
  *  (1) 위경도 -> 기상청 격자(nx, ny) (LCC)
  * ------------------------------ */
@@ -174,8 +245,11 @@ async function callKmaUltraNcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await ax.get(url, { params });
-  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  const key = `kmaNcst:${nx},${ny}:${base_date}${base_time}`;
+  return cached(key, 60 * 1000, async () => { // ✅ 1분 캐시
+    const res = await axGetWithRetry("kmaNcst", url, params, { max: 2 });
+    return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  });
 }
 
 async function callKmaUltraFcst(nx, ny) {
@@ -191,8 +265,11 @@ async function callKmaUltraFcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await ax.get(url, { params });
-  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  const key = `kmaUltra:${nx},${ny}:${base_date}${base_time}`;
+  return cached(key, 90 * 1000, async () => { // ✅ 1.5분 캐시
+    const res = await axGetWithRetry("kmaUltra", url, params, { max: 2 });
+    return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  });
 }
 
 async function callKmaVilageFcst(nx, ny) {
@@ -208,8 +285,11 @@ async function callKmaVilageFcst(nx, ny) {
     nx,
     ny,
   };
-  const res = await ax.get(url, { params });
-  return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  const key = `kmaVilage:${nx},${ny}:${base_date}${base_time}`;
+  return cached(key, 5 * 60 * 1000, async () => { // ✅ 5분 캐시
+    const res = await axGetWithRetry("kmaVilage", url, params, { max: 2 });
+    return { items: res.data?.response?.body?.items?.item ?? [], base_date, base_time };
+  });
 }
 
 /** -----------------------------
@@ -679,11 +759,13 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const administrativeArea = String(request.data?.administrativeArea ?? "");
 
     // ✅ 1) KMA 3종 병렬
-    const [kmaNcst, kmaUltra, kmaVilage] = await Promise.all([
-      retryOnce(() => callKmaUltraNcst(nx, ny), "kmaNcst"),
-      retryOnce(() => callKmaUltraFcst(nx, ny), "kmaUltra"),
-      retryOnce(() => callKmaVilageFcst(nx, ny), "kmaVilage"),
+    const [kmaNcst, kmaUltra] = await Promise.all([
+      callKmaUltraNcst(nx, ny),
+      callKmaUltraFcst(nx, ny),
     ]);
+
+    await sleep(250);
+    const kmaVilage = await callKmaVilageFcst(nx, ny);
 
     const hourlyFcst = mergeHourly(
       buildHourlyUltraRaw(kmaUltra.items),
