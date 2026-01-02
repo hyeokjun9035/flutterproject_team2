@@ -3,42 +3,51 @@ import 'package:url_launcher/url_launcher.dart';
 
 Future<void> openExternal(Uri uri) async {
   final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-  if (!ok) {
-    throw Exception('Could not launch $uri');
-  }
+  if (!ok) throw Exception('Could not launch $uri');
 }
 
-Future<void> openUrl(String url) => openExternal(Uri.parse(url));
-
-/// 기상청 날씨누리 "디지털예보" (2021+ 경로)
-/// - code는 있으면 넣고, 없으면 null로 두면 됨
+/// ✅ 날씨누리 디지털예보: code가 핵심
 Uri buildWeatherNuriDigitalForecastUrl({
-  required double lat,
-  required double lon,
-  String? code,
-  bool hourly1h = false, // false면 3시간 간격(N), true면 1시간 간격(Y)
+  required String code,           // ⭐ 필수
+  bool hourly1h = false,          // hr1=Y/N
   String unit = 'm/s',
   String ts = '',
 }) {
-  final qp = <String, String>{
-    'hr1': hourly1h ? 'Y' : 'N',
-    'lat': lat.toString(),
-    'lon': lon.toString(),
-    'unit': unit,
-    'ts': ts,
-  };
-  if (code != null && code.isNotEmpty) qp['code'] = code;
-
   return Uri.https(
     'www.weather.go.kr',
     '/w/wnuri-fct2021/main/digital-forecast.do',
-    qp,
+    {
+      'code': code,
+      'hr1': hourly1h ? 'Y' : 'N',
+      'unit': unit,
+      'ts': ts,
+    },
   );
 }
 
-/// 에어코리아 - 우리동네 대기정보
-Uri airKoreaMyNeighborhoodUrl() => Uri.https(
+/// ✅ code 없을 때 폴백(최소한 “날씨누리”로는 이동)
+Uri weatherNuriHomeUrl() => Uri.https('www.weather.go.kr', '/w/index.do');
+
+Future<void> openWeatherNuri({
+  required double lat,
+  required double lon,
+  String? code,
+}) async {
+  final uri = (code != null && code.isNotEmpty)
+      ? buildWeatherNuriDigitalForecastUrl(code: code)
+      : weatherNuriHomeUrl();
+  await openExternal(uri);
+}
+
+/// ✅ 에어코리아 - 우리동네 대기정보(근접측정소: TM좌표 기반)
+Uri airKoreaRealSearchByTm({required int tmX, required int tmY}) => Uri.https(
   'www.airkorea.or.kr',
-  '/web/link/',
-  {'pMENU_NO': '96'},
+  '/web/realSearch',
+  {
+    'pMENU_NO': '97',
+    'tm_x': tmX.toString(),
+    'tm_y': tmY.toString(),
+  },
 );
+
+Uri airKoreaHomeUrl() => Uri.https('www.airkorea.or.kr', '/');
