@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../community/CommunityView.dart';
 import '../data/nearby_issues_service.dart';
 
 class NearbyIssuesMapPage extends StatefulWidget {
@@ -22,16 +23,35 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
   NearbyIssuePost? _selected;
   GoogleMapController? _mapCtrl;
 
-  Future<void> _fitToAll() async {
+  double _radiusMeters = 1000; // 기본 1km
+  static const _radiusOptionsMeters = <double>[1000, 3000, 5000]; // 1/3/5km
+
+  double _zoomForRadius(double meters) {
+    final km = meters / 1000.0;
+    if (km <= 1) return 15.5;
+    if (km <= 3) return 14.2;
+    if (km <= 5) return 13.7;
+    if (km <= 10) return 12.8;
+    if (km <= 20) return 11.8;
+    return 11.0;
+  }
+
+  Future<void> _fitToAll(List<NearbyIssuePost> visiblePosts) async {
     final c = _mapCtrl;
     if (c == null) return;
 
     final pts = <LatLng>[
       LatLng(widget.myLat, widget.myLng),
-      ...widget.posts.map((p) => LatLng(p.lat, p.lng)),
+      ...visiblePosts.map((p) => LatLng(p.lat, p.lng)),
     ];
 
-    if (pts.isEmpty) return;
+    if (pts.length <= 1) {
+      // ✅ 내 위치만 있는 경우: bounds 대신 줌으로 처리
+      await c.animateCamera(
+        CameraUpdate.newLatLngZoom(pts.first, _zoomForRadius(_radiusMeters)),
+      );
+      return;
+    }
 
     double minLat = pts.first.latitude, maxLat = pts.first.latitude;
     double minLng = pts.first.longitude, maxLng = pts.first.longitude;
@@ -48,13 +68,67 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
       northeast: LatLng(maxLat, maxLng),
     );
 
-    // padding: 프리뷰 카드 뜰 공간도 고려
     await c.animateCamera(CameraUpdate.newLatLngBounds(bounds, 90));
+  }
+
+  Future<void> _showRadiusInputDialog() async {
+    final controller = TextEditingController(
+      text: (_radiusMeters / 1000).toStringAsFixed(0),
+    );
+
+    final km = await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('반경 입력 (km)'),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              hintText: '예: 2.5',
+              suffixText: 'km',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final raw = controller.text.trim().replaceAll(',', '.');
+                final v = double.tryParse(raw);
+                Navigator.pop(ctx, v);
+              },
+              child: const Text('적용'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (km == null) return;
+
+    final nextMeters = (km * 1000).clamp(200.0, 50000.0); // ✅ 0.2km~50km 제한(원하면 조절)
+    setState(() {
+      _radiusMeters = nextMeters;
+      // 반경 밖으로 나간 선택은 해제
+      if (_selected != null && (_selected!.distanceMeters > _radiusMeters)) {
+        _selected = null;
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final visible = widget.posts.where((p) => p.distanceMeters <= _radiusMeters).toList();
+      _fitToAll(visible);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final myPos = LatLng(widget.myLat, widget.myLng);
+
+    final visiblePosts = widget.posts.where((p) => p.distanceMeters <= _radiusMeters).toList();
 
     final markers = <Marker>{
       Marker(
@@ -64,7 +138,7 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         onTap: () => setState(() => _selected = null),
       ),
-      ...widget.posts.map((p) {
+      ...visiblePosts.map((p) {
         return Marker(
           markerId: MarkerId(p.id),
           position: LatLng(p.lat, p.lng),
@@ -76,9 +150,9 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
 
     final circles = <Circle>{
       Circle(
-        circleId: const CircleId('radius_1km'),
+        circleId: const CircleId('radius'),
         center: myPos,
-        radius: 1000, // ✅ 1km
+        radius: _radiusMeters,
         strokeWidth: 2,
         strokeColor: const Color(0xFF60A5FA).withOpacity(0.75),
         fillColor: const Color(0xFF60A5FA).withOpacity(0.15),
@@ -100,8 +174,70 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
             onTap: (_) => setState(() => _selected = null),
             onMapCreated: (c) {
               _mapCtrl = c;
-              WidgetsBinding.instance.addPostFrameCallback((_) => _fitToAll());
+              WidgetsBinding.instance.addPostFrameCallback((_) => _fitToAll(visiblePosts));
             },
+          ),
+          Positioned(
+            left: 12,
+            right: 12,
+            top: 12,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A).withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.radar, color: Colors.white70, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      '반경 ${( _radiusMeters / 1000).toStringAsFixed(0)}km',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final m in _radiusOptionsMeters) ...[
+                              ChoiceChip(
+                                label: Text('${(m / 1000).toStringAsFixed(0)}km'),
+                                selected: _radiusMeters == m,
+                                onSelected: (_) {
+                                  setState(() {
+                                    _radiusMeters = m;
+                                    if (_selected != null && (_selected!.distanceMeters > _radiusMeters)) {
+                                      _selected = null;
+                                    }
+                                  });
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    final v = widget.posts
+                                        .where((p) => p.distanceMeters <= _radiusMeters)
+                                        .toList();
+                                    _fitToAll(v);
+                                  });
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '직접 입력',
+                      onPressed: _showRadiusInputDialog,
+                      icon: const Icon(Icons.edit, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
           if (_selected != null)
             Positioned(
@@ -112,10 +248,11 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
                 post: _selected!,
                 onClose: () => setState(() => _selected = null),
                 onOpen: () {
+                  final docId = _selected!.id;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => IssueDetailStub(postId: _selected!.id),
+                      builder: (_) => Communityview(docId: docId), // ✅ CommunityView 생성자 파라미터명에 맞추기
                     ),
                   );
                 },
@@ -211,20 +348,6 @@ class _IssuePreviewCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// 상세 페이지 아직 미구현이라 stub
-class IssueDetailStub extends StatelessWidget {
-  const IssueDetailStub({super.key, required this.postId});
-  final String postId;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('상세(미구현)')),
-      body: Center(child: Text('postId = $postId')),
     );
   }
 }
