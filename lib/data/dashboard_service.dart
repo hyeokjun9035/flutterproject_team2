@@ -98,7 +98,9 @@ class DashboardService {
     );
 
     // === 업데이트 시각 ===
-    final updatedAt = DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now();
+    final updatedAt =
+    (DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now())
+        .toLocal();
 
     return DashboardData(
       locationName: locationName,
@@ -129,6 +131,7 @@ class DashboardService {
       'addr': airAddr,
       'administrativeArea': administrativeArea,
     });
+    debugPrint('📡 getDashboard call lat=$lat lon=$lon at=${DateTime.now()}');
 
     final data = Map<String, dynamic>.from(res.data as Map);
     // === 아래 파싱 로직은 기존과 동일 ===
@@ -200,7 +203,9 @@ class DashboardService {
       pm25: airRaw['pm25'] is int ? airRaw['pm25'] as int : int.tryParse('${airRaw['pm25']}'),
     );
 
-    final updatedAt = DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now();
+    final updatedAt =
+    (DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now())
+        .toLocal();
 
     return DashboardData(
       locationName: locationName,

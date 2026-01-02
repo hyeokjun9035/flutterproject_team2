@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
+import 'notice_edit_page.dart';
 
-class AdminPostDetailPage extends StatefulWidget {
+class PostDetailPage extends StatefulWidget {
   final String docId;
 
-  const AdminPostDetailPage({super.key, required this.docId});
+  const PostDetailPage({super.key, required this.docId});
 
   @override
-  State<AdminPostDetailPage> createState() => _AdminPostDetailPageState();
+  State<PostDetailPage> createState() => _PostDetailPageState();
 }
 
-class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
+class _PostDetailPageState extends State<PostDetailPage> {
   // final List<VideoPlayerController> _videoCtrls = [];
   final Map<String, VideoPlayerController> _ctrlByUrl = {};
   final Map<String, Future<void>> _initByUrl = {};
@@ -28,7 +30,11 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
   Future<VideoPlayerController> _getVideoCtrl(String url) async {
     if (_ctrlByUrl.containsKey(url)) return _ctrlByUrl[url]!;
 
-    final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+    // final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+    final ctrl = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _ctrlByUrl[url] = ctrl;
 
     _initByUrl[url] ??= ctrl.initialize().then((_) {
@@ -149,6 +155,7 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
     final docRef = FirebaseFirestore.instance
         .collection('community')
         .doc(widget.docId);
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -156,15 +163,56 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            tooltip: '삭제',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () async {
-              final snap = await docRef.get();
-              final data = snap.data();
-              if (data == null) return;
-              if (!context.mounted) return;
-              await _deletePost(context, data);
+          // ✅ 수정/삭제 버튼은 공지사항이고 작성자인 경우에만 표시
+          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: docRef.snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox.shrink();
+              final data = snapshot.data?.data();
+              if (data == null) return const SizedBox.shrink();
+              
+              final category = (data['category'] ?? data['board_type'] ?? '').toString();
+              final isNotice = category == '공지사항';
+              
+              // 작성자 확인 (새 형식: author.uid 또는 구 형식: createdBy/user_id)
+              String? authorUid;
+              final author = data['author'];
+              if (author is Map) {
+                authorUid = author['uid']?.toString();
+              } else {
+                authorUid = (data['createdBy'] ?? data['user_id'])?.toString();
+              }
+              
+              final isAuthor = currentUser != null && authorUid == currentUser.uid;
+              // final canEdit = isNotice && isAuthor;
+              
+              // if (!canEdit) return const SizedBox.shrink();
+              
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: '수정',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => NoticeEditPage(docId: widget.docId, initial: data),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    tooltip: '삭제',
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      if (!context.mounted) return;
+                      await _deletePost(context, data);
+                    },
+                  ),
+                ],
+              );
             },
           ),
         ],
@@ -207,6 +255,8 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
 
           return ListView(
             padding: const EdgeInsets.all(14),
+            // ✅ 동영상 터치 시 스크롤이 발생하지 않도록 키 설정
+            key: const PageStorageKey('post_detail'),
             children: [
               Text(
                 title,
@@ -292,45 +342,74 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
                             );
                           }
 
-                          return Stack(
-                            alignment: Alignment.bottomCenter,
-                            children: [
-                              AspectRatio(
-                                aspectRatio: ctrl.value.aspectRatio,
-                                child: VideoPlayer(ctrl),
-                              ),
-                              VideoProgressIndicator(
-                                ctrl,
-                                allowScrubbing: true,
-                              ),
-                              Positioned(
-                                right: 8,
-                                bottom: 8,
-                                child: IconButton(
-                                  icon: Icon(
-                                    ctrl.value.isPlaying
-                                        ? Icons.pause_circle
-                                        : Icons.play_circle,
-                                    color: Colors.white,
-                                    size: 42,
-                                  ),
-                                  onPressed: () async {
-                                    if (ctrl.value.isPlaying) {
-                                      await ctrl.pause();
-                                    } else {
-                                      await ctrl.play();
-                                    }
-                                    setState(() {});
-                                  },
+                          return GestureDetector(
+                            // ✅ 동영상 영역의 터치 이벤트가 스크롤을 유발하지 않도록 처리
+                            onTap: () async {
+                              if (ctrl.value.isPlaying) {
+                                await ctrl.pause();
+                              } else {
+                                await ctrl.play();
+                              }
+                              setState(() {});
+                            },
+                            // ✅ 스크롤 이벤트를 완전히 차단
+                            behavior: HitTestBehavior.opaque,
+                            child: NotificationListener<ScrollNotification>(
+                              // ✅ 스크롤 이벤트를 완전히 차단
+                              onNotification: (notification) {
+                                return true; // 스크롤 이벤트를 소비하여 상위로 전달되지 않도록
+                              },
+                              child: Container(
+                                // ✅ 고정 높이 설정으로 레이아웃 변경 방지
+                                height: 220,
+                                child: Stack(
+                                  alignment: Alignment.bottomCenter,
+                                  children: [
+                                    AspectRatio(
+                                      aspectRatio: ctrl.value.aspectRatio,
+                                      child: VideoPlayer(ctrl),
+                                    ),
+                                    VideoProgressIndicator(
+                                      ctrl,
+                                      allowScrubbing: true,
+                                    ),
+                                    Positioned(
+                                      right: 8,
+                                      bottom: 8,
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          if (ctrl.value.isPlaying) {
+                                            await ctrl.pause();
+                                          } else {
+                                            await ctrl.play();
+                                          }
+                                          setState(() {});
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.5),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            ctrl.value.isPlaying
+                                                ? Icons.pause_circle
+                                                : Icons.play_circle,
+                                            color: Colors.white,
+                                            size: 42,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           );
                         },
                       ),
                     ),
                   );
-                  ;
                 }),
                 const SizedBox(height: 6),
               ],

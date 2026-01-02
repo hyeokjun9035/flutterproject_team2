@@ -3,7 +3,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_project/community/CommunityView.dart';
 import 'package:flutter_project/data/favorite_route.dart';
 import 'package:flutter_project/home/ui_helpers.dart';
 import 'package:flutter_project/utils/launcher.dart';
@@ -12,10 +14,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/dashboard_cache.dart';
 import '../carry/checklist_models.dart';
 import '../carry/checklist_rules.dart';
+import '../community/Event.dart';
 import '../data/dashboard_service.dart';
 import '../data/models.dart';
 import '../data/bus_arrival_service.dart';
 // 2025-12-23 jgh251223---S
+import '../data/nearby_issues_service.dart';
 import '../data/transit_service.dart';
 // 2025-12-23 jgh251223---E
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // 2025-12-23 jgh251223---S
@@ -27,6 +31,7 @@ import '../data/user_settings_store.dart';
 import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
+import '../ui/nearby_issue_map_page.dart';
 import 'home_card_order.dart'; //jgh251226
 
 
@@ -51,15 +56,22 @@ class _HomePageState extends State<HomePage> {
   Future<DashboardData>? _future;
   String? _savedFavoriteId;
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+  String? _weatherNuriCode;
+  late final NearbyIssuesService _nearbyIssuesService;
+  Future<List<NearbyIssuePost>>? _nearbyIssuesFuture;
 
   Future<void> _openForecastWeb() async {
     if (_lat == null || _lon == null) return;
-    final url = buildWeatherNuriDigitalForecastUrl(lat: _lat!, lon: _lon!);
-    await openExternal(url);
+
+    await openWeatherNuri(
+      lat: _lat!,
+      lon: _lon!,
+      code: _weatherNuriCode, // String? 멤버로 존재해야 함
+    );
   }
 
   Future<void> _openAirKoreaWeb() async {
-    await openExternal(airKoreaMyNeighborhoodUrl());
+    await openExternal(airKoreaHomeUrl());
   }
 
   void _listenFavoritesAndBindTransit() {
@@ -337,15 +349,27 @@ class _HomePageState extends State<HomePage> {
         );
       }
 
-      case HomeCardId.hourly:
-        return _Card(
-          child: isFirstLoading ? const _Skeleton(height: 90) : _HourlyStrip(items: data!.hourly),
-        );
+      case HomeCardId.hourly: {
+        final canTap = !_editMode && !isFirstLoading && _lat != null && _lon != null;
 
-      case HomeCardId.weekly:
         return _Card(
-          child: isFirstLoading ? const _Skeleton(height: 130) : _WeeklyStrip(items: data!.weekly),
+          onTap: canTap ? _openForecastWeb : null,
+          child: isFirstLoading
+              ? const _Skeleton(height: 90)
+              : _HourlyStrip(items: data!.hourly),
         );
+      }
+
+      case HomeCardId.weekly: {
+        final canTap = !_editMode && !isFirstLoading && _lat != null && _lon != null;
+
+        return _Card(
+          onTap: canTap ? _openForecastWeb : null,
+          child: isFirstLoading
+              ? const _Skeleton(height: 130)
+              : _WeeklyStrip(items: data!.weekly),
+        );
+      }
 
       case HomeCardId.transit:
         return _Card(
@@ -480,7 +504,38 @@ class _HomePageState extends State<HomePage> {
 
       case HomeCardId.nearbyIssues:
         return _Card(
-          child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCardHardcoded(),
+          child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
+            future: _nearbyIssuesFuture ?? Future.value(const []),
+            onOpenPost: (docId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Communityview(docId: docId),
+                ),
+              );
+            },
+            onMapPressed: () async {
+              // 1) Future에서 가져온 최신 3개를 같이 넘겨야 함
+              final posts = await (_nearbyIssuesFuture ?? Future.value(const <NearbyIssuePost>[]));
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NearbyIssuesMapPage(
+                    myLat: _lat!,
+                    myLng: _lon!,
+                    posts: posts,
+                  ),
+                ),
+              );
+            },
+            onReportPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const Event()),
+              );
+            },
+          ),
         );
     }
   }
@@ -533,7 +588,7 @@ class _HomePageState extends State<HomePage> {
     final tagoKey = Uri.decodeFull(rawKey);
 
     _busArrivalService = BusArrivalService(serviceKey: tagoKey);
-
+    _nearbyIssuesService = NearbyIssuesService();
     // 2025-12-23 jgh251223---E
     if (DashboardCache.isFresh()) {
       // ✅ 위치 라벨도 즉시 복원(화면 상단 빨리 뜸)
@@ -542,7 +597,7 @@ class _HomePageState extends State<HomePage> {
       _locationLabel = DashboardCache.locationLabel ?? _locationLabel;
       _airAddr = DashboardCache.airAddr ?? _airAddr;
       _future = Future.value(DashboardCache.data!);
-      _refreshInBackground();
+      // _refreshInBackground();
     } else {
       _future = _initLocationAndFetch();
     }
@@ -803,6 +858,11 @@ class _HomePageState extends State<HomePage> {
         setState(() => _locationLabel = '$kDefaultLocationLabel · $reason');
       }
     }
+
+    _nearbyIssuesFuture = _nearbyIssuesService.fetchNearbyIssueTop3(
+      myLat: _lat!,
+      myLng: _lon!,
+    );
 
     final nowTime = DateTime.now();
     final today = DateTime(nowTime.year, nowTime.month, nowTime.day);
@@ -1082,39 +1142,73 @@ class WeatherBackground extends StatelessWidget {
   final double? lat;
   final double? lon;
 
-  bool _isNightBySun(double lat, double lon) {
-    final nowTime = DateTime.now();
-
-    // 오늘(로컬 날짜 기준)
-    final today = DateTime(nowTime.year, nowTime.month, nowTime.day);
-
-    final ss = getSunriseSunset(lat, lon, nowTime.timeZoneOffset, today);
-    final sunrise = ss.sunrise;
-    final sunset = ss.sunset;
-
-    // 일출 전/일몰 후 => 밤
-    return nowTime.isBefore(sunrise) || nowTime.isAfter(sunset);
+  bool _isNightFallback(DateTime nowLocal) {
+    final h = nowLocal.hour;
+    return !(h >= 6 && h < 18);
   }
 
-  bool _isNightFallback() {
-    final h = DateTime.now().hour;
-    return !(h >= 6 && h < 18);
+  // ✅ isUtc 플래그를 “제거”하고 벽시계 시간만 살림
+  DateTime _asWallLocal(DateTime dt) {
+    return DateTime(
+      dt.year,
+      dt.month,
+      dt.day,
+      dt.hour,
+      dt.minute,
+      dt.second,
+      dt.millisecond,
+      dt.microsecond,
+    );
+  }
+
+  bool _isNightBySun(double lat, double lon) {
+    final nowLocal = DateTime.now(); // ✅ 그냥 로컬로
+    final todayLocal = DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+
+    final ss = getSunriseSunset(lat, lon, nowLocal.timeZoneOffset, todayLocal);
+
+    // ✅ 여기 핵심: 오프셋 더하지 말고 “벽시계”로만 사용
+    final sunrise = _asWallLocal(ss.sunrise);
+    var sunset = _asWallLocal(ss.sunset);
+
+    // 혹시 sunset이 sunrise보다 이르면(드물게) 다음날로 보정
+    if (sunset.isBefore(sunrise)) {
+      sunset = sunset.add(const Duration(days: 1));
+    }
+
+    // ✅ sanity check(이상하면 fallback)
+    final valid = sunset.isAfter(sunrise) &&
+        sunset.difference(sunrise).inHours >= 6 &&
+        sunrise.hour < 12; // 일출이 오후면 뭔가 꼬인 것
+
+    final night = valid
+        ? (nowLocal.isBefore(sunrise) || nowLocal.isAfter(sunset))
+        : _isNightFallback(nowLocal);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[WB] nowLocal=$nowLocal '
+            'rawUtc(sunrise/sunset)=${ss.sunrise.isUtc}/${ss.sunset.isUtc} '
+            'sunrise=$sunrise sunset=$sunset valid=$valid night=$night',
+      );
+    }
+    return night;
   }
 
   @override
   Widget build(BuildContext context) {
     final hasCoord = lat != null && lon != null;
-    final night = hasCoord ? _isNightBySun(lat!, lon!) : _isNightFallback();
+    final night = hasCoord
+        ? _isNightBySun(lat!, lon!)
+        : _isNightFallback(DateTime.now());
 
-    final sky = now?.sky ?? 3; // 1 맑음 / 3 구름많음 / 4 흐림(기상청 관례)
+    final sky = now?.sky ?? 3;
     final pty = now?.pty ?? 0;
 
-    // 기본 베이스(낮/밤)
     List<Color> colors = night
         ? [const Color(0xFF0B1026), const Color(0xFF1A2A5A)]
         : [const Color(0xFF4FC3F7), const Color(0xFF1976D2)];
 
-    // 구름/흐림이면 조금 회색톤 섞기
     if (sky >= 4) {
       colors = night
           ? [const Color(0xFF0B1026), const Color(0xFF2B2F3A)]
@@ -1125,7 +1219,6 @@ class WeatherBackground extends StatelessWidget {
           : [const Color(0xFF81D4FA), const Color(0xFF455A64)];
     }
 
-    // 비/눈이면 더 어둡고 대비 낮추기
     if (pty != 0) {
       colors = night
           ? [const Color(0xFF070A14), const Color(0xFF1B2233)]
@@ -2544,62 +2637,166 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
   }
 }
 
-class _NearbyIssuesCardHardcoded extends StatelessWidget {
-  const _NearbyIssuesCardHardcoded();
+class _NearbyIssuesCard extends StatelessWidget {
+  const _NearbyIssuesCard({
+    required this.future,
+    required this.onMapPressed,
+    required this.onReportPressed,
+    required this.onOpenPost,
+  });
+
+  final Future<List<NearbyIssuePost>> future;
+  final VoidCallback onMapPressed;
+  final VoidCallback onReportPressed;
+  final ValueChanged<String> onOpenPost;
+
+  String _prettyTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+
+    if (diff.inMinutes < 1) return '방금';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
+
+    // 24시간 넘으면 MM/dd
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+    return '$mm/$dd';
+  }
+
+  Widget _metaChip(String text, IconData icon) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: Colors.white70),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    const issues = [
-      _Issue('역 출구 침수 심함', 7),
-      _Issue('사거리 교통사고 발생', 3),
-      _Issue('인도 결빙 구간 있음', 2),
-    ];
+    return FutureBuilder<List<NearbyIssuePost>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          // 너 프로젝트의 스켈레톤 컴포넌트 있으면 그걸로 교체
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator())),
+          );
+        }
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('내 주변 1km · 최신 3건',
-              style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-
-          for (int i = 0; i < issues.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                '${i + 1}. ${issues[i].title} (확인 ${issues[i].up})',
-                style: t.bodySmall?.copyWith(color: Colors.white70),
-              ),
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              '내 주변 글을 불러오지 못했습니다.\n${snap.error}',
+              style: t.bodySmall?.copyWith(color: Colors.white70),
             ),
+          );
+        }
 
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        final issues = snap.data ?? const [];
+
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextButton(
-                onPressed: () {},
-                child: const Text('지도 보기'),
+              Text(
+                '내 주변 1km 사건/이슈',
+                style: t.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w900),
               ),
-              TextButton(
-                onPressed: () {},
-                child: const Text('제보'),
+              const SizedBox(height: 4),
+              Text(
+                '최신 3건',
+                style: t.labelMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+
+              if (issues.isEmpty)
+                Text('1km 내 사건/이슈 글이 없습니다.',
+                    style: t.bodySmall?.copyWith(color: Colors.white70))
+              else
+                for (final p in issues)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => onOpenPost(p.id), // ✅ docId 전달
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    p.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: t.bodyMedium?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 6,
+                                    children: [
+                                      _metaChip('약 ${p.distanceMeters}m', Icons.place_outlined),
+                                      _metaChip('${p.likeCount}', Icons.favorite_border),
+                                      _metaChip('${p.commentCount}', Icons.chat_bubble_outline),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              _prettyTime(p.createdAt),
+                              style: t.labelSmall?.copyWith(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(onPressed: onMapPressed, child: const Text('지도 보기')),
+                  TextButton(onPressed: onReportPressed, child: const Text('제보')),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-class _Issue {
-  final String title;
-  final int up;
-  const _Issue(this.title, this.up);
-}
 
 class _MiniTempLine extends StatelessWidget {
   const _MiniTempLine({

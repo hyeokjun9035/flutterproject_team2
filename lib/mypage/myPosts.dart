@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'postCreate.dart';
+import 'package:flutter_project/community/CommunityAdd.dart'; // Communityadd 클래스가 정의된 파일명으로 확인해주세요
 import 'DetailMypost.dart';
 import 'package:flutter_project/data/dashboard_service.dart';
 import 'package:flutter_project/data/models.dart';
@@ -15,7 +15,7 @@ class MyPosts extends StatelessWidget {
     final dashboardService = DashboardService(region: 'asia-northeast3');
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // 부드러운 배경색
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -44,7 +44,7 @@ class MyPosts extends StatelessWidget {
     );
   }
 
-
+  // --- 날씨 정보 위젯 ---
   Widget _buildRealTimeWeather(DashboardService service) {
     return FutureBuilder<DashboardData>(
       future: service.fetchDashboardByLatLon(
@@ -75,13 +75,6 @@ class MyPosts extends StatelessWidget {
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(25),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
-                blurRadius: 15,
-                offset: const Offset(0, 8),
-              )
-            ],
           ),
           child: Column(
             children: [
@@ -91,8 +84,7 @@ class MyPosts extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(data.locationName,
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                      Text(data.locationName, style: const TextStyle(color: Colors.white, fontSize: 18)),
                       Text("${now.temp?.toStringAsFixed(1)}°",
                           style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
                     ],
@@ -122,43 +114,29 @@ class MyPosts extends StatelessWidget {
         Icon(icon, color: Colors.white70, size: 20),
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ],
     );
   }
-
 
   Widget _buildActionButtons(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PostCreate())),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const Communityadd())),
         borderRadius: BorderRadius.circular(15),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.blue.withOpacity(0.1)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
           ),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.blue[50], shape: BoxShape.circle),
-                child: const Icon(Icons.edit_note, color: Colors.blue),
-              ),
+              const Icon(Icons.edit_note, color: Colors.blue),
               const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text("커뮤니티 글쓰기", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text("주변의 생생한 정보를 공유해 보세요!", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ),
-              ),
+              const Expanded(child: Text("커뮤니티 글쓰기", style: TextStyle(fontWeight: FontWeight.bold))),
               const Icon(Icons.chevron_right, color: Colors.grey),
             ],
           ),
@@ -167,13 +145,12 @@ class MyPosts extends StatelessWidget {
     );
   }
 
-  // 3. 게시글 그리드: 인스타그램 스타일의 정갈함
   Widget _buildPostHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: const [
+        children: [
           Text("내가 작성한 게시글", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           Icon(Icons.grid_view_rounded, size: 18, color: Colors.grey),
         ],
@@ -181,12 +158,12 @@ class MyPosts extends StatelessWidget {
     );
   }
 
+  // --- 핵심 수정된 그리드 부분 ---
   Widget _buildPostGrid(String? myUid) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('community')
-          .where('user_id', isEqualTo: myUid)
-          .orderBy('cdate', descending: true)
+          .where('createdBy', isEqualTo: myUid)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -210,15 +187,25 @@ class MyPosts extends StatelessWidget {
           itemCount: posts.length,
           itemBuilder: (context, index) {
             var postData = posts[index].data() as Map<String, dynamic>;
-            List<dynamic> imageUrls = postData['image_urls'] ?? [];
-            String displayUrl = imageUrls.isNotEmpty ? imageUrls[0] : 'https://via.placeholder.com/150';
+
+            // ✅ 이미지/비디오 썸네일 경로 추출
+            List<dynamic> images = postData['images'] ?? [];
+            List<dynamic> videoThumbs = postData['videoThumbs'] ?? [];
+            String title = postData['title'] ?? '제목 없음';
+
+            String? displayUrl;
+            if (images.isNotEmpty) {
+              displayUrl = images[0];
+            } else if (videoThumbs.isNotEmpty) {
+              displayUrl = videoThumbs[0];
+            }
 
             return GestureDetector(
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => Detailmypost(
-                    imageUrl: displayUrl,
+                    imageUrl: displayUrl ?? '',
                     postId: posts[index].id,
                     postData: postData,
                   ),
@@ -227,11 +214,24 @@ class MyPosts extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  color: Colors.grey[200],
-                  child: Image.network(
+                  color: const Color(0xFFE9ECEF), // 이미지가 없을 때 배경색
+                  child: displayUrl != null
+                      ? Image.network(
                     displayUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                  )
+                      : Container(
+                    // ✅ 이미지가 없는 경우 제목 표시
+                    padding: const EdgeInsets.all(8),
+                    alignment: Alignment.center,
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black54),
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ),

@@ -9,17 +9,14 @@ import 'CommunityView.dart';
 import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 
-class Fashion extends StatefulWidget {
-  const Fashion({super.key});
-
-  // ✅ 일단 하드코딩 데이터
-  static const List<Map<String, dynamic>> posts = [];
+class Notice extends StatefulWidget {
+  const Notice({super.key});
 
   @override
-  State<Fashion> createState() => _FashionState();
+  State<Notice> createState() => _NoticeState();
 }
 
-class _FashionState extends State<Fashion> {
+class _NoticeState extends State<Notice> {
   @override
   Widget build(BuildContext context) {
     return PutterScaffold(
@@ -34,7 +31,7 @@ class _FashionState extends State<Fashion> {
             onPressed: () => Navigator.pop(context),
           ),
           title: const Text(
-            "패션",
+            "공지사항",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           actions: [
@@ -54,7 +51,7 @@ class _FashionState extends State<Fashion> {
         body: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("community")
-              .where("category", isEqualTo: "패션")
+              .where("category", isEqualTo: "공지사항")
               .orderBy("createdAt", descending: true)
               .snapshots(),
           builder: (context, snap) {
