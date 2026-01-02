@@ -59,14 +59,14 @@ class NotificationScreen extends StatelessWidget {
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       onTap: () {
-                        // ✅ 알림 클릭 시 해당 게시글 상세 페이지로 이동
+
                         if (postId != null && postId.isNotEmpty) {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => Detailmypost(
                                 postId: postId,
-                                imageUrl: '', // 상세페이지에서 직접 불러오도록 설계됨
+                                imageUrl: '',
                                 postData: const {},
                               ),
                             ),
