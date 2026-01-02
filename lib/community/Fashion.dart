@@ -6,10 +6,13 @@ import '../headandputter/putter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'CommunityEdit.dart';
 import 'CommunityView.dart';
+import 'package:chewie/chewie.dart';
+import 'package:video_player/video_player.dart';
 
 class Fashion extends StatefulWidget {
   const Fashion({super.key});
 
+  // ✅ 일단 하드코딩 데이터
   static const List<Map<String, dynamic>> posts = [];
 
   @override
@@ -74,6 +77,46 @@ class _FashionState extends State<Fashion> {
                   final data = doc.data() as Map<String, dynamic>;
 
                   final title = (data["title"] ?? "").toString();
+                  final images = ((data["images"] as List?) ?? []).map((e) => e.toString()).toList();
+                  final videos = ((data["videos"] as List?) ?? []).map((e) => e.toString()).toList();
+                  final videoThumbs = ((data["videoThumbs"] as List?) ?? []).map((e) => e.toString()).toList();
+
+
+                  // ✅ 사진/영상 섞어서 캐러셀용 아이템 만들기
+                  final mediaItems = <Map<String, String>>[];
+
+                  final blocks = (data["blocks"] as List?) ?? [];
+                  if (blocks.isNotEmpty) {
+                    for (final raw in blocks) {
+                      if (raw is! Map) continue;
+                      final b = Map<String, dynamic>.from(raw);
+                      final t = (b['t'] ?? '').toString();
+
+                      if (t == 'image') {
+                        final idx = (b['v'] as num?)?.toInt() ?? -1;
+                        if (idx >= 0 && idx < images.length) {
+                          mediaItems.add({'type': 'image', 'url': images[idx]});
+                        }
+                      } else if (t == 'video') {
+                        final idx = (b['v'] as num?)?.toInt() ?? -1;
+                        if (idx >= 0 && idx < videos.length) {
+                          final thumb = (idx < videoThumbs.length) ? videoThumbs[idx] : '';
+                          mediaItems.add({'type': 'video', 'url': videos[idx], 'thumb': thumb});
+                        }
+                      }
+                    }
+                  } else {
+                    for (final u in images) {
+                      mediaItems.add({'type': 'image', 'url': u});
+                    }
+                    for (int i = 0; i < videos.length; i++) {
+                      mediaItems.add({
+                        'type': 'video',
+                        'url': videos[i],
+                        'thumb': (i < videoThumbs.length) ? videoThumbs[i] : '',
+                      });
+                    }
+                  }
 
                   // author는 Map으로 저장했으니 문자열로 바로 못 씀
                   final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
@@ -110,50 +153,6 @@ class _FashionState extends State<Fashion> {
 
                   final views = (data["viewCount"] ?? 0);
                   final comments = (data["commentCount"] ?? 0);
-
-                  // 이미지: images 리스트의 첫번째를 보여주는 예시(없으면 null)
-                  final images = (data["images"] as List?) ?? [];
-                  final firstImageUrl = images.isNotEmpty ? images.first.toString() : null;
-                  final videos = (data["videos"] as List?) ?? [];
-                  final firstVideoUrl = videos.isNotEmpty ? videos.first.toString() : null;
-                  final videoThumbs = (data["videoThumbs"] as List?) ?? [];
-                  final firstVideoThumb = videoThumbs.isNotEmpty ? videoThumbs.first.toString() : null;
-                  Widget? videoPreview;
-                  if (firstVideoThumb != null && firstVideoThumb.isNotEmpty) {
-                    videoPreview = ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Image.network(firstVideoThumb, fit: BoxFit.cover),
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.35),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  } else if (firstVideoUrl != null && firstVideoUrl.isNotEmpty) {
-                    videoPreview = ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: Container(
-                          color: Colors.black12,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.play_circle_fill, size: 64),
-                        ),
-                      ),
-                    );
-                  }
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -284,33 +283,25 @@ class _FashionState extends State<Fashion> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(title, style: const TextStyle(fontSize: 14)),
-
                               const SizedBox(height: 10),
-
-                              if (firstImageUrl != null && firstImageUrl.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: AspectRatio(
-                                    aspectRatio: 16 / 9,
-                                    child: Image.network(
-                                      firstImageUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        color: Colors.black12,
-                                        alignment: Alignment.center,
-                                        child: const Text("이미지 없음"),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                              if (videoPreview != null) ...[
-                                const SizedBox(height: 10),
-                                videoPreview,
-                              ],
                             ],
                           ),
                         ),
+
+                        if (mediaItems.isNotEmpty) ...[
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => Communityview(docId: doc.id),
+                                ),
+                              );
+                            },
+                            child: _MediaCarousel(items: mediaItems),
+                          ),
+                        ],
 
                         const SizedBox(height: 10),
 
@@ -336,6 +327,205 @@ class _FashionState extends State<Fashion> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _MediaCarousel extends StatefulWidget {
+  final List<Map<String, String>> items;
+  const _MediaCarousel({required this.items});
+
+  @override
+  State<_MediaCarousel> createState() => _MediaCarouselState();
+}
+
+class _MediaCarouselState extends State<_MediaCarousel> {
+  final _pc = PageController();
+  int _index = 0;
+
+  int? _playingIndex;
+  VideoPlayerController? _vp;
+  ChewieController? _chewie;
+
+  Future<void> _playVideoAt(int idx, String url) async {
+    if (_playingIndex == idx && _vp != null && _chewie != null) return;
+
+    await _disposePlayer();
+    setState(() => _playingIndex = idx);
+
+    final vp = VideoPlayerController.networkUrl(Uri.parse(url));
+    _vp = vp;
+
+    try {
+      await vp.initialize();
+    } catch (e) {
+      await _disposePlayer();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('영상 로드 실패: $e')),
+      );
+      return;
+    }
+
+    _chewie = ChewieController(
+      videoPlayerController: vp,
+      autoPlay: true,
+      looping: false,
+      allowFullScreen: true,
+      allowPlaybackSpeedChanging: true,
+    );
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _disposePlayer() async {
+    _chewie?.dispose();
+    _chewie = null;
+    await _vp?.dispose();
+    _vp = null;
+    _playingIndex = null;
+  }
+
+  @override
+  void dispose() {
+    _disposePlayer();
+    _pc.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.items.length;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: PageView.builder(
+              controller: _pc,
+              itemCount: total,
+              onPageChanged: (i) async {
+                setState(() => _index = i);
+                // ✅ 페이지 넘기면 재생 중이면 꺼버리기 (인스타 느낌)
+                if (_playingIndex != null && _playingIndex != i) {
+                  await _disposePlayer();
+                  if (mounted) setState(() {});
+                }
+              },
+              itemBuilder: (_, i) {
+                final it = widget.items[i];
+                final type = (it['type'] ?? 'image').trim();
+
+                if (type == 'video') {
+                  final thumb = (it['thumb'] ?? '').trim();
+                  final videoUrl = (it['url'] ?? '').trim();
+
+                  final isPlaying = _playingIndex == i && _chewie != null;
+
+                  return isPlaying
+                      ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Chewie(controller: _chewie!),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () async {
+                            await _disposePlayer();
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                      : InkWell(
+                    onTap: () {
+                      if (videoUrl.isNotEmpty) _playVideoAt(i, videoUrl);
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      alignment: Alignment.center,
+                      children: [
+                        if (thumb.isNotEmpty)
+                          Image.network(thumb, fit: BoxFit.cover)
+                        else
+                          Container(color: Colors.black12),
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.35),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final url = (it['url'] ?? '').trim();
+                return Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.black12,
+                    alignment: Alignment.center,
+                    child: const Text("이미지 없음"),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // 오른쪽 상단 1/8 표시
+          if (total > 1)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  "${_index + 1}/$total",
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+
+          // 아래 점 인디케이터
+          if (total > 1)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(total, (i) {
+                  final active = i == _index;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: active ? 10 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: active ? Colors.white : Colors.white.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
       ),
     );
   }
