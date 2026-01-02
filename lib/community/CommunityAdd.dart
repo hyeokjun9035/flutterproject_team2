@@ -684,13 +684,6 @@ class _CommunityaddState extends State<Communityadd> {
     final docRef = fs.collection("community").doc(); // docId 미리 생성
     final docId = docRef.id;
 
-
-
-
-
-
-
-
 // users/{uid} 에서 프로필 가져오기
     final userSnap = await fs.collection('users').doc(uid).get();
     if (!userSnap.exists) {
@@ -767,6 +760,7 @@ class _CommunityaddState extends State<Communityadd> {
       'likeCount': 0,
 
       'createdAt': FieldValue.serverTimestamp(),
+      'createdAtClient': DateTime.now().millisecondsSinceEpoch,
     });
 
     // 초기화
