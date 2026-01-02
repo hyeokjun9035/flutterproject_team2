@@ -125,6 +125,24 @@ class _NoticeCreatePageState extends State<NoticeCreatePage> {
       final videoUrls = videoData['videos']!;
       final thumbUrls = videoData['thumbs']!;
 
+      // ✅ 여기 추가: View에서 렌더링할 blocks 생성
+      final blocks = <Map<String, dynamic>>[];
+
+      // (선택) 내용도 View에서 텍스트로 보이게 하고 싶으면 유지
+      if (content.isNotEmpty) {
+        blocks.add({'t': 'text', 'v': content});
+      }
+
+// 이미지들
+      for (int i = 0; i < imageUrls.length; i++) {
+        blocks.add({'t': 'image', 'v': i});
+      }
+
+// 영상들
+      for (int i = 0; i < videoUrls.length; i++) {
+        blocks.add({'t': 'video', 'v': i});
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('로그인 정보 없음');
       final userSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
@@ -149,7 +167,7 @@ class _NoticeCreatePageState extends State<NoticeCreatePage> {
           'profile_image_url': userData['profile_image_url'] ?? '',
         },
 
-        'blocks': [], // 공지사항은 blocks를 빈 배열로 유지 (필요 시 추후 에디터 도입 가능)
+        'blocks': blocks,
         'images': imageUrls,
         'videos': videoUrls,
         'videoThumbs': thumbUrls,
