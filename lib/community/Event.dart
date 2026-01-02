@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_project/community/CommunityView.dart' hide Communityview;
 import 'CommunityAdd.dart';
 import '../headandputter/putter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'CommunityEdit.dart';
+import 'CommunityView.dart';
 
 class Event extends StatelessWidget {
   const Event({super.key});
@@ -92,6 +94,35 @@ class Event extends StatelessWidget {
                 // author는 Map으로 저장했으니 문자열로 바로 못 씀
                 final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
                 final authorName = (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
+                final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+
+                final placeMap = (data["place"] as Map<String, dynamic>?) ?? {};
+                final placeName = (placeMap["name"] ?? "").toString().trim();
+                final placeAddress = (placeMap["address"] ?? "").toString().trim();
+
+                final weatherMap = (data["weather"] as Map<String, dynamic>?) ?? {};
+                final temp = weatherMap["temp"]; // _addCommunity에서 'weather': {'temp': _temp ...}
+
+                String weatherLabel = "";
+                if (temp != null) {
+                  // temp가 int/double 섞일 수 있어서 num 처리
+                  final num t = (temp as num);
+                  weatherLabel = "온도 ${t.toStringAsFixed(0)}°";
+                }
+
+// 지역명(시/도 + 구/시/군) 간단 파싱
+                String regionLabel = "";
+                if (placeAddress.isNotEmpty) {
+                  final parts = placeAddress.split(' ');
+                  if (parts.length >= 2) {
+                    regionLabel = "${parts[0]} ${parts[1]}"; // 예: "서울특별시 강남구"
+                  } else {
+                    regionLabel = parts[0];
+                  }
+                }
+
+// 화면에 보여줄 최종 라벨: placeName 우선, 없으면 regionLabel
+                final locationLabel = placeName.isNotEmpty ? placeName : regionLabel;
 
                 final views = (data["viewCount"] ?? 0);
                 final comments = (data["commentCount"] ?? 0);
@@ -140,101 +171,122 @@ class Event extends StatelessWidget {
                   );
                 }
 
-
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start, // 위로 붙게
                         children: [
-                          const CircleAvatar(
+                          CircleAvatar(
                             radius: 14,
                             backgroundColor: Colors.black12,
-                            child: Icon(Icons.person, size: 16, color: Colors.black54),
+                            backgroundImage: authorProfile.isNotEmpty ? NetworkImage(authorProfile) : null,
+                            child: authorProfile.isEmpty
+                                ? const Icon(Icons.person, size: 16, color: Colors.black54)
+                                : null,
                           ),
                           const SizedBox(width: 8),
-                          Text(authorName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                          const Spacer(),
+
+                          // ✅ 닉네임 + 위치를 Column으로 묶기
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  authorName,
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, height: 1.0),
+                                ),
+
+                                if (locationLabel.isNotEmpty || weatherLabel.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1), // 여기 0~2로 조절
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (locationLabel.isNotEmpty) ...[
+                                          const Icon(Icons.location_on_outlined, size: 16),
+                                          Flexible(
+                                            child: Text(
+                                              locationLabel,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                        ],
+                                        if (locationLabel.isNotEmpty && weatherLabel.isNotEmpty)
+                                          const SizedBox(width: 5),
+                                        if (weatherLabel.isNotEmpty) ...[
+                                          const Icon(Icons.thermostat, size: 16),
+                                          Text(
+                                            weatherLabel,
+                                            style: const TextStyle(fontSize: 14),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          // ✅ 오른쪽 메뉴는 그대로
                           PopupMenuButton<String>(
                             icon: const Icon(Icons.more_vert),
-                            onSelected: (value) {
-                              if (value == 'edit') {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const CommunityEdit()),
-                                );
-                                // TODO: 나중에 수정 화면 이동
-                              } else if (value == 'delete') {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      title: const Text("삭제?"),
-                                      content: const Text("정말 삭제하시겠습니까?"),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () {
-                                            debugPrint('삭제 확정: docId=${doc.id}');
-                                            Navigator.of(context).pop();
-                                            // TODO: 나중에 실제 삭제 처리
-                                          },
-                                          child: const Text("삭제"),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.of(context).pop();
-                                          },
-                                          child: const Text("취소"),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-                              }
-
-                            },
+                            padding: EdgeInsets.zero,
+                            onSelected: (value) { /* ... */ },
                             itemBuilder: (_) => const [
-                              PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('수정')
-                              ),
-                              PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('삭제'),
-                              ),
+                              PopupMenuItem(value: 'edit', child: Text('수정')),
+                              PopupMenuItem(value: 'delete', child: Text('삭제')),
                             ],
                           ),
-
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(title, style: const TextStyle(fontSize: 14)),
 
-                      const SizedBox(height: 10),
-
-                      // ✅ Firestore 이미지 URL이면 Image.network
-                      if (firstImageUrl != null && firstImageUrl.isNotEmpty)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: Image.network(
-                              firstImageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: Colors.black12,
-                                alignment: Alignment.center,
-                                child: const Text("이미지 없음"),
-                              ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => Communityview(docId: doc.id),
                             ),
-                          ),
-                        ),
+                          );
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: const TextStyle(fontSize: 14)),
 
-                      if (videoPreview != null) ...[
-                        const SizedBox(height: 10),
-                        videoPreview,
-                      ],
+                            const SizedBox(height: 10),
+
+                            if (firstImageUrl != null && firstImageUrl.isNotEmpty)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: Image.network(
+                                    firstImageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      color: Colors.black12,
+                                      alignment: Alignment.center,
+                                      child: const Text("이미지 없음"),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                            if (videoPreview != null) ...[
+                              const SizedBox(height: 10),
+                              videoPreview,
+                            ],
+                          ],
+                        ),
+                      ),
 
                       const SizedBox(height: 10),
 
