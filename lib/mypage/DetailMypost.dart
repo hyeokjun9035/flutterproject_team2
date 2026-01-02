@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_project/mypage/postDelete.dart'; // 경로 확인 필요
+import 'package:flutter_project/mypage/postDelete.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,10 +23,52 @@ class Detailmypost extends StatefulWidget {
 class _DetailmypostState extends State<Detailmypost> {
   final TextEditingController _commentController = TextEditingController();
 
+
+  Map<String, dynamic>? _currentPostData;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.postData.isEmpty) {
+      _loadPostData();
+    } else {
+      _currentPostData = widget.postData;
+    }
+  }
+
+
+  Future<void> _loadPostData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      var doc = await FirebaseFirestore.instance
+          .collection('community')
+          .doc(widget.postId)
+          .get();
+
+      if (doc.exists && mounted) {
+        setState(() {
+          _currentPostData = doc.data();
+          _isLoading = false;
+        });
+      } else if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("존재하지 않는 게시글입니다.")),
+        );
+      }
+    } catch (e) {
+      debugPrint("데이터 로드 실패: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _addComment() async {
     final String commentText = _commentController.text.trim();
     if (commentText.isEmpty) return;
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -49,16 +91,35 @@ class _DetailmypostState extends State<Detailmypost> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 데이터 구조 변경 반영: cdate -> createdAt
-    String dateStr = "";
-    if (widget.postData['createdAt'] != null) {
-      DateTime dt = (widget.postData['createdAt'] as Timestamp).toDate();
+    // 1. 데이터를 가져오는 중일 때
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // 2. 데이터 로드 실패 혹은 게시글이 없을 때
+    if (_currentPostData == null) {
+      return Scaffold(
+        appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
+        body: const Center(child: Text("게시글 정보를 불러올 수 없습니다.")),
+      );
+    }
+
+
+    final data = _currentPostData!;
+
+    // 날짜 포맷팅
+    String dateStr = "날짜 정보 없음";
+    if (data['createdAt'] != null) {
+      DateTime dt = (data['createdAt'] as Timestamp).toDate();
       dateStr = DateFormat('yyyy.MM.dd HH:mm').format(dt);
     }
 
-    // ✅ author 맵에서 정보 추출
-    final author = widget.postData['author'] as Map<String, dynamic>? ?? {};
-    final String nickName = author['nickName'] ?? "익명";
+    // 작성자 정보
+    final author = data['author'] as Map<String, dynamic>? ?? {};
+    final String nickName = author['nickName'] ?? author['name'] ?? "익명";
     final String profileImg = author['profile_image_url'] ?? 'https://via.placeholder.com/150';
 
     return Scaffold(
@@ -70,82 +131,85 @@ class _DetailmypostState extends State<Detailmypost> {
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("게시글 확인", style: TextStyle(color: Colors.black, fontSize: 17, fontWeight: FontWeight.bold)),
+        title: const Text("게시글 확인",
+            style: TextStyle(color: Colors.black, fontSize: 17, fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. 프로필 영역
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(radius: 20, backgroundImage: NetworkImage(profileImg)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // --- 1. 작성자 프로필 영역 ---
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
                       children: [
-                        Text(nickName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                        CircleAvatar(radius: 20, backgroundImage: NetworkImage(profileImg)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(nickName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        // 수정/삭제 버튼 (작성자 본인 확인 로직 필요 시 추가)
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => Postdelete(postId: widget.postId, initialData: data),
+                            ),
+                          ),
+                          child: const Text("수정/삭제", style: TextStyle(fontSize: 12, color: Colors.blueAccent)),
+                        ),
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => Postdelete(postId: widget.postId, initialData: widget.postData),
-                      ),
+                  const Divider(height: 1),
+
+                  // --- 2. 제목 영역 ---
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                    child: Text(
+                      data['title'] ?? "제목 없음",
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
-                    child: const Text("수정/삭제", style: TextStyle(fontSize: 12, color: Colors.blueAccent)),
                   ),
+
+                  // --- 3. 본문 영역 (Blocks 렌더링) ---
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _buildContentBlocks(data),
+                  ),
+
+                  const SizedBox(height: 30),
+                  const Divider(height: 1, thickness: 8, color: Color(0xFFF5F5F5)),
+
+                  // --- 4. 댓글 목록 영역 ---
+                  _buildCommentSection(),
                 ],
               ),
             ),
-
-            const Divider(height: 1),
-
-            // 2. 제목 영역
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                widget.postData['title'] ?? "제목 없음",
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            // 3. 본문 렌더링 (blocks 순회)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildContentBlocks(),
-            ),
-
-            const SizedBox(height: 20),
-            const Divider(height: 1, thickness: 8, color: Color(0xFFF5F5F5)),
-
-            // 4. 댓글 목록
-            _buildCommentSection(),
-
-            // 5. 댓글 입력창
-            _buildCommentInput(),
-
-            const SizedBox(height: 30),
-          ],
-        ),
+          ),
+          // --- 5. 댓글 입력 영역 ---
+          _buildCommentInput(),
+        ],
       ),
     );
   }
 
-  // ✅ 핵심: blocks 리스트를 타입별로 그려주는 함수
-  Widget _buildContentBlocks() {
-    List<dynamic> blocks = widget.postData['blocks'] ?? [];
-    List<dynamic> images = widget.postData['images'] ?? [];
-    List<dynamic> videos = widget.postData['videos'] ?? [];
-    List<dynamic> videoThumbs = widget.postData['videoThumbs'] ?? [];
+
+  Widget _buildContentBlocks(Map<String, dynamic> data) {
+    List<dynamic> blocks = data['blocks'] ?? [];
+    List<dynamic> images = data['images'] ?? [];
+    List<dynamic> videoThumbs = data['videoThumbs'] ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,10 +220,13 @@ class _DetailmypostState extends State<Detailmypost> {
         if (type == 'text') {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(value.toString(), style: const TextStyle(fontSize: 15, height: 1.6)),
+            child: Text(
+              value.toString(),
+              style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87),
+            ),
           );
         } else if (type == 'image') {
-          int index = value is int ? value : 0;
+          int index = value is int ? value : int.tryParse(value.toString()) ?? 0;
           if (index < images.length) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -170,37 +237,37 @@ class _DetailmypostState extends State<Detailmypost> {
             );
           }
         } else if (type == 'video') {
-          int index = value is int ? value : 0;
+          int index = value is int ? value : int.tryParse(value.toString()) ?? 0;
           String? thumb = index < videoThumbs.length ? videoThumbs[index] : null;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: _buildVideoPreview(thumb),
-          );
+          return _buildVideoItem(thumb);
         }
         return const SizedBox.shrink();
       }).toList(),
     );
   }
 
-  // 비디오 미리보기 (재생기는 별도 구현 필요)
-  Widget _buildVideoPreview(String? thumbUrl) {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black12,
-              borderRadius: BorderRadius.circular(12),
-              image: thumbUrl != null ? DecorationImage(image: NetworkImage(thumbUrl), fit: BoxFit.cover) : null,
+  Widget _buildVideoItem(String? thumbUrl) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+                image: thumbUrl != null ? DecorationImage(image: NetworkImage(thumbUrl), fit: BoxFit.cover) : null,
+              ),
             ),
-          ),
-          const CircleAvatar(
-            backgroundColor: Colors.black54,
-            child: Icon(Icons.play_arrow, color: Colors.white),
-          ),
-        ],
+            const CircleAvatar(
+              radius: 25,
+              backgroundColor: Colors.black54,
+              child: Icon(Icons.play_arrow, color: Colors.white, size: 30),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -211,7 +278,7 @@ class _DetailmypostState extends State<Detailmypost> {
       children: [
         const Padding(
           padding: EdgeInsets.all(16),
-          child: Text("댓글", style: TextStyle(fontWeight: FontWeight.bold)),
+          child: Text("댓글", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         ),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -223,18 +290,27 @@ class _DetailmypostState extends State<Detailmypost> {
           builder: (context, snapshot) {
             if (!snapshot.hasData) return const SizedBox();
             final docs = snapshot.data!.docs;
-            return ListView.builder(
+            if (docs.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                child: Text("첫 댓글을 작성해보세요.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+              );
+            }
+            return ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: docs.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 var comment = docs[index].data() as Map<String, dynamic>;
                 return ListTile(
                   leading: const CircleAvatar(radius: 15, child: Icon(Icons.person, size: 15)),
-                  title: Text(comment['content'] ?? ""),
+                  title: Text(comment['content'] ?? "", style: const TextStyle(fontSize: 14)),
                   subtitle: Text(
-                    comment['cdate'] != null ? DateFormat('MM.dd HH:mm').format((comment['cdate'] as Timestamp).toDate()) : "",
-                    style: const TextStyle(fontSize: 10),
+                    comment['cdate'] != null
+                        ? DateFormat('MM.dd HH:mm').format((comment['cdate'] as Timestamp).toDate())
+                        : "",
+                    style: const TextStyle(fontSize: 11),
                   ),
                 );
               },
@@ -246,8 +322,12 @@ class _DetailmypostState extends State<Detailmypost> {
   }
 
   Widget _buildCommentInput() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+      ),
       child: Row(
         children: [
           Expanded(
@@ -255,13 +335,19 @@ class _DetailmypostState extends State<Detailmypost> {
               controller: _commentController,
               decoration: InputDecoration(
                 hintText: "댓글을 입력하세요...",
+                hintStyle: const TextStyle(fontSize: 14),
                 filled: true,
                 fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
               ),
             ),
           ),
-          IconButton(onPressed: _addComment, icon: const Icon(Icons.send, color: Colors.blueAccent)),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: _addComment,
+            icon: const Icon(Icons.send_rounded, color: Colors.blueAccent),
+          ),
         ],
       ),
     );
