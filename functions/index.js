@@ -868,7 +868,7 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 
 // Firestore의 community 컬렉션에 새 문서가 생성될 때 실행 (v2 방식)
 exports.sendPostNotification = onDocumentCreated({
-  document: "community/{postId}",
+document: "community/{postId}",
   region: "asia-northeast3"
 }, async (event) => {
   const snapshot = event.data;
@@ -877,19 +877,45 @@ exports.sendPostNotification = onDocumentCreated({
   const postData = snapshot.data();
   const nickname = postData.user_nickname || "익명";
   const content = postData.content || "새로운 제보가 올라왔습니다.";
+  const postId = event.params.postId; // 생성된 게시글의 ID
 
+  const title = `새로운 교통 제보: ${nickname}님`;
+  const body = content.length > 30 ? content.substring(0, 30) + "..." : content;
+
+  // 1. 상단 알림바에 띄울 메시지 구성
   const message = {
     notification: {
-      title: ` 새로운 교통 제보: ${nickname}님`,
-      body: content.length > 30 ? content.substring(0, 30) + "..." : content,
+      title: title,
+      body: body,
+    },
+    // 앱이 꺼져있을 때 클릭하면 해당 게시글로 이동하기 위한 데이터
+    data: {
+      postId: postId,
+      type: "community",
+      click_action: "FLUTTER_NOTIFICATION_CLICK" // 안드로이드 특정 설정용
     },
     topic: "community_topic",
   };
 
   try {
+    // 2. FCM을 통해 실시간 푸시 알림 전송 (상단 알림바에 뜸)
     await admin.messaging().send(message);
-    console.log("알림 전송 완료");
+    console.log("푸시 알림 전송 완료");
+
+    // 3. 앱 내 알림함 조회를 위해 Firestore에 알림 내역 저장
+    // 'notifications'라는 컬렉션에 데이터를 쌓습니다.
+    await admin.firestore().collection("notifications").add({
+      title: title,
+      body: body,
+      postId: postId,
+      senderNickname: nickname,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), // 서버 시간 기준 저장
+      type: "community",
+      isRead: false // 나중에 읽음 처리 기능을 위해 추가
+    });
+    console.log("알림 내역 Firestore 저장 완료");
+
   } catch (error) {
-    console.error("알림 전송 오류:", error);
+    console.error("알림 처리 중 오류 발생:", error);
   }
 });
