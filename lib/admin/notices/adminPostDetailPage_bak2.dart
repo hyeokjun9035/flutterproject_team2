@@ -5,16 +5,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
 import 'notice_edit_page.dart';
 
-class AdminPostDetailPage extends StatefulWidget {
+class PostDetailPage extends StatefulWidget {
   final String docId;
 
-  const AdminPostDetailPage({super.key, required this.docId});
+  const PostDetailPage({super.key, required this.docId});
 
   @override
-  State<AdminPostDetailPage> createState() => _AdminPostDetailPageState();
+  State<PostDetailPage> createState() => _PostDetailPageState();
 }
 
-class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
+class _PostDetailPageState extends State<PostDetailPage> {
   // final List<VideoPlayerController> _videoCtrls = [];
   final Map<String, VideoPlayerController> _ctrlByUrl = {};
   final Map<String, Future<void>> _initByUrl = {};
@@ -30,7 +30,11 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
   Future<VideoPlayerController> _getVideoCtrl(String url) async {
     if (_ctrlByUrl.containsKey(url)) return _ctrlByUrl[url]!;
 
-    final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+    // final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+    final ctrl = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _ctrlByUrl[url] = ctrl;
 
     _initByUrl[url] ??= ctrl.initialize().then((_) {
@@ -180,9 +184,9 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
               }
               
               final isAuthor = currentUser != null && authorUid == currentUser.uid;
-              final canEdit = isNotice && isAuthor;
+              // final canEdit = isNotice && isAuthor;
               
-              if (!canEdit) return const SizedBox.shrink();
+              // if (!canEdit) return const SizedBox.shrink();
               
               return Row(
                 mainAxisSize: MainAxisSize.min,
