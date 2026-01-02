@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_project/community/CommunityView.dart';
 import 'package:flutter_project/data/favorite_route.dart';
 import 'package:flutter_project/home/ui_helpers.dart';
 import 'package:flutter_project/utils/launcher.dart';
@@ -505,6 +506,14 @@ class _HomePageState extends State<HomePage> {
         return _Card(
           child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
             future: _nearbyIssuesFuture ?? Future.value(const []),
+            onOpenPost: (docId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Communityview(docId: docId),
+                ),
+              );
+            },
             onMapPressed: () async {
               // 1) Future에서 가져온 최신 3개를 같이 넘겨야 함
               final posts = await (_nearbyIssuesFuture ?? Future.value(const <NearbyIssuePost>[]));
@@ -2633,11 +2642,13 @@ class _NearbyIssuesCard extends StatelessWidget {
     required this.future,
     required this.onMapPressed,
     required this.onReportPressed,
+    required this.onOpenPost,
   });
 
   final Future<List<NearbyIssuePost>> future;
   final VoidCallback onMapPressed;
   final VoidCallback onReportPressed;
+  final ValueChanged<String> onOpenPost;
 
   String _prettyTime(DateTime dt) {
     final now = DateTime.now();
@@ -2721,49 +2732,52 @@ class _NearbyIssuesCard extends StatelessWidget {
                 for (final p in issues)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 왼쪽: 제목 + 메타
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                p.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.bodyMedium?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 6,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => onOpenPost(p.id), // ✅ docId 전달
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _metaChip('약 ${p.distanceMeters}m', Icons.place_outlined),
-                                  _metaChip('${p.likeCount}', Icons.favorite_border),
-                                  _metaChip('${p.commentCount}', Icons.chat_bubble_outline),
+                                  Text(
+                                    p.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: t.bodyMedium?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 6,
+                                    children: [
+                                      _metaChip('약 ${p.distanceMeters}m', Icons.place_outlined),
+                                      _metaChip('${p.likeCount}', Icons.favorite_border),
+                                      _metaChip('${p.commentCount}', Icons.chat_bubble_outline),
+                                    ],
+                                  ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              _prettyTime(p.createdAt),
+                              style: t.labelSmall?.copyWith(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
-
-                        const SizedBox(width: 10),
-
-                        // 오른쪽: 시간
-                        Text(
-                          _prettyTime(p.createdAt),
-                          style: t.labelSmall?.copyWith(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
 
