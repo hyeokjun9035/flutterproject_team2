@@ -59,6 +59,45 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
     }
   }
 
+  // ✅ 이미지 전체 화면 보기 함수
+  void _showFullScreenImage(BuildContext context, String url) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              boundaryMargin: const EdgeInsets.all(20),
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain, // 화면에 맞춰서 꽉 차게 표시
+                width: double.infinity,
+                height: double.infinity,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(child: CircularProgressIndicator(color: Colors.white));
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   String _fmtTime(dynamic ts) {
     if (ts is Timestamp) {
       final dt = ts.toDate().toLocal();
@@ -117,7 +156,6 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
 
         final category = (data['category'] ?? '상세보기').toString();
         
-        // 작성자 확인 (본인 글인지 확인)
         String? authorUid;
         final author = data['author'];
         if (author is Map) {
@@ -135,13 +173,11 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
             elevation: 0,
             title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold)),
             actions: [
-              // ✅ 본인이 작성한 글(주로 공지사항)일 때만 수정 버튼 노출
               if (isAuthor)
                 IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeEditPage(docId: widget.docId, initial: data))),
                 ),
-              // 삭제 버튼은 관리자 권한이므로 항상 노출 (지우면 지웠지 수정은 안 함 정책 반영)
               IconButton(
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
                 onPressed: () => _deletePost(context, data),
@@ -227,10 +263,7 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
         ],
         
         const Divider(height: 1, thickness: 1),
-
-        // 댓글 섹션 추가
         _buildCommentSection(),
-        
         const SizedBox(height: 40),
       ],
     );
@@ -287,7 +320,6 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
                                 const SizedBox(width: 8),
                                 Text(_fmtTime(cTime), style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                 const Spacer(),
-                                // 관리자용 댓글 삭제 기능 (필요시)
                                 IconButton(
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
@@ -359,9 +391,15 @@ class _AdminPostDetailPageState extends State<AdminPostDetailPage> {
   Widget _imageWidget(String url) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: AspectRatio(aspectRatio: 16 / 9, child: Image.network(url, fit: BoxFit.cover)),
+      child: GestureDetector(
+        onTap: () => _showFullScreenImage(context, url), // ✅ 터치 시 전체화면 호출
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.network(url, fit: BoxFit.cover),
+          ),
+        ),
       ),
     );
   }
