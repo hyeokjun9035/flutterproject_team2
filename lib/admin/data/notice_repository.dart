@@ -28,9 +28,11 @@ class NoticeRepository {
         required String title,
         required String content,
       }) async {
+    // ✅ plain (새 형식)과 content (구 형식) 모두 업데이트
     await _col.doc(docId).update({
       'title': title,
-      'content': content,
+      'plain': content,  // 새 형식
+      'content': content,  // 구 형식 호환성
     });
   }
 
@@ -44,9 +46,8 @@ class NoticeRepository {
   /// 공지 목록 스트림
   Stream<QuerySnapshot<Map<String, dynamic>>> streamNotices() {
     return _col
-        .where('is_notice', isEqualTo: true)
-        .where('status', isEqualTo: 'active')
-        .orderBy('cdate', descending: true)
+        .where('category', isEqualTo: '공지사항')
+        .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
