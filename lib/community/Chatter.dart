@@ -223,7 +223,7 @@ class _ChatterState extends State<Chatter> {
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                    MaterialPageRoute(builder: (context) => CommunityEdit(docId: doc.id,)),
                                   );
                                 }
 

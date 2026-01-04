@@ -223,7 +223,7 @@ class _FashionState extends State<Fashion> {
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                    MaterialPageRoute(builder: (context) => CommunityEdit(docId: doc.id,)),
                                   );
                                 }
 
