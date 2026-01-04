@@ -220,7 +220,7 @@ class _NoticeState extends State<Notice> {
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                    MaterialPageRoute(builder: (context) => CommunityEdit(docId: doc.id,)),
                                   );
                                 }
 
