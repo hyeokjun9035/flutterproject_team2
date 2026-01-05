@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'admin_board_title/title_list_page.dart';
 import 'postDetailPage.dart';
 import 'notices/notice_create_page.dart';
+import 'admin_alarm_page.dart'; // ✅ 파일명 변경 반영 (alarm 포함)
+import 'package:flutter_project/admin/admin_report_detail_page.dart';
 import 'admin_alarm_page.dart';
 import 'data/notice_repository.dart';
 
@@ -82,17 +83,180 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
   
   int todayPostCount = 0;
   int totalUserCount = 0;
-  bool loading = true;
+  bool loadingUsers = true;
+  int todayReportCount = 0;
+  int openReportCount = 0;
+  int closedReportCount = 0;
+  int blockedUserCount = 0;
+  bool loadingReports = true;
+  
+   bool loading = true;
 
   List<int> weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
   Map<String, int> categoryCounts = {};
   int totalMediaPosts = 0;
 
   @override
-  void initState() { super.initState(); reload(); }
-
+  void initState() {
+    super.initState();
+    _loadTodayPostCount();
+    _loadTotalUserCount();
+    _loadReportCounts();
+    _loadBlockedUserCount();
+    reload();
+  }
+  
   Future<void> reload() async {
     setState(() => loading = true);
+  }
+
+  Future<void> _loadTodayReportCount() async {
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final startOfTomorrow = startOfDay.add(const Duration(days: 1));
+
+      final qs = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('createdAt', isLessThan: Timestamp.fromDate(startOfTomorrow))
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => todayReportCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('todayReportCount error: $e');
+      if (!mounted) return;
+      setState(() => todayReportCount = 0);
+    }
+  }
+
+  Future<void> _loadOpenReportCount() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('status', isEqualTo: 'open')
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => openReportCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('openReportCount error: $e');
+      if (!mounted) return;
+      setState(() => openReportCount = 0);
+    }
+  }
+
+  Future<void> _loadBlockedUserCount() async {
+    try {
+      final now = Timestamp.fromDate(DateTime.now());
+      final qs = await FirebaseFirestore.instance
+          .collection('users')
+          .where('writeBlockedUntil', isGreaterThan: now)
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => blockedUserCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('blockedUserCount error: $e');
+      if (!mounted) return;
+      setState(() => blockedUserCount = 0);
+    }
+  }
+
+  Future<void> _loadClosedReportCount() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('status', isEqualTo: 'closed')
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => closedReportCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('closedReportCount error: $e');
+      if (!mounted) return;
+      setState(() => closedReportCount = 0);
+    }
+  }
+
+  Future<void> reload() async {
+    setState(() {
+      loading = true;
+      loadingUsers = true;
+      loadingReports = true;
+    });
+
+    await Future.wait([
+      _loadTodayPostCount(),
+      _loadTotalUserCount(),
+      _loadTodayReportCount(),
+      _loadOpenReportCount(),
+      _loadClosedReportCount(),
+      _loadBlockedUserCount(),
+    ]);
+
+    if (!mounted) return;
+    setState(() {
+      loadingReports = false;
+    });
+  }
+
+  Future<void> _loadReportCounts() async {
+    setState(() => loadingReports = true);
+
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final startOfTomorrow = startOfDay.add(const Duration(days: 1));
+
+      final fs = FirebaseFirestore.instance;
+
+      final todayQ = fs
+          .collection('reports')
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('createdAt', isLessThan: Timestamp.fromDate(startOfTomorrow))
+          .count()
+          .get();
+
+      final openQ = fs
+          .collection('reports')
+          .where('status', isEqualTo: 'open')
+          .count()
+          .get();
+
+      final closedQ = fs
+          .collection('reports')
+          .where('status', isEqualTo: 'closed')
+          .count()
+          .get();
+
+      final results = await Future.wait([todayQ, openQ, closedQ]);
+
+      if (!mounted) return;
+      setState(() {
+        todayReportCount = results[0].count ?? 0;
+        openReportCount = results[1].count ?? 0;
+        closedReportCount = results[2].count ?? 0;
+        loadingReports = false;
+      });
+    } catch (e) {
+      debugPrint('loadReportCounts error: $e');
+      if (!mounted) return;
+      setState(() {
+        todayReportCount = 0;
+        openReportCount = 0;
+        closedReportCount = 0;
+        loadingReports = false;
+      });
+    }
+  }
+
+  Future<void> _loadTodayPostCount() async {
     try {
       final now = DateTime.now();
       final start = Timestamp.fromDate(DateTime(now.year, now.month, now.day));
@@ -129,10 +293,30 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         GridView.count(
           shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.6,
           children: [
-            _StatCard(title: '오늘 신고(하드)', value: '8', icon: Icons.report, onTap: widget.onGoReport),
-            _StatCard(title: '미처리(하드)', value: '3', icon: Icons.timelapse, onTap: widget.onGoReport),
-            _StatCard(title: '신규 게시글', value: loading ? '...' : '$todayPostCount', icon: Icons.article, onTap: widget.onGoPosts),
-            _StatCard(title: '총 사용자', value: loading ? '...' : '$totalUserCount', icon: Icons.people, onTap: widget.onGoUsers),
+            _StatCard(
+              title: '오늘 신고',
+              value: loadingReports ? '...' : '$todayReportCount',
+              icon: Icons.report,
+              onTap: widget.onGoReport,
+            ),
+            _StatCard(
+              title: '미처리',
+              value: loadingReports ? '...' : '$openReportCount',
+              icon: Icons.timelapse,
+              onTap: widget.onGoReport,
+            ),
+            _StatCard(
+              title: '신규 게시글',
+              value: loading ? '...' : '$todayPostCount',
+              icon: Icons.article,
+              onTap: widget.onGoPosts,
+            ),
+            _StatCard(
+              title: '총 사용자',
+              value: loadingUsers ? '...' : '$totalUserCount',
+              icon: Icons.people,
+              onTap: widget.onGoUsers,
+            ),
           ],
         ),
         const SizedBox(height: 18),
@@ -155,6 +339,36 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         const SizedBox(height: 12),
         loading ? const Center(child: CircularProgressIndicator()) : _buildWeeklyBarChart(),
 
+        Row(
+          children: [
+            Expanded(
+              child: _StatusMetricCard(
+                title: '미처리 신고',
+                value: loadingReports ? 0 : openReportCount,
+                color: Colors.red,
+                icon: Icons.report,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatusMetricCard(
+                title: '처리 완료',
+                value: loadingReports ? 0 : closedReportCount,
+                color: Colors.green,
+                icon: Icons.check_circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatusMetricCard(
+                title: '제재 사용자',
+                value: loadingUsers ? 0 : blockedUserCount,
+                color: Colors.orange,
+                icon: Icons.block,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 24),
         _sectionTitle('카테고리별 비중'),
         const SizedBox(height: 12),
@@ -299,17 +513,149 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
 }
 
 /* -------------------- 3) 신고 관리 -------------------- */
-class _AdminReportPage extends StatelessWidget {
+class _AdminReportPage extends StatefulWidget {
   const _AdminReportPage();
+
+  @override
+  State<_AdminReportPage> createState() => _AdminReportPageState();
+}
+
+class _AdminReportPageState extends State<_AdminReportPage> {
+  String _filter = 'open'; // open | all | closed
+
+  Query<Map<String, dynamic>> _query() {
+    final col = FirebaseFirestore.instance.collection('reports');
+
+    if (_filter == 'open') {
+      return col.where('status', isEqualTo: 'open'); // orderBy 제거
+    }
+    if (_filter == 'closed') {
+      return col.where('status', isEqualTo: 'closed'); // orderBy 제거
+    }
+    return col.orderBy('createdAt', descending: true); // 전체만 정렬
+  }
+
+  String _fmt(dynamic ts) {
+    if (ts is Timestamp) {
+      final dt = ts.toDate().toLocal();
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return '-';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final stream = _query().snapshots();
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
         _sectionTitle('신고 관리'),
         const SizedBox(height: 10),
-        const Card(elevation: 0, color: Color(0xFFFFF1F0), child: ListTile(leading: Icon(Icons.report, color: Colors.red), title: Text('미처리 신고가 있습니다.', style: TextStyle(fontWeight: FontWeight.bold)))),
-        ...List.generate(3, (i) => Card(elevation: 0, child: ListTile(title: Text('신고 #${120 + i}'), subtitle: const Text('사유: 부적절한 언어 사용')))),
+
+        // ✅ 필터 토글
+        Row(
+          children: [
+            ChoiceChip(
+              label: const Text('미처리'),
+              selected: _filter == 'open',
+              onSelected: (_) => setState(() => _filter = 'open'),
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('전체'),
+              selected: _filter == 'all',
+              onSelected: (_) => setState(() => _filter = 'all'),
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('처리완료'),
+              selected: _filter == 'closed',
+              onSelected: (_) => setState(() => _filter = 'closed'),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: stream,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('에러: ${snap.error}'),
+              );
+            }
+
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snap.data!.docs; // ✅ 이 줄이 핵심!
+            if (docs.isEmpty) {
+              return const Center(child: Text('신고 데이터가 없습니다.'));
+            }
+
+            return Column(
+              children: docs.map((d) {
+                final r = d.data();
+                final title = (r['postTitle'] ?? '(제목없음)').toString();
+                final reason = (r['reason'] ?? '').toString();
+                final category = (r['category'] ?? '').toString();
+                final postId = (r['postId'] ?? '').toString();
+                final status = (r['status'] ?? 'open').toString();
+
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.report)),
+                      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '[$category] 사유: $reason\n상태: $status · ${_fmt(r['createdAt'])}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Wrap(
+                        spacing: 6,
+                        children: [
+                          OutlinedButton(
+                            onPressed: postId.isEmpty
+                                ? null
+                                : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminPostDetailPage(docId: postId),
+                                ),
+                              );
+                            },
+                            child: const Text('원문'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminReportDetailPage(reportId: d.id),
+                                ),
+                              );
+                            },
+                            child: const Text('처리'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
       ],
     );
   }

@@ -659,16 +659,13 @@ class _CommunityaddState extends State<Communityadd> {
 
   Future<void> _addCommunity() async {
     final user = FirebaseAuth.instance.currentUser;
-
-
+    debugPrint('[AUTH] uid=${user?.uid} email=${user?.email}');
     if (user == null) {
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/login');
       return;
     }
     final uid = user.uid;
-    await _ensureSignedIn();
-
     debugPrint('[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
 
     final categoryAtSubmit = selectedCategory;
@@ -684,11 +681,27 @@ class _CommunityaddState extends State<Communityadd> {
     final userDoc = await fs.collection('users').doc(user.uid).get();
     final String nickname = userDoc.data()?['nickname'] ?? "익명 제보자";
 
-    final docRef = fs.collection("community").doc(); // docId 미리 생성
-    final docId = docRef.id;
-
 // users/{uid} 에서 프로필 가져오기
     final userSnap = await fs.collection('users').doc(uid).get();
+    debugPrint('[WB] users/$uid exists=${userSnap.exists} data=${userSnap.data()}');
+    debugPrint('[BLOCK CHECK] uid=$uid writeBlockedUntil=${userSnap.data()?['writeBlockedUntil']} now=${DateTime.now()}');
+    final data = userSnap.data() ?? {};
+    final blockedUntil = data['writeBlockedUntil'];
+
+    if (blockedUntil is Timestamp) {
+      final until = blockedUntil.toDate();
+      if (DateTime.now().isBefore(until)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('글쓰기가 제한된 계정입니다. (${until.toLocal()})')),
+        );
+        return;
+      }
+    }
+
+    final docRef = fs.collection("community").doc();
+    final docId = docRef.id;
+
     if (!userSnap.exists) {
       // 프로필이 아직 저장 안 됐거나 삭제된 상태
       // 여기서 막거나, 기본값으로 생성하거나 선택
@@ -719,52 +732,77 @@ class _CommunityaddState extends State<Communityadd> {
     final videoThumbUrls = built['videoThumbs'] as List<String>;
     final plainForSearch = (built['plain'] as String?) ?? '';
 
-    // ✅ Firestore 저장
-    await docRef.set({
-      'title': title,
-      'category': categoryAtSubmit,
-      'user_nickname': myNickName,
-      'createdBy': uid,
-      'author': author,
+    try {
+      // ✅ Firestore 저장
+      await docRef.set({
+        'title': title,
+        'category': categoryAtSubmit,
+        'user_nickname': myNickName,
+        'createdBy': uid,
+        'author': author,
 
-      // ✅ 핵심: 순서 정보
-      'blocks': blocks,
+        // ✅ 핵심: 순서 정보
+        'blocks': blocks,
 
-      // ✅ 미디어 URL 따로
-      'images': imageUrls,
-      'videos': videoUrls,
-      'videoThumbs': videoThumbUrls,
+        // ✅ 미디어 URL 따로
+        'images': imageUrls,
+        'videos': videoUrls,
+        'videoThumbs': videoThumbUrls,
 
-      // (선택) 검색/리스트 요약용
-      'plain': plainForSearch,
+        // (선택) 검색/리스트 요약용
+        'plain': plainForSearch,
 
-      'place': selectedPlace == null
-          ? null
-          : {
-        'name': selectedPlace!.name,
-        'address': selectedPlace!.address,
-        'lat': selectedPlace!.lat,
-        'lng': selectedPlace!.lng,
-        'distanceM': selectedPlace!.distanceM,
-      },
+        'place': selectedPlace == null
+            ? null
+            : {
+          'name': selectedPlace!.name,
+          'address': selectedPlace!.address,
+          'lat': selectedPlace!.lat,
+          'lng': selectedPlace!.lng,
+          'distanceM': selectedPlace!.distanceM,
+        },
 
-      'weather': {
-        'temp': _temp,
-        'wind': _wind,
-        'rainChance': _rainChance,
-        'code': _weatherCode,
-      },
-      'air': {'pm10': _pm10, 'pm25': _pm25},
+        'weather': {
+          'temp': _temp,
+          'wind': _wind,
+          'rainChance': _rainChance,
+          'code': _weatherCode,
+        },
+        'air': {'pm10': _pm10, 'pm25': _pm25},
 
-      'viewCount': 0,
+        'viewCount': 0,
 
-      'commentCount': 0,
+        'commentCount': 0,
 
-      'likeCount': 0,
+        'likeCount': 0,
 
-      'createdAt': FieldValue.serverTimestamp(),
-      'createdAtClient': DateTime.now().millisecondsSinceEpoch,
-    });
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdAtClient': DateTime.now().millisecondsSinceEpoch,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
+      });
+    }on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      if (e.code == 'permission-denied') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('글쓰기가 제한된 계정입니다.')),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('저장 실패: ${e.message ?? e.code}')),
+      );
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('저장 실패: $e')),
+      );
+      return;
+    }
+
 
     // 초기화
     _title.clear();

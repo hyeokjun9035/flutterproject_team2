@@ -247,3 +247,144 @@ class LocalVideoEmbedBuilder extends EmbedBuilder {
     ),
   );
 }
+class HybridImageEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => BlockEmbed.imageType;
+
+  bool _isUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final embed = embedContext.node as Embed;
+    final data = embed.value.data.toString();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: _isUrl(data)
+            ? Image.network(data, fit: BoxFit.cover)
+            : Image.file(File(data), fit: BoxFit.cover),
+      ),
+    );
+  }
+}
+
+class HybridVideoEmbedBuilder extends EmbedBuilder {
+  final void Function(String source, String name) onPlay;
+  HybridVideoEmbedBuilder({required this.onPlay});
+
+  @override
+  String get key => VideoBlockEmbed.kType;
+
+  bool _isUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+
+  // ✅ 로컬 비디오 썸네일 캐시(영상 path 기준)
+  final Map<String, Future<Uint8List?>> _thumbCache = {};
+
+  Future<Uint8List?> _thumbBytesFromVideo(String videoPath) {
+    return _thumbCache.putIfAbsent(videoPath, () async {
+      try {
+        final bytes = await VideoThumbnail.thumbnailData(
+          video: videoPath,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 900,
+          quality: 75,
+        );
+        return bytes;
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+
+  Widget _fallbackBox() {
+    return Container(
+      color: Colors.black12,
+      child: const Center(
+        child: Icon(Icons.movie_outlined, color: Colors.black45, size: 30),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final embed = embedContext.node as Embed;
+    final raw = embed.value.data.toString();
+
+    String source = raw; // url or local path
+    String name = raw.split('/').last;
+    String thumb = '';
+
+    try {
+      final m = jsonDecode(raw);
+      if (m is Map) {
+        source = (m['url'] ?? m['path'] ?? source).toString();
+        name = (m['name'] ?? name).toString();
+        thumb = (m['thumb'] ?? '').toString();
+      }
+    } catch (_) {}
+
+    // ✅ 썸네일 위젯 결정
+    Widget thumbWidget;
+
+    // 1) thumb가 "URL"이면 network로
+    if (thumb.isNotEmpty && _isUrl(thumb)) {
+      thumbWidget = Image.network(thumb, fit: BoxFit.cover);
+    }
+    // 2) thumb가 "로컬 경로"이고 파일이 있으면 file로
+    else if (thumb.isNotEmpty && !_isUrl(thumb) && File(thumb).existsSync()) {
+      thumbWidget = Image.file(File(thumb), fit: BoxFit.cover);
+    }
+    // 3) thumb가 비어있거나 없으면:
+    //    - source가 로컬 비디오면 영상에서 썸네일 생성
+    else if (!_isUrl(source) && File(source).existsSync()) {
+      thumbWidget = FutureBuilder<Uint8List?>(
+        future: _thumbBytesFromVideo(source),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            );
+          }
+          final bytes = snap.data;
+          if (bytes == null) return _fallbackBox();
+          return Image.memory(bytes, fit: BoxFit.cover);
+        },
+      );
+    }
+    // 4) 나머지는 fallback
+    else {
+      thumbWidget = _fallbackBox();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        onTap: () => onPlay(source, name),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: thumbWidget,
+              ),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.35),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
