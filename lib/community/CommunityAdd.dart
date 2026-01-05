@@ -659,6 +659,8 @@ class _CommunityaddState extends State<Communityadd> {
 
   Future<void> _addCommunity() async {
     final user = FirebaseAuth.instance.currentUser;
+
+
     if (user == null) {
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/login');
@@ -666,6 +668,7 @@ class _CommunityaddState extends State<Communityadd> {
     }
     final uid = user.uid;
     await _ensureSignedIn();
+
     debugPrint('[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
 
     final categoryAtSubmit = selectedCategory;
