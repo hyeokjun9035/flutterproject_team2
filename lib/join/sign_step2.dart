@@ -6,7 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:image_picker/image_picker.dart';
 import '../firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'join3.dart';
+import 'sign_step3.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();

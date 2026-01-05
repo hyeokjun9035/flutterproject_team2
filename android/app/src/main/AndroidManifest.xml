@@ -60,6 +60,18 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="community_notification" />
 
+<!--        카카오 로그인-->
+        <activity
+            android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kakaoYOUR_NATIVE_APP_KEY" android:host="oauth"/>
+            </intent-filter>
+        </activity>
+
     </application>
 
     <queries>

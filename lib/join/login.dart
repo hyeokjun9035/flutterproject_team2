@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_project/admin/admin_home_page.dart';
-import 'join1.dart';
+import 'sign_step1.dart';
 import 'package:flutter_project/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_project/join/Google_Login.dart';
@@ -22,12 +22,31 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
 
+  @override
+  void initState() {
+    super.initState();
+    //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
+    _checkIfAlreadySignedIn();
+  }
+
+  void _checkIfAlreadySignedIn(){
+    final user = FirebaseAuth.instance.currentUser;
+    if(user != null){
+      //이미 로그인된 상태면 즉시 홈 페이지로 이동
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if(!mounted) return;
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const HomePage()));
+      });
+    }
+  }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final pwd = _pwdController.text.trim();
 
-    
+
     print('$email');
     print('${pwd.length}');
     //--------------관리자 로그인---------------
@@ -183,7 +202,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: Image.asset("assets/joinIcon/kakao.png", width: 50,),
                 )
     ),
-                
+
 
 
 

@@ -44,7 +44,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-
+android/app/src/main/res/values/strings.xml
+android/app/google-services.json
 # Flutter generated platform files
 linux/flutter/
 windows/flutter/
