@@ -228,6 +228,7 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
     );
   }
 
+
   // Widget _buildRecentLogs() {
   //   final logs = [
   //     {'t': '시스템 가동', 's': '대시보드 데이터 연동이 완료되었습니다.', 'time': '방금'},
