@@ -3,7 +3,7 @@ class PlaceResult {
   final String address;
   final double lat; // y
   final double lng; // x
-  final int? distanceM;
+  final double? distanceM;
 
   PlaceResult({
     required this.name,

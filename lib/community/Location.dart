@@ -214,13 +214,13 @@ class _LocationState extends State<Location> {
   Future<void> _confirm() async {
     if (_selected == null) return;
 
-    int? distM;
+    double? distM;
     if (_myLat != null && _myLng != null) {
       final meters = Geolocator.distanceBetween(
         _myLat!, _myLng!,
         _selected!.lat, _selected!.lng,
       );
-      distM = meters.round();
+      distM = meters;
     }
 
     await _saveHistory(_selected!);
