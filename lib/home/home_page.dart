@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/dashboard_cache.dart';
 import '../carry/checklist_models.dart';
 import '../carry/checklist_rules.dart';
+import '../community/CommunityAdd.dart';
 import '../community/Event.dart';
 import '../data/dashboard_service.dart';
 import '../data/models.dart';
@@ -296,11 +297,20 @@ class _HomePageState extends State<HomePage> {
     switch (id) {
       case HomeCardId.weatherHero: {
         final canTap = !_editMode && !isFirstLoading && _lat != null && _lon != null;
+        // ✅ data가 있을 때만 today 계산
+        final today = (data?.weekly.isNotEmpty ?? false) ? data!.weekly.first : null;
+
         return _Card(
           onTap: canTap ? _openForecastWeb : null,
           child: isFirstLoading
               ? const _Skeleton(height: 120)
-              : _WeatherHero(now: data!.now, sunrise: _sunrise, sunset: _sunset),
+              : _WeatherHero(
+            now: data!.now,
+            sunrise: _sunrise,
+            sunset: _sunset,
+            todayMax: today?.max,
+            todayMin: today?.min,
+          ),
         );
       }
 
@@ -535,6 +545,12 @@ class _HomePageState extends State<HomePage> {
                 MaterialPageRoute(builder: (context) => const Event()),
               );
             },
+            onAddPressed: () {
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => Communityadd())
+              );
+            }
           ),
         );
     }
@@ -672,55 +688,83 @@ class _HomePageState extends State<HomePage> {
 
   String _t(String? s) => (s ?? '').trim().replaceFirst(RegExp(r'^KR\s+'), '');
 
-  /// ✅ 화면 표시용: "부평역/부산역/속초역" 같이 보기 좋은 이름을 고름
   String pickDisplayLabel(List<Placemark> pms) {
-    // 1) 문자열들에서 "OO역" 패턴이 보이면 그걸 최우선
-    final stationReg = RegExp(r'([가-힣0-9]+역)');
+    String clean(String? s) =>
+        _t(s).replaceAll(RegExp(r'[^0-9A-Za-z가-힣\s]'), ' ').trim();
+
+    bool ok(String s) => s.isNotEmpty && !_looksLikeOnlyNumberOrLot(s);
+
+    // 1) 역 토큰(있으면 표시용으로만 보관)
+    String? station;
     for (final p in pms) {
       final blob = [
-        _t(p.name),
-        _t(p.thoroughfare),
-        _t(p.subLocality),
-        _t(p.locality),
-        _t(p.subAdministrativeArea),
-        _t(p.administrativeArea),
+        clean(p.name),
+        clean(p.thoroughfare),
+        clean(p.subLocality),
+        clean(p.locality),
+        clean(p.subAdministrativeArea),
+        clean(p.administrativeArea),
       ].where((e) => e.isNotEmpty).join(' ');
 
-      final words = blob.split(RegExp(r'\s+'));
-      for (final w0 in words) {
-        final w = w0.replaceAll(RegExp(r'[^0-9A-Za-z가-힣]'), ''); // 괄호/쉼표 제거
-        if (w.isEmpty || _looksLikeOnlyNumberOrLot(w)) continue;
-
-        // ✅ "부산역" 같은 토큰만 잡고, "광역"은 제외
+      for (final w0 in blob.split(RegExp(r'\s+'))) {
+        final w = w0.replaceAll(RegExp(r'[^0-9A-Za-z가-힣]'), '');
+        if (!ok(w)) continue;
         if (w.endsWith('역') && w != '광역') {
-          return w; // 예: 부산역, 부평역, 속초역
+          station = w;
+          break;
         }
       }
+      if (station != null) break;
     }
 
-    // 2) 역이 아예 없으면: 구/동/시 순으로 fallback
+    // 2) 구/군/시 + 동/읍/면/리 뽑기 (✅ subLocality, thoroughfare까지 포함!)
+    String? guGunSi;
+    String? dongEupMyeon;
+
     for (final p in pms) {
       final candidates = <String>[
-        _t(p.subAdministrativeArea), // 구가 여기로 오는 기기 있음
-        _t(p.locality),
-        _t(p.subLocality),
-        _t(p.thoroughfare),
-        _t(p.administrativeArea),
-      ].where((s) => s.isNotEmpty && !_looksLikeOnlyNumberOrLot(s)).toList();
+        clean(p.subAdministrativeArea),
+        clean(p.subLocality),      // ✅ 여기서 "부평구"가 들어오는 케이스 있음
+        clean(p.locality),
+        clean(p.thoroughfare),     // ✅ 여기서 "부평동"이 들어오는 케이스 있음
+        clean(p.name),
+        clean(p.administrativeArea),
+      ].where(ok).toList();
 
-      final gu = candidates.firstWhere((s) => s.endsWith('구'), orElse: () => '');
-      if (gu.isNotEmpty) return gu;
+      // 구/군 우선, 없으면 시
+      guGunSi ??= candidates.firstWhere(
+            (s) => s.endsWith('구') || s.endsWith('군'),
+        orElse: () => '',
+      );
+      if (guGunSi!.isEmpty) {
+        final si = candidates.firstWhere((s) => s.endsWith('시'), orElse: () => '');
+        if (si.isNotEmpty) guGunSi = si;
+      }
+      if (guGunSi!.isEmpty) guGunSi = null;
 
-      final dong = candidates.firstWhere((s) => s.endsWith('동'), orElse: () => '');
-      if (dong.isNotEmpty) return dong;
+      // 동/읍/면/리
+      dongEupMyeon ??= candidates.firstWhere(
+            (s) => s.endsWith('동') || s.endsWith('읍') || s.endsWith('면') || s.endsWith('리'),
+        orElse: () => '',
+      );
+      if (dongEupMyeon!.isEmpty) dongEupMyeon = null;
 
-      final si = candidates.firstWhere((s) => s.endsWith('시'), orElse: () => '');
-      if (si.isNotEmpty) return si;
-
-      if (candidates.isNotEmpty) return candidates.first;
+      if (guGunSi != null && dongEupMyeon != null) break;
     }
 
-    return '현재 위치';
+    final areaParts = <String>[
+      if (guGunSi != null) guGunSi!,
+      if (dongEupMyeon != null && dongEupMyeon != guGunSi) dongEupMyeon!,
+    ];
+
+    final areaText = areaParts.isNotEmpty
+        ? areaParts.join(' ')
+        : (pms.isNotEmpty ? clean(pms.first.administrativeArea) : '현재 위치');
+
+    if (station != null && station!.isNotEmpty) {
+      return '$station · $areaText';
+    }
+    return areaText.isNotEmpty ? areaText : '현재 위치';
   }
 
   /// ✅ 대기질 검색용 addr: "인천광역시 부평구" 같이 시/구까지만
@@ -882,10 +926,9 @@ class _HomePageState extends State<HomePage> {
       label = DashboardCache.locationLabel ?? '현재 위치';
       addr = DashboardCache.airAddr ?? '';
     } else {
-      final placemarks = await placemarkFromCoordinates(_lat!, _lon!)
-          .timeout(const Duration(seconds: 2), onTimeout: () => <Placemark>[]);
+      final placemarks = await _safePlacemarks();
       adminArea = placemarks.isNotEmpty ? (placemarks.first.administrativeArea ?? '').trim() : '';
-      label = placemarks.isNotEmpty ? pickDisplayLabel(placemarks) : '현재 위치';
+      label = pickDisplayLabel(placemarks);
       addr = placemarks.isNotEmpty ? pickAirAddr(placemarks) : '';
 
       // ✅ 지오코딩 캐시 저장
@@ -936,6 +979,15 @@ class _HomePageState extends State<HomePage> {
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
+  }
+
+  Future<List<Placemark>> _safePlacemarks() async {
+    final lat = _lat;
+    final lon = _lon;
+    if (lat == null || lon == null) return <Placemark>[];
+
+    return placemarkFromCoordinates(lat, lon)
+        .timeout(const Duration(seconds: 2), onTimeout: () => <Placemark>[]);
   }
 
   @override
@@ -1426,11 +1478,16 @@ class _WeatherHero extends StatelessWidget {
     required this.now,
     required this.sunrise,
     required this.sunset,
+    this.todayMax,
+    this.todayMin,
   });
 
   final WeatherNow now;
   final DateTime? sunrise;
   final DateTime? sunset;
+
+  final double? todayMax;
+  final double? todayMin;
 
   String _hhmm(DateTime? dt) {
     if (dt == null) return '--:--';
@@ -1447,6 +1504,9 @@ class _WeatherHero extends StatelessWidget {
     final feel = (now.temp != null && now.wind != null)
         ? (now.temp! - (now.wind! * 0.7)).round()
         : null;
+
+    final maxT = todayMax?.round();
+    final minT = todayMin?.round();
 
     final summary = weatherSummary(sky: now.sky, pty: now.pty);
 
@@ -1539,6 +1599,51 @@ class _WeatherHero extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(width: 14),
+                    Flexible( // ✅ 핵심: 공간 부족하면 줄어들 수 있게
+                      fit: FlexFit.loose,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '오늘',
+                            style: t.labelSmall?.copyWith(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          FittedBox( // ✅ 한 줄 유지 + 필요시 축소
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '↑${maxT ?? '--'}°',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '↓${minT ?? '--'}°',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white70,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1876,7 +1981,7 @@ class _WeeklyStrip extends StatelessWidget {
                 String popText(int? v) => v == null ? '--' : '$v%';
 
                 return Container(
-                  width: 84,
+                  width: 92,
                   margin: const EdgeInsets.only(right: 10),
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                   decoration: BoxDecoration(
@@ -1919,6 +2024,28 @@ class _WeeklyStrip extends StatelessWidget {
                             ],
                           ),
                         ],
+                      ),
+                      // ✅ 최고/최저 온도 (줄바꿈 방지)
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 14, // 카드들 높이 들쭉날쭉 방지(선택)
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.center,
+                          child: Text.rich(
+                            TextSpan(
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+                              children: [
+                                TextSpan(text: '↑$maxText°  ', style: const TextStyle(color: Colors.white)),
+                                TextSpan(text: '↓$minText°', style: const TextStyle(color: Colors.white70)),
+                              ],
+                            ),
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.visible,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -2511,13 +2638,17 @@ class _CarryCardFromFirestore extends StatefulWidget {
 }
 
 class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
-  static const _prefKey = 'carry_enabled'; // ✅ 로컬 저장 키
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+  String get _prefKey => 'carry_enabled_$_uid'; // ✅ 유저별 로컬 키
+  DocumentReference<Map<String, dynamic>> get _settingsDoc =>
+      FirebaseFirestore.instance.collection('user_settings').doc(_uid);
   bool _enabled = true;
 
   @override
   void initState() {
     super.initState();
     _loadPref();
+    _loadRemote();
   }
 
   Future<void> _loadPref() async {
@@ -2529,10 +2660,39 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
     });
   }
 
+  Future<void> _loadRemote() async {
+    // 로그인 전이면 스킵
+    if (_uid == 'anon') return;
+
+    try {
+      final snap = await _settingsDoc.get();
+      final data = snap.data();
+      final v = data?['carryEnabled'];
+
+      if (!mounted) return;
+      if (v is bool) {
+        setState(() => _enabled = v);
+
+        // 원격값을 로컬에도 캐시
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_prefKey, v);
+      }
+    } catch (_) {
+      // 네트워크 실패 시 로컬값 유지
+    }
+  }
+
   Future<void> _setEnabled(bool v) async {
     setState(() => _enabled = v); // ✅ 즉시 반영
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKey, v); // ✅ 로컬 저장
+
+    if (_uid == 'anon') return;
+    // firestore 저장
+    await _settingsDoc.set(
+      {'carryEnabled': v},
+      SetOptions(merge: true),
+    );
   }
 
   @override
@@ -2643,12 +2803,14 @@ class _NearbyIssuesCard extends StatelessWidget {
     required this.onMapPressed,
     required this.onReportPressed,
     required this.onOpenPost,
+    required this.onAddPressed,
   });
 
   final Future<List<NearbyIssuePost>> future;
   final VoidCallback onMapPressed;
   final VoidCallback onReportPressed;
   final ValueChanged<String> onOpenPost;
+  final VoidCallback onAddPressed;
 
   String _prettyTime(DateTime dt) {
     final now = DateTime.now();
@@ -2714,9 +2876,23 @@ class _NearbyIssuesCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '내 주변 1km 사건/이슈',
-                style: t.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w900),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '내 주변 1km 사건/이슈',
+                      style: t.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '사건/이슈 글 쓰기',
+                    onPressed: onAddPressed,
+                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
@@ -2783,10 +2959,34 @@ class _NearbyIssuesCard extends StatelessWidget {
 
               const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(onPressed: onMapPressed, child: const Text('지도 보기')),
-                  TextButton(onPressed: onReportPressed, child: const Text('제보')),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onMapPressed,
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('지도 보기'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onReportPressed,
+                      icon: const Icon(Icons.campaign_outlined, size: 18),
+                      label: const Text('제보'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],

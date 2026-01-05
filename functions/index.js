@@ -7,6 +7,7 @@ const logger = require("firebase-functions/logger");
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
+const MID_ZONES = require("./mid_zones.json");
 
 const ax = axios.create({
     timeout: 15000,
@@ -514,28 +515,98 @@ function midTmFc(dt) {
 }
 
 // regId 대표 코드(예: 11B00000 수도권, 11H20000 경남권 등) 목록 예시는 아래처럼 널리 쓰임. :contentReference[oaicite:3]{index=3}
-function regIdLandFromAdmin(adminArea) {
-  const s = String(adminArea ?? "").replace(/\s/g, "");
+function regIdLandFromAdmin(administrativeArea, locationName = "", lon = null) {
+  const s = String(administrativeArea ?? "").replace(/\s/g, "");
+
   if (s.includes("서울") || s.includes("인천") || s.includes("경기")) return "11B00000";
-  if (s.includes("강원")) return "11D10000";
-  if (s.includes("충북")) return "11C10000";
-  if (s.includes("대전") || s.includes("세종") || s.includes("충남")) return "11C20000";
-  if (s.includes("전북")) return "11F10000";
-  if (s.includes("광주") || s.includes("전남")) return "11F20000";
-  if (s.includes("대구") || s.includes("경북")) return "11H10000";
-  if (s.includes("부산") || s.includes("울산") || s.includes("경남")) return "11H20000";
+  if (s.includes("충청")) return "11C00000";
+  if (s.includes("전라")) return "11F00000";
+  if (s.includes("경상") || s.includes("부산") || s.includes("대구") || s.includes("울산")) return "11H00000";
   if (s.includes("제주")) return "11G00000";
+
+  if (s.includes("강원")) {
+    const t = String(locationName ?? "").replace(/\s/g, "");
+    const east = ["속초","고성","양양","강릉","동해","삼척","태백","대관령"];
+    const isEast = east.some(k => t.includes(k)) || (typeof lon === "number" && lon >= 128.0);
+    return isEast ? "11D20000" : "11D10000";
+  }
+
   return null;
 }
 
-// ✅ 기온용(regIdTa) - 최소 시작(서울/인천은 공식 예시가 많이 잡힘)
-function regIdTaFromAdmin(adminArea) {
-  const s = String(adminArea ?? "").replace(/\s/g, "");
-  if (s.includes("서울")) return "11B10101";   // 예시로 널리 사용 :contentReference[oaicite:3]{index=3}
-  if (s.includes("인천")) return "11B20201";   // 예시로 널리 사용 :contentReference[oaicite:4]{index=4}
+/** -----------------------------
+ *  mid_zones.json 인덱스(메모리)
+ * ------------------------------ */
+const _MID = (() => {
+  const zones = Array.isArray(MID_ZONES) ? MID_ZONES : [];
+  const A = zones.filter(z => z?.regSp === "A"); // (필요하면 later) 육상예보용
+  const C = zones.filter(z => z?.regSp === "C"); // ✅ 중기기온(getMidTa)용
 
-  // 아래는 지역별 대표 지점 코드가 필요해요.
-  // (일단 null로 두면 min/max는 --로 안전하게 표시됨)
+  // normalize: 공백/점/특수문자 제거, 행정 접미(시/군/구 등) 제거 버전도 같이 만들기
+  const norm = (s) => String(s ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[·\.\(\)\[\],]/g, "");
+
+  const stripSuffix = (s) => norm(s)
+    .replace(/(특별자치도|특별자치시|광역시|특별시|자치시|자치도)$/g, "")
+    .replace(/(도|시|군|구)$/g, ""); // 예: 속초시 -> 속초
+
+  // C 구역명 -> regId (동명이인 대비로 prefix 필터링을 같이 씀)
+  const C_LIST = C.map(z => ({
+    regId: String(z.regId),
+    name: String(z.regName),
+    n0: norm(z.regName),
+    n1: stripSuffix(z.regName),
+  }));
+
+  // 긴 이름 우선(부분매칭 충돌 방지)
+  C_LIST.sort((a, b) => (b.n0.length - a.n0.length));
+
+  return { A, C_LIST, norm, stripSuffix };
+})();
+
+function guessPrefixForAdmin(administrativeArea) {
+  const s = String(administrativeArea ?? "").replace(/\s+/g, "");
+  if (s.includes("서울") || s.includes("인천") || s.includes("경기")) return "11B"; // 수도권
+  if (s.includes("강원")) return "11D";
+  if (s.includes("충북") || s.includes("충청북")) return "11C";
+  if (s.includes("충남") || s.includes("충청남") || s.includes("대전") || s.includes("세종")) return "11C";
+  if (s.includes("전북") || s.includes("전라북")) return "11F";
+  if (s.includes("전남") || s.includes("전라남") || s.includes("광주")) return "11F";
+  if (s.includes("경북") || s.includes("경상북") || s.includes("대구")) return "11H";
+  if (s.includes("경남") || s.includes("경상남") || s.includes("부산") || s.includes("울산")) return "11H";
+  if (s.includes("제주")) return "11G";
+  return null;
+}
+
+/**
+ * ✅ getMidTa용 regId 자동 선택
+ * - locationName / addr / administrativeArea 에서 "속초/강릉/부산..." 같은 토큰을 찾아
+ * - mid_zones.json(C)에서 매칭되는 regId를 리턴
+ */
+function resolveRegIdTa({ administrativeArea, locationName, addr }) {
+  const prefix = guessPrefixForAdmin(administrativeArea); // 예: 강원 -> 11D
+  const hay = _MID.stripSuffix(`${locationName ?? ""} ${addr ?? ""} ${administrativeArea ?? ""}`);
+
+  // 1) 같은 prefix(지역권) 내에서 구역명 매칭
+  for (const z of _MID.C_LIST) {
+    if (prefix && !z.regId.startsWith(prefix)) continue;
+
+    // 구역명이 "속초"인데 텍스트가 "속초시"여도 stripSuffix로 맞아짐
+    if (z.n0 && hay.includes(z.n0)) return z.regId;
+    if (z.n1 && hay.includes(z.n1)) return z.regId;
+  }
+
+  // 2) fallback(대표도시) — 최소 커버용
+  // (여기 값은 mid_zones.json에 있는 도시로 골라야 함)
+  if (prefix === "11D") return "11D10301"; // 춘천(강원) fallback
+  if (prefix === "11B") return "11B10101"; // 서울 fallback
+  if (prefix === "11C") return "11C10301"; // 청주 fallback
+  if (prefix === "11F") return "11F20501"; // 광주 fallback(전라권)
+  if (prefix === "11H") return "11H10701"; // 대구 fallback(경상권)
+  if (prefix === "11G") return "11G00201"; // 제주 fallback
+
   return null;
 }
 
@@ -857,8 +928,12 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     const tmFc = midTmFc(new Date());
     const tmFcYmd = tmFc.substring(0, 8);
 
-    const landRegId = regIdLandFromAdmin(administrativeArea);
-    const taRegId = regIdTaFromAdmin(administrativeArea);
+    const landRegId = regIdLandFromAdmin(administrativeArea, String(locationName ?? ""), lon);
+    const taRegId = resolveRegIdTa({
+      administrativeArea,
+      locationName, // request.data.locationName
+      addr,         // request.data.addr (또는 locationName)
+    });
 
     const midLandP = landRegId
       ? safe(callMidLand(landRegId, tmFc), null, "midLand")
