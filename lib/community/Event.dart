@@ -123,6 +123,10 @@ class _EventState extends State<Event> {
                   final authorName = (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
                   final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
 
+                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                  final authorUid = (authorMap["uid"] ?? "").toString();
+                  final bool isMine = currentUid != null && currentUid == authorUid;
+
                   final placeMap = (data["place"] as Map<String, dynamic>?) ?? {};
                   final placeName = (placeMap["name"] ?? "").toString().trim();
                   final placeAddress = (placeMap["address"] ?? "").toString().trim();
@@ -225,51 +229,63 @@ class _EventState extends State<Event> {
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert),
                               padding: EdgeInsets.zero,
-                              onSelected: (value) {
+                              onSelected: (value) async {
+
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => const CommunityEdit()),
+                                    MaterialPageRoute(
+                                      builder: (_) => CommunityEdit(docId: doc.id), // ✅ docId 유지
+                                    ),
                                   );
                                 }
 
-                                if (value == 'delete') {
+                                else if (value == 'delete') {
                                   showDialog(
                                     context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        title: const Text("삭제?"),
-                                        content: const Text("정말 삭제하시겠습니까?"),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () async {
-                                              // ✅ 여기서 삭제 실행
-                                              print(doc.id);
-                                              await FirebaseFirestore.instance
-                                                  .collection("community")
-                                                  .doc(doc.id)
-                                                  .delete();
-                                              // ✅ 다이얼로그 닫기ㅁ
-                                              Navigator.of(context).pop();
-                                            },
-                                            child: const Text("삭제"),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.of(context).pop();
-                                            },
-                                            child: const Text("취소"),
-                                          ),
-                                        ],
-                                      );
-                                    },
+                                    builder: (context) => AlertDialog(
+                                      title: const Text("삭제?"),
+                                      content: const Text("정말 삭제하시겠습니까?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () async {
+                                            await FirebaseFirestore.instance
+                                                .collection("community")
+                                                .doc(doc.id)
+                                                .delete();
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text("삭제"),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.of(context).pop(),
+                                          child: const Text("취소"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+
+                                else if (value == 'report') {
+                                  // 🚧 하드코딩: 아직 기능 없음
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('신고 기능은 준비중입니다.')),
                                   );
                                 }
                               },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(value: 'edit', child: Text('수정')),
-                                PopupMenuItem(value: 'delete', child: Text('삭제')),
-                              ],
+
+                              itemBuilder: (_) {
+                                if (isMine) {
+                                  return const [
+                                    PopupMenuItem(value: 'edit', child: Text('수정')),
+                                    PopupMenuItem(value: 'delete', child: Text('삭제')),
+                                  ];
+                                } else {
+                                  return const [
+                                    PopupMenuItem(value: 'report', child: Text('신고')),
+                                  ];
+                                }
+                              },
                             ),
                           ],
                         ),

@@ -4,8 +4,8 @@ import 'package:flutter_project/admin/admin_home_page.dart';
 import 'join1.dart';
 import 'package:flutter_project/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-
+import 'package:flutter_project/join/Google_Login.dart';
+import 'kakaoLogin.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -27,6 +27,9 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text.trim();
     final pwd = _pwdController.text.trim();
 
+    
+    print('$email');
+    print('${pwd.length}');
     //--------------관리자 로그인---------------
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
@@ -126,9 +129,12 @@ class _LoginPageState extends State<LoginPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Padding(padding: const EdgeInsets.only(right: 30),
+                child:
                 ElevatedButton(
                   onPressed: _login,
                   child: const Text("로그인"),
+                ),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -146,7 +152,44 @@ class _LoginPageState extends State<LoginPage> {
                   child: const Text("회원가입"),
                 ),
               ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Padding (
+                padding: const EdgeInsets.fromLTRB(0,20,10,0),
+                child:
+                GestureDetector(
+                    onTap: (){
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => GoogleLogin())
+                      );
+                    },
+                    child: Image.asset("assets/joinIcon/google.png", width: 50),
+
+                ),
+    ),
+                Padding(
+                    padding: const EdgeInsets.fromLTRB(10,20,0,0),
+                child:
+                GestureDetector(
+                    onTap: (){
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_)=> kakaoLogin())
+                      );
+                    },
+                    child: Image.asset("assets/joinIcon/kakao.png", width: 50,),
+                )
+    ),
+                
+
+
+
+              ],
             )
+
 
           ],
 
