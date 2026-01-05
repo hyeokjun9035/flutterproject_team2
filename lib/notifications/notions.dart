@@ -1,12 +1,74 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_project/mypage/DetailMypost.dart'; // 상세 페이지 경로 확인
+import 'package:flutter_project/mypage/DetailMypost.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class NotificationScreen extends StatelessWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
 
   @override
+  State<NotificationScreen> createState() => _NotificationScreenState();
+}
+
+class _NotificationScreenState extends State<NotificationScreen> {
+  final String? uid = FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    // _cleanupOldNotifications();
+    Future.delayed(Duration(seconds: 2), () => _markAllAsRead());
+  }
+
+  //  24시간 지난 알림 삭제 로직
+  Future<void> _cleanupOldNotifications() async {
+    try {
+      final now = DateTime.now();
+      final twentyFourHoursAgo = now.subtract(const Duration(hours: 24));
+
+      // 최상위 notifications 컬렉션에서 직접 삭제
+      final snapshots = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('createdAt', isLessThan: twentyFourHoursAgo)
+          .get();
+
+      if (snapshots.docs.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (var doc in snapshots.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+        print("🗑️ 전역 알림 ${snapshots.docs.length}개 삭제 완료");
+      }
+    } catch (e) {
+      print("❌ 삭제 중 오류 발생: $e");
+    }
+  }
+
+  Future<void> _markAllAsRead() async {
+    if (uid == null) return;
+    try {
+      final snapshots = await FirebaseFirestore.instance
+
+
+          .collection('notifications')
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      if (snapshots.docs.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (var doc in snapshots.docs) {
+          batch.update(doc.reference, {'isRead': true});
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      print("읽음 처리 오류: $e");
+    }
+  }
+  @override
   Widget build(BuildContext context) {
+    print("현재 로그인한 UID: $uid");
     return PutterScaffold(
       currentIndex: 3, // 하단바의 4번째(알림) 아이콘 활성화
       body: Column(
@@ -23,57 +85,47 @@ class NotificationScreen extends StatelessWidget {
 
           // --- 알림 리스트 (실시간) ---
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
+            child: uid == null
+                ? const Center(child: Text("로그인이 필요합니다."))
+                : StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('notifications')
-                  .orderBy('createdAt', descending: true) // 최신순 정렬
+                  .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                // 데이터가 없는 경우 처리
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text("도착한 알림이 없습니다.", style: TextStyle(color: Colors.grey)),
-                  );
+                  return const Center(child: Text("도착한 알림이 없습니다."));
                 }
 
                 return ListView.builder(
-                  padding: EdgeInsets.zero,
                   itemCount: snapshot.data!.docs.length,
                   itemBuilder: (context, index) {
                     final doc = snapshot.data!.docs[index];
-                    final String title = doc['title'] ?? '알림';
-                    final String body = doc['body'] ?? '';
-                    final String? postId = doc['postId']; // Cloud Functions에서 저장한 ID
+                    final data = doc.data() as Map<String, dynamic>;
+
+
+                    final timestamp = data['createdAt'];
 
                     return ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFFE3F2FD),
-                        child: Icon(Icons.notifications, color: Colors.blue),
-                      ),
-                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      title: Text(data['title'] ?? '알림'),
+                      subtitle: Text(data['body'] ?? ''),
                       trailing: Text(
-                        _formatTimestamp(doc['createdAt']),
+                        timestamp != null ? _formatTimestamp(timestamp) : "방금 전", // null이면 "방금 전" 표시
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       onTap: () {
-
-                        if (postId != null && postId.isNotEmpty) {
+                        String? pId = data['postId'];
+                        if (pId != null && pId.isNotEmpty) {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => Detailmypost(
-                                postId: postId,
-                                imageUrl: '',
-                                postData: const {},
-                              ),
+                              builder: (context) => Detailmypost(postId: pId, imageUrl: '', postData: const {}),
                             ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("연결된 게시글을 찾을 수 없습니다.")),
                           );
                         }
                       },
