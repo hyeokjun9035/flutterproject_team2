@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../headandputter/putter.dart'; //jgh251226
 import 'dart:ui' as ui; //251229
 import 'package:flutter/services.dart'; //251229
+import 'package:flutter_project/main.dart';
 
 class Routeview extends StatefulWidget {
   final Map<String, dynamic> raw;
@@ -182,6 +183,20 @@ class _RouteviewState extends State<Routeview> {
 
       segments = segs;
       summary = buildSummaryFromLegs(legs);
+      //알람 추가 코드
+      final itinerary = _itineraries[idx];
+      final totalMin = _totalMin(itinerary);
+      final walkMin = _walkMin(itinerary);
+      final transfers = _transferCount(itinerary);
+
+      // WidgetsBinding.instance.addPostFrameCallback((_) {
+      //   showTransitNotification(
+      //     summary: '총 $totalMin분 (도보 $walkMin분 · 환승 $transfers회)',
+      //     busArrival: '현재 경로 안내 중입니다.', // 실시간 API 연동 전까지는 안내 문구로 표시
+      //   );
+      // });
+
+      _cctvMarkers.clear();
 
       final allPts = segments.expand((e) => e.points).toList();
       debugMsg =

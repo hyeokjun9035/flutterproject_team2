@@ -33,6 +33,86 @@ class NearbyIssuesService {
 
   final FirebaseFirestore _db;
 
+  // ✅ 지도용: 반경/기간/limit으로 많이 가져오기 (최근글부터 스캔하며 반경 필터)
+  Future<List<NearbyIssuePost>> fetchNearbyIssues({
+    required double myLat,
+    required double myLng,
+    required int radiusMeters,
+    int limit = 200,            // 지도에 표시할 최대 개수
+    int daysBack = 7,           // 최근 N일
+    int batchSize = 200,        // Firestore 한번에 읽을 개수
+    int maxPages = 6,           // 최대 몇 번 더 읽을지 (batchSize * maxPages 만큼 스캔)
+  }) async {
+    final out = <NearbyIssuePost>[];
+
+    final cutoff = DateTime.now().subtract(Duration(days: daysBack));
+    final cutoffTs = Timestamp.fromDate(cutoff);
+
+    Query<Map<String, dynamic>> base = _db
+        .collection('community')
+        .where('category', isEqualTo: '사건/이슈')
+    // ✅ createdAt이 Timestamp로 저장돼 있다는 전제 (아래 주의사항 참고)
+        .where('createdAt', isGreaterThanOrEqualTo: cutoffTs)
+        .orderBy('createdAt', descending: true)
+        .limit(batchSize);
+
+    DocumentSnapshot<Map<String, dynamic>>? last;
+    for (int page = 0; page < maxPages; page++) {
+      final q = (last == null) ? base : base.startAfterDocument(last);
+      final snap = await q.get();
+      if (snap.docs.isEmpty) break;
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+
+        final place = (data['place'] is Map)
+            ? Map<String, dynamic>.from(data['place'])
+            : <String, dynamic>{};
+
+        final lat = (place['lat'] is num) ? (place['lat'] as num).toDouble() : double.nan;
+        final lng = (place['lng'] is num) ? (place['lng'] as num).toDouble() : double.nan;
+        if (lat.isNaN || lng.isNaN) continue;
+
+        final dist = _haversineMeters(myLat, myLng, lat, lng);
+        if (dist > radiusMeters) continue;
+
+        final title = (data['title'] ?? '').toString();
+        final address = (place['address'] ?? '').toString();
+
+        final likeCount = (data['likeCount'] is num) ? (data['likeCount'] as num).toInt() : 0;
+        final commentCount = (data['commentCount'] is num) ? (data['commentCount'] as num).toInt() : 0;
+
+        final createdAt = _parseCreatedAt(data['createdAt']);
+
+        final imagesRaw = data['images'];
+        final images = (imagesRaw is List)
+            ? imagesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+            : <String>[];
+
+        out.add(
+          NearbyIssuePost(
+            id: doc.id,
+            title: title,
+            lat: lat,
+            lng: lng,
+            address: address,
+            likeCount: likeCount,
+            commentCount: commentCount,
+            createdAt: createdAt,
+            images: images,
+            distanceMeters: dist.round(),
+          ),
+        );
+
+        if (out.length >= limit) return out;
+      }
+
+      last = snap.docs.last;
+    }
+
+    return out;
+  }
+
   Future<List<NearbyIssuePost>> fetchNearbyIssueTop3({
     required double myLat,
     required double myLng,
@@ -131,4 +211,6 @@ class NearbyIssuesService {
   }
 
   static double _degToRad(double deg) => deg * (pi / 180.0);
+
+
 }

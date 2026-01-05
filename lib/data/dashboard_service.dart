@@ -131,7 +131,6 @@ class DashboardService {
       'addr': airAddr,
       'administrativeArea': administrativeArea,
     });
-    debugPrint('📡 getDashboard call lat=$lat lon=$lon at=${DateTime.now()}');
 
     final data = Map<String, dynamic>.from(res.data as Map);
     // === 아래 파싱 로직은 기존과 동일 ===
