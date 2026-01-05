@@ -1067,3 +1067,45 @@ exports.sendPostNotification = onDocumentCreated({
     console.error("❌ 알림 처리 중 오류 발생:", error);
   }
 });
+
+
+/** -----------------------------
+ *  (jgh260105 21:43 재추가) 관리자 알림 발송
+ * ------------------------------ */
+const { FieldValue } = require("firebase-admin/firestore");
+exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (request) => {
+  // 관리자 권한 체크 로직이 필요하다면 여기서 수행 (현재는 호출 허용)
+  const { title, body, topic } = request.data || {};
+
+  if (!title || !body) {
+    throw new HttpsError("invalid-argument", "title/body가 누락되었습니다.");
+  }
+
+  const message = {
+    notification: { title, body },
+    data: {
+      type: "admin_alarm",
+      click_action: "FLUTTER_NOTIFICATION_CLICK"
+    },
+    topic: topic || "community_topic",
+  };
+
+  try {
+    // 1. FCM 발송
+    await admin.messaging().send(message);
+
+    // 2. 알림 내역 DB 저장 (관리자 페이지 하단 리스트용)
+    await admin.firestore().collection("notifications").add({
+      title,
+      body,
+      type: "admin_alarm",
+      createdAt: FieldValue.serverTimestamp(),
+      isRead: false
+    });
+
+    return { success: true };
+  } catch (e) {
+    logger.error("sendAdminNotification failed", summarizeErr(e));
+    throw new HttpsError("internal", `발송 실패: ${String(e?.message ?? e)}`);
+  }
+});
