@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PutterScaffold extends StatefulWidget {
   final Widget body;
@@ -41,6 +43,7 @@ class _PutterScaffoldState extends State<PutterScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       body: widget.body,
 
@@ -50,21 +53,41 @@ class _PutterScaffoldState extends State<PutterScaffold> {
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,
         onTap: _onTap,
-        items: const [
-          BottomNavigationBarItem(
+        items:  [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
             label: '홈',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.comment),
             label: '커뮤니티',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: '마이페이지',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_active),
+            icon: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Icon(Icons.notifications_active);
+                }
+                // 읽지 않은 알림 개수
+                int unreadCount = snapshot.data!.docs.length;
+
+                //  배지(Badge) 위젯 추가
+                return Badge(
+                  label: Text(unreadCount > 99 ? '99+' : unreadCount.toString()),
+                  isLabelVisible: unreadCount > 0, // 0개일 때는 숫자를 숨김
+                  backgroundColor: Colors.red,
+                  child: const Icon(Icons.notifications_active),
+                );
+              },
+            ),
             label: '알림',
           ),
         ],
