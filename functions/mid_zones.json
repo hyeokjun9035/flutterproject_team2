@@ -1,0 +1,1202 @@
+[
+  {
+    "regId": "11A00101",
+    "regName": "백령도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B00000",
+    "regName": "서울.인천.경기",
+    "regSp": "A"
+  },
+  {
+    "regId": "11B10101",
+    "regName": "서울",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B10102",
+    "regName": "과천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B10103",
+    "regName": "광명",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20101",
+    "regName": "강화",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20102",
+    "regName": "김포",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20201",
+    "regName": "인천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20202",
+    "regName": "시흥",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20203",
+    "regName": "안산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20204",
+    "regName": "부천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20301",
+    "regName": "의정부",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20302",
+    "regName": "고양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20304",
+    "regName": "양주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20305",
+    "regName": "파주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20401",
+    "regName": "동두천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20402",
+    "regName": "연천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20403",
+    "regName": "포천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20404",
+    "regName": "가평",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20501",
+    "regName": "구리",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20502",
+    "regName": "남양주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20503",
+    "regName": "양평",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20504",
+    "regName": "하남",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20601",
+    "regName": "수원",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20602",
+    "regName": "안양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20603",
+    "regName": "오산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20604",
+    "regName": "화성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20605",
+    "regName": "성남",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20606",
+    "regName": "평택",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20609",
+    "regName": "의왕",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20610",
+    "regName": "군포",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20611",
+    "regName": "안성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20612",
+    "regName": "용인",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20701",
+    "regName": "이천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20702",
+    "regName": "광주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11B20703",
+    "regName": "여주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11BD0000",
+    "regName": "서울경기.강원영서",
+    "regSp": "0"
+  },
+  {
+    "regId": "11C00000",
+    "regName": "충청도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11C10000",
+    "regName": "충청북도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11C10101",
+    "regName": "충주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10102",
+    "regName": "진천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10103",
+    "regName": "음성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10201",
+    "regName": "제천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10202",
+    "regName": "단양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10301",
+    "regName": "청주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10302",
+    "regName": "보은",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10303",
+    "regName": "괴산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10304",
+    "regName": "증평",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10401",
+    "regName": "추풍령",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10402",
+    "regName": "영동",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C10403",
+    "regName": "옥천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20000",
+    "regName": "충청남도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11C20101",
+    "regName": "서산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20102",
+    "regName": "태안",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20103",
+    "regName": "당진",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20104",
+    "regName": "홍성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20201",
+    "regName": "보령",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20202",
+    "regName": "서천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20301",
+    "regName": "천안",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20302",
+    "regName": "아산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20303",
+    "regName": "예산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20401",
+    "regName": "대전",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20402",
+    "regName": "공주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20403",
+    "regName": "계룡",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20404",
+    "regName": "세종",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20501",
+    "regName": "부여",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20502",
+    "regName": "청양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20601",
+    "regName": "금산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11C20602",
+    "regName": "논산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10000",
+    "regName": "강원영서",
+    "regSp": "A"
+  },
+  {
+    "regId": "11D10101",
+    "regName": "철원",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10102",
+    "regName": "화천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10201",
+    "regName": "인제",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10202",
+    "regName": "양구",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10301",
+    "regName": "춘천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10302",
+    "regName": "홍천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10401",
+    "regName": "원주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10402",
+    "regName": "횡성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10501",
+    "regName": "영월",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10502",
+    "regName": "정선",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D10503",
+    "regName": "평창",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20000",
+    "regName": "강원영동",
+    "regSp": "A"
+  },
+  {
+    "regId": "11D20201",
+    "regName": "대관령",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20301",
+    "regName": "태백",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20401",
+    "regName": "속초",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20402",
+    "regName": "고성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20403",
+    "regName": "양양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20501",
+    "regName": "강릉",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20601",
+    "regName": "동해",
+    "regSp": "C"
+  },
+  {
+    "regId": "11D20602",
+    "regName": "삼척",
+    "regSp": "C"
+  },
+  {
+    "regId": "11E00101",
+    "regName": "울릉도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11E00102",
+    "regName": "독도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F00000",
+    "regName": "전라도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11F10000",
+    "regName": "전북자치도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11F10201",
+    "regName": "전주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10202",
+    "regName": "익산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10203",
+    "regName": "정읍",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10204",
+    "regName": "완주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10301",
+    "regName": "장수",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10302",
+    "regName": "무주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10303",
+    "regName": "진안",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10401",
+    "regName": "남원",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10402",
+    "regName": "임실",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F10403",
+    "regName": "순창",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20000",
+    "regName": "전라남도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11F20301",
+    "regName": "완도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20302",
+    "regName": "해남",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20303",
+    "regName": "강진",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20304",
+    "regName": "장흥",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20401",
+    "regName": "여수",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20402",
+    "regName": "광양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20403",
+    "regName": "고흥",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20404",
+    "regName": "보성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20405",
+    "regName": "순천시",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20501",
+    "regName": "광주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20502",
+    "regName": "장성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20503",
+    "regName": "나주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20504",
+    "regName": "담양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20505",
+    "regName": "화순",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20601",
+    "regName": "구례",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20602",
+    "regName": "곡성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20603",
+    "regName": "순천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11F20701",
+    "regName": "흑산도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00000",
+    "regName": "제주도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11G00101",
+    "regName": "성산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00201",
+    "regName": "제주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00302",
+    "regName": "성판악",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00401",
+    "regName": "서귀포",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00501",
+    "regName": "고산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00601",
+    "regName": "이어도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00800",
+    "regName": "추자도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G00901",
+    "regName": "산천단",
+    "regSp": "C"
+  },
+  {
+    "regId": "11G01001",
+    "regName": "한남",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H00000",
+    "regName": "경상도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11H10000",
+    "regName": "경상북도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11H10101",
+    "regName": "울진",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10102",
+    "regName": "영덕",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10201",
+    "regName": "포항",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10202",
+    "regName": "경주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10301",
+    "regName": "문경",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10302",
+    "regName": "상주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10303",
+    "regName": "예천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10401",
+    "regName": "영주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10402",
+    "regName": "봉화",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10403",
+    "regName": "영양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10501",
+    "regName": "안동",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10502",
+    "regName": "의성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10503",
+    "regName": "청송",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10601",
+    "regName": "김천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10602",
+    "regName": "구미",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10604",
+    "regName": "고령",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10605",
+    "regName": "성주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10701",
+    "regName": "대구",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10702",
+    "regName": "영천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10703",
+    "regName": "경산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10704",
+    "regName": "청도",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10705",
+    "regName": "칠곡",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H10707",
+    "regName": "군위",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20000",
+    "regName": "경상남도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11H20101",
+    "regName": "울산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20102",
+    "regName": "양산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20201",
+    "regName": "부산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20301",
+    "regName": "창원",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20304",
+    "regName": "김해",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20401",
+    "regName": "통영",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20402",
+    "regName": "사천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20403",
+    "regName": "거제",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20404",
+    "regName": "고성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20405",
+    "regName": "남해",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20501",
+    "regName": "함양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20502",
+    "regName": "거창",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20503",
+    "regName": "합천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20601",
+    "regName": "밀양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20602",
+    "regName": "의령",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20603",
+    "regName": "함안",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20604",
+    "regName": "창녕",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20701",
+    "regName": "진주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20703",
+    "regName": "산청",
+    "regSp": "C"
+  },
+  {
+    "regId": "11H20704",
+    "regName": "하동",
+    "regSp": "C"
+  },
+  {
+    "regId": "11I00000",
+    "regName": "황해도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11I10001",
+    "regName": "사리원",
+    "regSp": "C"
+  },
+  {
+    "regId": "11I10002",
+    "regName": "신계",
+    "regSp": "C"
+  },
+  {
+    "regId": "11I20001",
+    "regName": "해주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11I20002",
+    "regName": "개성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11I20003",
+    "regName": "장연(용연)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10000",
+    "regName": "평안북도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11J10001",
+    "regName": "신의주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10002",
+    "regName": "삭주(수풍)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10003",
+    "regName": "구성",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10004",
+    "regName": "자성(중강)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10005",
+    "regName": "강계",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J10006",
+    "regName": "희천",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J20000",
+    "regName": "평안남도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11J20001",
+    "regName": "평양",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J20002",
+    "regName": "진남포(남포)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J20004",
+    "regName": "안주",
+    "regSp": "C"
+  },
+  {
+    "regId": "11J20005",
+    "regName": "양덕",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K10000",
+    "regName": "함경북도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11K10001",
+    "regName": "청진",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K10002",
+    "regName": "웅기(선봉)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K10003",
+    "regName": "성진(김책)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K10004",
+    "regName": "무산(삼지연)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K20000",
+    "regName": "함경남도",
+    "regSp": "A"
+  },
+  {
+    "regId": "11K20001",
+    "regName": "함흥",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K20002",
+    "regName": "장진",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K20003",
+    "regName": "북청(신포)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K20004",
+    "regName": "혜산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11K20005",
+    "regName": "풍산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11L10001",
+    "regName": "원산",
+    "regSp": "C"
+  },
+  {
+    "regId": "11L10002",
+    "regName": "고성(장전)",
+    "regSp": "C"
+  },
+  {
+    "regId": "11L10003",
+    "regName": "평강",
+    "regSp": "C"
+  },
+  {
+    "regId": "12A00000",
+    "regName": "서해",
+    "regSp": "H"
+  },
+  {
+    "regId": "12A10000",
+    "regName": "서해북부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12A20000",
+    "regName": "서해중부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12A30000",
+    "regName": "서해남부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12B00000",
+    "regName": "남해",
+    "regSp": "H"
+  },
+  {
+    "regId": "12B10000",
+    "regName": "남해서부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12B10500",
+    "regName": "제주도해상",
+    "regSp": "H"
+  },
+  {
+    "regId": "12B20000",
+    "regName": "남해동부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12C00000",
+    "regName": "동해",
+    "regSp": "H"
+  },
+  {
+    "regId": "12C10000",
+    "regName": "동해남부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12C20000",
+    "regName": "동해중부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12C30000",
+    "regName": "동해북부",
+    "regSp": "H"
+  },
+  {
+    "regId": "12D00000",
+    "regName": "대화퇴",
+    "regSp": "H"
+  },
+  {
+    "regId": "12E00000",
+    "regName": "동중국해",
+    "regSp": "H"
+  },
+  {
+    "regId": "12F00000",
+    "regName": "규슈",
+    "regSp": "H"
+  },
+  {
+    "regId": "12F00100",
+    "regName": "규슈(서해)",
+    "regSp": "I"
+  },
+  {
+    "regId": "12F00200",
+    "regName": "규슈(남해)",
+    "regSp": "I"
+  },
+  {
+    "regId": "12G00000",
+    "regName": "연해주",
+    "regSp": "H"
+  },
+  {
+    "regId": "21F10501",
+    "regName": "군산",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F10502",
+    "regName": "김제",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F10601",
+    "regName": "고창",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F10602",
+    "regName": "부안",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20101",
+    "regName": "함평",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20102",
+    "regName": "영광",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20201",
+    "regName": "진도",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20801",
+    "regName": "목포",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20802",
+    "regName": "영암",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20803",
+    "regName": "신안",
+    "regSp": "C"
+  },
+  {
+    "regId": "21F20804",
+    "regName": "무안",
+    "regSp": "C"
+  }
+]
