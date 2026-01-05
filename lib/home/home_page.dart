@@ -505,7 +505,16 @@ class _HomePageState extends State<HomePage> {
                       ),
                     );
                   }
-                  return _TransitCard(data: transitSnap.data!, onFavoritePressed: _openFavoriteActionsSheet, busArrivalService: _busArrivalService);
+                  final fav = _selectedFavorite;
+
+                  return _TransitCard(
+                      data: transitSnap.data!,
+                      onFavoritePressed: _openFavoriteActionsSheet,
+                      busArrivalService: _busArrivalService,
+                      startLat: fav?.start.lat ?? 0.0,
+                      startLon: fav?.start.lng ?? 0.0,
+                      favoriteId: fav?.id,
+                  );
                 },
               ),
             ],
@@ -2296,10 +2305,21 @@ class _Skeleton extends StatelessWidget {
 
 // 2025-12-23 jgh251223---S
 class _TransitCard extends StatefulWidget {
-  const _TransitCard({required this.data, this.onFavoritePressed, required this.busArrivalService});
+  const _TransitCard({
+    required this.data,
+    required this.busArrivalService,
+    required this.favoriteId,
+    required this.startLat,
+    required this.startLon,
+    this.onFavoritePressed,
+  });
+
   final TransitRouteResult data;
   final VoidCallback? onFavoritePressed;
   final BusArrivalService busArrivalService;
+  final String? favoriteId;
+  final double startLat;
+  final double startLon;
   @override
   State<_TransitCard> createState() => _TransitCardState();
 }
@@ -2307,147 +2327,224 @@ class _TransitCard extends StatefulWidget {
 class _TransitCardState extends State<_TransitCard> {
   TransitVariant _selected = TransitVariant.fastest;
 
-  Future<String?> _fetchBusArrivalForVariant(TransitVariant v) async {
-    try {
-      final idx = widget.data.indexOf(v);
+  String _variantKey(String favId) => 'transit_variant_v1_$favId';
 
-      // raw → metaData/meta → plan → itineraries[idx] → legs
-      final raw = widget.data.raw;
-      final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
-      final plan = (meta['plan'] ?? {}) as Map? ?? {};
-      final itineraries = (plan['itineraries'] ?? []) as List? ?? const [];
-      if (itineraries.isEmpty || idx < 0 || idx >= itineraries.length) return null;
+  Future<void> _loadVariant() async {
+    final favId = widget.favoriteId;
+    if (favId == null || favId.isEmpty) return;
 
-      final it = Map<String, dynamic>.from(itineraries[idx] as Map);
-      final legs = (it['legs'] as List?) ?? const [];
-      if (legs.isEmpty) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_variantKey(favId));
 
-      Map<String, dynamic>? busLeg;
-      for (final e in legs) {
-        final m = Map<String, dynamic>.from(e as Map);
-        final mode = (m['mode'] ?? '').toString().toUpperCase();
-        if (mode == 'BUS') {
-          busLeg = m;
-          break;
-        }
+    final v = TransitVariant.values.firstWhere(
+          (e) => e.name == saved,
+      orElse: () => TransitVariant.fastest,
+    );
+
+    if (!mounted) return;
+    setState(() => _selected = v);
+  }
+
+  Future<void> _saveVariant(TransitVariant v) async {
+    final favId = widget.favoriteId;
+    if (favId == null || favId.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_variantKey(favId), v.name);
+  }
+  // ===== (B) 버스 15초 폴링 =====
+  Timer? _busTimer;
+  bool _busInFlight = false;
+
+  Future<String?>? _busFuture;
+  DateTime? _busUpdatedAt;
+
+  // ===== (C) 정류장 캐시(findNearestStop 과호출 방지) =====
+  TagoStop? _cachedStop;
+  DateTime? _cachedStopAt;
+  double? _cachedLat;
+  double? _cachedLon;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    // ✅ 1) 즐겨찾기별 variant 복원
+    await _loadVariant();
+
+    // ✅ 2) 버스 폴링 시작
+    _startBusPolling();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TransitCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // ✅ 즐겨찾기 바뀌면: 저장된 variant 다시 로드 + 폴링 리셋
+    if (oldWidget.favoriteId != widget.favoriteId) {
+      if (widget.favoriteId == null || widget.favoriteId!.isEmpty) {
+        setState(() => _selected = TransitVariant.fastest);
+        _resetBusPolling();
+      } else {
+        _loadVariant().then((_) => _resetBusPolling());
       }
-      if (busLeg == null) return null;
+    }
 
-      // ✅ 버스번호: "광역:1400" → "1400"
-      final routeStr = (busLeg['route'] ?? busLeg['routeName'] ?? '').toString();
-      final busNo = _extractRouteNo(routeStr);
-      if (busNo.isEmpty) return null;
-
-      // ✅ 승차 정류장 좌표
-      final start = (busLeg['start'] as Map?)?.cast<String, dynamic>() ?? {};
-      final startLat = (start['lat'] as num?)?.toDouble();
-      final startLon = (start['lon'] as num?)?.toDouble();
-      if (startLat == null || startLon == null) return null;
-
-      // 1) 근처 정류장 nodeId/cityCode 찾기
-      final stop = await widget.busArrivalService.findNearestStop(
-        lat: startLat,
-        lon: startLon,
-      );
-      if (stop == null) return null;
-
-      // 2) 해당 정류장 도착목록에서 busNo 필터 → 가장 빠른 것
-      final text = await widget.busArrivalService.fetchNextArrivalText(
-        cityCode: stop.cityCode,
-        nodeId: stop.nodeId,
-        routeNo: busNo,
-      );
-
-      return text; // 예: "버스 1400 · 5분 후 (2정거장 전)"
-    } catch (_) {
-      return null;
+    // ✅ 위치가 바뀌면 정류장 캐시 무효화(원치 않으면 삭제 가능)
+    if (oldWidget.startLat != widget.startLat || oldWidget.startLon != widget.startLon) {
+      _invalidateStopCache();
     }
   }
 
-  String _extractRouteNo(String routeStr) {
-    // 예: "광역:1400" -> "1400"
-    // 예: "간선:273" -> "273"
-    // 예: "광역:M6405" -> "M6405"
-    // 예: "M6724" -> "M6724"
-    // 예: "G6000" -> "G6000"
-    final s = routeStr.trim();
+  @override
+  void dispose() {
+    _busTimer?.cancel();
+    super.dispose();
+  }
 
-    // ":" 뒤를 우선 사용 (광역:1400 같은 케이스)
-    final core = s.contains(':') ? s.split(':').last.trim() : s;
+  void _startBusPolling() {
+    _busTimer?.cancel();
 
-    // 공백/특수문자 정리(필요 최소)
-    final cleaned = core.replaceAll(RegExp(r'\s+'), '');
+    // ✅ 즉시 1회 갱신
+    _refreshBusArrivalNow();
 
-    // 알파벳(optional) + 숫자 + (optional -숫자)
-    final m = RegExp(r'^[A-Za-z]*\d+(?:-\d+)?').firstMatch(cleaned);
-    return m?.group(0) ?? '';
+    // ✅ 15초 폴링
+    _busTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _refreshBusArrivalNow();
+    });
+  }
+
+  void _resetBusPolling() {
+    _invalidateStopCache();
+    _startBusPolling();
+  }
+
+  void _invalidateStopCache() {
+    _cachedStop = null;
+    _cachedStopAt = null;
+    _cachedLat = null;
+    _cachedLon = null;
+  }
+
+  void _refreshBusArrivalNow() {
+    if (_busInFlight) return;
+    _busInFlight = true;
+
+    final fut = _fetchBusArrivalForVariant(_selected);
+
+    if (mounted) {
+      setState(() {
+        _busFuture = fut; // ✅ FutureBuilder가 새 Future를 보게 됨
+      });
+    }
+
+    fut.then((_) {
+      _busUpdatedAt = DateTime.now();
+    }).whenComplete(() {
+      _busInFlight = false;
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<TagoStop?> _ensureNearestStop(double lat, double lon) async {
+    final now = DateTime.now();
+
+    // ✅ 캐시 재사용: 10분 이내 + 위치 크게 안 변하면(대충 200~300m)
+    if (_cachedStop != null &&
+        _cachedStopAt != null &&
+        now.difference(_cachedStopAt!).inMinutes < 10 &&
+        _cachedLat != null &&
+        _cachedLon != null) {
+      final d2 = (lat - _cachedLat!) * (lat - _cachedLat!) +
+          (lon - _cachedLon!) * (lon - _cachedLon!);
+      if (d2 < 0.000004) return _cachedStop;
+    }
+
+    final stop = await widget.busArrivalService.findNearestStop(lat: lat, lon: lon);
+    if (stop != null) {
+      _cachedStop = stop;
+      _cachedStopAt = now;
+      _cachedLat = lat;
+      _cachedLon = lon;
+    }
+    return stop;
+  }
+
+  String? _extractRouteNo(String text) {
+    // 예: "버스 1400 ...", "버스 111-2 ..." 등
+    final m = RegExp(r'버스\s*([0-9A-Za-z가-힣-]+)').firstMatch(text);
+    var s = m?.group(1)?.trim();
+    if (s == null || s.isEmpty) return null;
+
+    // "1400번" 같은 꼬리 제거
+    s = s.replaceAll('번', '').trim();
+    return s;
+  }
+
+  Future<String?> _fetchBusArrivalForVariant(TransitVariant v) async {
+    final lat = widget.startLat;
+    final lon = widget.startLon;
+    if (lat == 0.0 || lon == 0.0) return null;
+
+    final s = widget.data.summaryOf(v);
+
+    // 첫 구간이 버스가 아닐 수도 있음(지하철/도보 등)
+    final routeNo = _extractRouteNo(s.firstArrivalText) ?? _extractRouteNo(s.secondArrivalText);
+    if (routeNo == null || routeNo.isEmpty) return null;
+
+    final stop = await _ensureNearestStop(lat, lon);
+    if (stop == null) return null;
+
+    return widget.busArrivalService.fetchNextArrivalText(
+      cityCode: stop.cityCode,
+      nodeId: stop.nodeId,
+      routeNo: routeNo,
+    );
   }
 
   List<_LegUiStep> _buildLegSteps(TransitVariant v) {
-    final raw = widget.data.raw;
-    if (raw.isEmpty) return const [];
+    final s = widget.data.summaryOf(v);
 
-    final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
-    final plan = (meta['plan'] ?? {}) as Map? ?? {};
-    final itineraries = (plan['itineraries'] ?? []) as List? ?? const [];
-    if (itineraries.isEmpty) return const [];
+    final legs = <String>[
+      s.firstArrivalText.trim(),
+      s.secondArrivalText.trim(),
+    ].where((e) => e.isNotEmpty).toList();
 
-    final idx = widget.data.indexOf(v);
-    if (idx < 0 || idx >= itineraries.length) return const [];
-
-    final it = Map<String, dynamic>.from(itineraries[idx] as Map);
-    final legs = (it['legs'] as List?) ?? const [];
-    if (legs.isEmpty) return const [];
-
-    String routeDisplay(dynamic route) {
-      final s = (route ?? '').toString().trim();
-      if (s.isEmpty) return '';
-      // "직행좌석:G8808" / "광역:1400" 같은 경우 ':' 뒤만
-      return s.contains(':') ? s.split(':').last.trim() : s;
+    IconData iconFromLeg(String t) {
+      final up = t.toUpperCase();
+      if (t.contains('버스') || up.contains('BUS')) return Icons.directions_bus;
+      if (t.contains('지하철') || up.contains('SUBWAY') || up.contains('METRO')) return Icons.subway;
+      return Icons.directions_walk;
     }
 
-    String subwayDisplay(Map<String, dynamic> leg) {
-      // TMAP에서 보통 route/routeName에 "수도권 1호선" 같은 이름이 들어옴
-      final s = (leg['route'] ?? leg['routeName'] ?? leg['lineName'] ?? '').toString().trim();
-      if (s.isNotEmpty) return s;
-      return '지하철';
+    String labelFromLeg(String t) {
+      // 너무 길면 flowRow에서 maxLines 2로 잘릴 거라 일단 그대로
+      return t.replaceAll(RegExp(r'\s+'), ' ').trim();
     }
 
-    String busDisplay(Map<String, dynamic> leg) {
-      final s = routeDisplay(leg['route'] ?? leg['routeName']);
-      return s.isNotEmpty ? s : '버스';
+    final out = <_LegUiStep>[];
+
+    // 시작/도착 노드
+    out.add(_LegUiStep(Icons.my_location, '출발'));
+
+    for (final t in legs) {
+      out.add(_LegUiStep(iconFromLeg(t), labelFromLeg(t)));
     }
 
-    final steps = <_LegUiStep>[];
-    for (final e in legs) {
-      final leg = Map<String, dynamic>.from(e as Map);
-      final mode = (leg['mode'] ?? '').toString().toUpperCase();
+    out.add(_LegUiStep(Icons.flag, '도착'));
 
-      if (mode == 'WALK') {
-        // 연속 WALK는 하나로 합치기(아이콘 깔끔)
-        if (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) continue;
-        steps.add(_LegUiStep(Icons.directions_walk, '도보'));
-      } else if (mode == 'SUBWAY') {
-        steps.add(_LegUiStep(Icons.directions_subway, subwayDisplay(leg)));
-      } else if (mode == 'BUS') {
-        steps.add(_LegUiStep(Icons.directions_bus, busDisplay(leg)));
-      } else {
-        // 기타 모드가 있으면 필요 시 추가
-      }
-    }
-
-    // 앞/뒤가 WALK만 남는 경우도 있어서 정리(선택)
-    while (steps.isNotEmpty && steps.first.icon == Icons.directions_walk) {
-      steps.removeAt(0);
-    }
-    while (steps.isNotEmpty && steps.last.icon == Icons.directions_walk) {
-      steps.removeLast();
-    }
-
-    return steps;
+    return out;
   }
 
-  final Map<TransitVariant, Future<String?>> _busArrivalFutureByVariant = {};
+  String _hhmmss(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2504,16 +2601,20 @@ class _TransitCardState extends State<_TransitCard> {
         .where((e) => e.isNotEmpty)
         .join(' / ');
 
-    final busFuture = _busArrivalFutureByVariant.putIfAbsent(
-      _selected,
-          () => _fetchBusArrivalForVariant(_selected),
-    );
+    // final busFuture = _busArrivalFutureByVariant.putIfAbsent(
+    //   _selected,
+    //       () => _fetchBusArrivalForVariant(_selected),
+    // );
 
     ChoiceChip chip(String label, TransitVariant v) {
       return ChoiceChip(
         label: Text(label),
         selected: _selected == v,
-        onSelected: (_) => setState(() => _selected = v),
+        onSelected: (_) async {
+          setState(() => _selected = v);
+          _saveVariant(v);
+          _refreshBusArrivalNow();
+        },
       );
     }
 
@@ -2540,9 +2641,9 @@ class _TransitCardState extends State<_TransitCard> {
               style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600)),
           // ✅ 실시간 버스 도착정보(추가)
           FutureBuilder<String?>(
-            future: busFuture,
+            future: _busFuture,
             builder: (context, snap) {
-              if (snap.connectionState != ConnectionState.done) {
+              if (snap.connectionState == ConnectionState.waiting) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -2566,13 +2667,26 @@ class _TransitCardState extends State<_TransitCard> {
               }
               return Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  live,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      live,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (_busUpdatedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '업데이트: ${_hhmmss(_busUpdatedAt!)}',
+                          style: textTheme.labelSmall?.copyWith(color: Colors.white54),
+                        )
+                      ),
+                  ],
+                )
               );
             },
           ),
