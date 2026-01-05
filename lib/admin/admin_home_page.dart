@@ -5,7 +5,6 @@ import 'postDetailPage.dart';
 import 'notices/notice_create_page.dart';
 import 'admin_alarm_page.dart'; // ✅ 파일명 변경 반영 (alarm 포함)
 import 'package:flutter_project/admin/admin_report_detail_page.dart';
-import 'admin_alarm_page.dart';
 import 'data/notice_repository.dart';
 
 class AdminHomePage extends StatefulWidget {
@@ -100,14 +99,9 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
   void initState() {
     super.initState();
     _loadTodayPostCount();
-    _loadTotalUserCount();
     _loadReportCounts();
     _loadBlockedUserCount();
     reload();
-  }
-  
-  Future<void> reload() async {
-    setState(() => loading = true);
   }
 
   Future<void> _loadTodayReportCount() async {
@@ -193,7 +187,6 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
 
     await Future.wait([
       _loadTodayPostCount(),
-      _loadTotalUserCount(),
       _loadTodayReportCount(),
       _loadOpenReportCount(),
       _loadClosedReportCount(),
@@ -243,6 +236,7 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         openReportCount = results[1].count ?? 0;
         closedReportCount = results[2].count ?? 0;
         loadingReports = false;
+        loadingUsers = false;
       });
     } catch (e) {
       debugPrint('loadReportCounts error: $e');
@@ -811,3 +805,69 @@ class _SearchBar extends StatelessWidget {
   Widget build(BuildContext context) { return TextField(onChanged: onChanged, decoration: InputDecoration(hintText: hintText, prefixIcon: const Icon(Icons.search), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))); }
 }
 
+class _StatusMetricCard extends StatelessWidget {
+  final String title;
+  final int value;
+  final Color color;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _StatusMetricCard({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.icon,
+    this.onTap,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.15),
+                foregroundColor: color,
+                child: Icon(icon, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
