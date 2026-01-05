@@ -162,9 +162,9 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
 
         const SizedBox(height: 24),
         _sectionTitle('최근 시스템 로그'),
-        const SizedBox(height: 10),
-        _buildRecentLogs(),
-        const SizedBox(height: 40),
+        // const SizedBox(height: 10),
+        // _buildRecentLogs(),
+        // const SizedBox(height: 40),
       ],
     );
   }
@@ -228,27 +228,27 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
     );
   }
 
-  Widget _buildRecentLogs() {
-    final logs = [
-      {'t': '시스템 가동', 's': '대시보드 데이터 연동이 완료되었습니다.', 'time': '방금'},
-      {'t': '사용자 데이터', 's': '총 $totalUserCount명의 사용자가 등록되어 있습니다.', 'time': '현재'},
-      {'t': '게시글 데이터', 's': '오늘 총 $todayPostCount건의 제보가 올라왔습니다.', 'time': '오늘'},
-    ];
-
-    return Column(
-      children: logs.map((l) => Card(
-        elevation: 0, color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
-        child: ListTile(
-          dense: true,
-          leading: const CircleAvatar(radius: 12, backgroundColor: Colors.black12, child: Icon(Icons.analytics_outlined, size: 14, color: Colors.black54)),
-          title: Text(l['t']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(l['s']!),
-          trailing: Text(l['time']!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        ),
-      )).toList(),
-    );
-  }
+  // Widget _buildRecentLogs() {
+  //   final logs = [
+  //     {'t': '시스템 가동', 's': '대시보드 데이터 연동이 완료되었습니다.', 'time': '방금'},
+  //     {'t': '사용자 데이터', 's': '총 $totalUserCount명의 사용자가 등록되어 있습니다.', 'time': '현재'},
+  //     {'t': '게시글 데이터', 's': '오늘 총 $todayPostCount건의 제보가 올라왔습니다.', 'time': '오늘'},
+  //   ];
+  //
+  //   return Column(
+  //     children: logs.map((l) => Card(
+  //       elevation: 0, color: Colors.white,
+  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
+  //       child: ListTile(
+  //         dense: true,
+  //         leading: const CircleAvatar(radius: 12, backgroundColor: Colors.black12, child: Icon(Icons.analytics_outlined, size: 14, color: Colors.black54)),
+  //         title: Text(l['t']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+  //         subtitle: Text(l['s']!),
+  //         trailing: Text(l['time']!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+  //       ),
+  //     )).toList(),
+  //   );
+  // }
 }
 
 /* -------------------- 2) 게시글 관리 -------------------- */
