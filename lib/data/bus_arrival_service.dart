@@ -18,12 +18,38 @@ class TagoStop {
   });
 }
 
+class BusArrivalMatch {
+  final String routeId;
+  final String routeNo;
+  final int arrSec;
+  final int prevStops;
+
+  BusArrivalMatch({
+    required this.routeId,
+    required this.routeNo,
+    required this.arrSec,
+    required this.prevStops,
+  });
+
+  String toText() {
+    final min = (arrSec / 60).ceil();
+    final prevText = (prevStops >= 0) ? ' (${prevStops}정거장 전)' : '';
+    return '버스 $routeNo · ${min}분 후$prevText';
+  }
+}
+
 class BusArrivalService {
   BusArrivalService({required this.serviceKey, http.Client? client})
       : _client = client ?? http.Client();
 
   final String serviceKey;
   final http.Client _client;
+
+  String _normRoute(String s) => s
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('번', '')
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
   Future<TagoStop?> findNearestStop({
     required double lat,
@@ -156,8 +182,8 @@ class BusArrivalService {
           .replaceAll(RegExp(r'\s+'), '')
           .replaceAll('번', '')
           .toUpperCase()
-      // ✅ 한글 제거 (중요)
-          .replaceAll(RegExp(r'[^0-9A-Z-]'), '');
+      // ✅ 한글 유지
+          .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
       final target = _normRoute(routeNo);
 
