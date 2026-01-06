@@ -1263,6 +1263,38 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
     );
   }
 
+  void _showEnlargedImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (_) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  maxScale: 5.0,
+                  child: Image.network(url, fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 10,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
   Widget _infoTile(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1297,18 +1329,49 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
   }
 
   Widget _statusPill(String label, bool isOn) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: isOn ? Colors.green.withOpacity(0.1) : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$label: ${isOn ? "ON" : "OFF"}',
-        style: TextStyle(
-          fontSize: 11,
-          color: isOn ? Colors.green : Colors.grey,
-          fontWeight: FontWeight.bold,
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: isOn ? Colors.green.withOpacity(0.1) : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text('$label: ${isOn ? "ON" : "OFF"}', style: TextStyle(fontSize: 11, color: isOn ? Colors.green : Colors.grey, fontWeight: FontWeight.bold)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        _sectionTitle('사용자들'),
+        const SizedBox(height: 10),
+        _SearchBar(hintText: '이름/닉네임 검색', onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase())),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            final docs = snapshot.data!.docs.where((d) {
+              final data = d.data();
+              return (data['name'] ?? '').toString().toLowerCase().contains(_keyword) || (data['nickName'] ?? '').toString().toLowerCase().contains(_keyword);
+            }).toList();
+            return Column(children: docs.map((doc) {
+              final data = doc.data();
+              final profileUrl = (data['profile_image_url'] ?? '').toString();
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                child: ListTile(
+                  leading: GestureDetector(
+                    onTap: () {
+                      if (profileUrl.startsWith('http')) _showEnlargedImage(context, profileUrl);
+                    },
+                    child: CircleAvatar(
+                      backgroundImage: profileUrl.startsWith('http') ? NetworkImage(profileUrl) : null,
+                      child: profileUrl.startsWith('http') ? null : const Icon(Icons.person),
+                    ),
+                  ),
+                  title: Text(data['nickName'] ?? data['name'] ?? '알수없음'),
+                  subtitle: Text(data['email'] ?? '-'),
+                  onTap: () => _showUserDetailDialog(context, doc.id),
+                ),
+              );
+            }).toList());
+          },
         ),
       ),
     );

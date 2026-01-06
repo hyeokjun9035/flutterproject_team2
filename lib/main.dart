@@ -112,8 +112,8 @@ Future<void> main() async {
 
   FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
-  // 에뮬레이터 설정 등...
-  bool isDebugMode = true;
+  // ✅ 에뮬레이터 설정을 끄고 실제 서버를 사용하도록 수정
+  bool isDebugMode = false; // 👈 true에서 false로 변경 260106jgh
   if (isDebugMode) {
     FirebaseFunctions.instanceFor(region: 'asia-northeast3')
         .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
