@@ -57,14 +57,46 @@ class _JoinPage4State extends State<JoinPage4>{
  bool isAlramChecked = false;
 
 
-  Future<void> _join() async{
-    await fs.collection("users").add({
-      "isLocationChecked" : isLocationChecked,
-      "isCameraChecked" : isCameraChecked,
-      "isAlramChecked" :  isAlramChecked
+  Future<void> _join() async {
+    final uid = widget.uid;
 
+    final nickKey = widget.nickName.trim().toLowerCase();
+    final userRef = fs.collection('users').doc(uid);
+    final nickRef = fs.collection('usernames').doc(nickKey);
+
+    await fs.runTransaction((tx) async {
+      // 1) 닉네임 선점 확인(없으면 생성)
+      final nickSnap = await tx.get(nickRef);
+      if (nickSnap.exists) {
+        // 이미 다른 uid가 쓰고 있으면 중복 처리
+        final existingUid = (nickSnap.data()?['uid'] ?? '').toString();
+        if (existingUid.isNotEmpty && existingUid != uid) {
+          throw Exception('DUPLICATE_NICKNAME');
+        }
+        // existingUid == uid 면 이미 내가 선점한 상태 -> 그대로 진행
+      } else {
+        tx.set(nickRef, {
+          'uid': uid,
+          'nickName': widget.nickName,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 2) users/{uid} 생성/병합 저장
+      tx.set(userRef, {
+        'uid': uid,
+        'email': widget.email,
+        'name': widget.name,
+        'nickName': widget.nickName,
+        'intro': widget.intro,
+        'gender': widget.gender,
+        'profile_image_url': widget.profile_image_url,
+        'isLocationChecked': isLocationChecked,
+        'isCameraChecked': isCameraChecked,
+        'isAlramChecked': isAlramChecked,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     });
-
   }
 
   void _showmessage(String msg){
@@ -137,28 +169,40 @@ class _JoinPage4State extends State<JoinPage4>{
             ),
 
             ElevatedButton(
-                onPressed: () {
-                  if(isLocationChecked == false || isCameraChecked == false){
-                      _showmessage("필수사항은 반드시 체크하셔야 합니다.");
-                      return;
+                onPressed: () async {
+                  if (isLocationChecked == false || isCameraChecked == false) {
+                    _showmessage("필수사항은 반드시 체크하셔야 합니다.");
+                    return;
                   }
-                  Navigator.push(
+
+                  try {
+                    await _join();
+
+                    if (!mounted) return;
+                    Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_)=>JoinPage5(
-                        //authcation 과 동일한 uid 사용을 위해서 끌어옴
+                      MaterialPageRoute(
+                        builder: (_) => JoinPage5(
                           uid: widget.uid,
                           email: widget.email,
                           intro: widget.intro,
                           name: widget.name,
                           nickName: widget.nickName,
                           profile_image_url: widget.profile_image_url,
-                          gender: widget.gender, //성별 값 전달
-                        isLocationChecked: isLocationChecked,
+                          gender: widget.gender,
+                          isLocationChecked: isLocationChecked,
                           isCameraChecked: isCameraChecked,
-                          isAlramChecked: isAlramChecked
-
-                      ))
-                  );
+                          isAlramChecked: isAlramChecked,
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    if (e.toString().contains('DUPLICATE_NICKNAME')) {
+                      _showmessage("중복된 닉네임 입니다.");
+                    } else {
+                      _showmessage("회원가입 저장 실패: $e");
+                    }
+                  }
                 },
                 child: Text("다음")
             )

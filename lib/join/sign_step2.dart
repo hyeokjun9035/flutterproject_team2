@@ -41,9 +41,6 @@ class JoinPage2 extends StatefulWidget {
     required this.uid,
   });
 
-
-
-
   @override
   State<JoinPage2> createState() => _JoinPage2State();
 }
@@ -159,12 +156,14 @@ class _JoinPage2State extends State<JoinPage2>{
                 }
 
                 //닉네임 체크
-                final result = await fs
-                    .collection('users')
-                    .where('nickName', isEqualTo: _nickName.text.trim())
+                final nickKey = _nickName.text.trim().toLowerCase();
+
+                final nickDoc = await fs
+                    .collection('usernames')
+                    .doc(nickKey)
                     .get();
 
-                if(result.docs.isNotEmpty){
+                if (nickDoc.exists) {
                   _showmessage("중복된 닉네임 입니다.");
                   return;
                 }
