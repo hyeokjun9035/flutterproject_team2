@@ -46,7 +46,6 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('[APPCHECK ERROR] $e');
   }
-  
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
