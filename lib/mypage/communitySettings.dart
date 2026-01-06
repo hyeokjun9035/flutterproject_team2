@@ -1,16 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CommunitySettings extends StatefulWidget {
-  const CommunitySettings({super.key});
+  final Map<String, dynamic> user;
+  const CommunitySettings({super.key, required this.user});
 
   @override
   State<CommunitySettings> createState() => _CommunitySettingsState();
 }
 //아직 설정 미정
 class _CommunitySettingsState extends State<CommunitySettings> {
-  bool _isPushEnabled = true; // 푸시 알림 상태 변수
+  bool _isPushEnabled = false;
   bool _isPrivateMode = false; // 추가 예시 설정
+  @override
+  void initState() {
+    super.initState();
 
+    _isPushEnabled = widget.user['isAlramChecked'] ?? false;
+  }
+
+  void _updateAlarmSetting(bool newValue) async {
+    setState(() {
+      _isPushEnabled = newValue;
+    });
+
+    try {
+
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'isAlramChecked': newValue, // 서버의 컬럼명과 정확히 일치해야 함
+        });
+        print("Firestore 업데이트 성공: $newValue");
+      } else {
+        print("로그인된 사용자가 없습니다.");
+      }
+    } catch (e) {
+      // 4. 실패 시 스위치 상태를 원래대로 돌리고 에러 알림
+      setState(() {
+        _isPushEnabled = !newValue;
+      });
+      print("업데이트 에러: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("설정 저장에 실패했습니다.")),
+      );
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,16 +102,14 @@ class _CommunitySettingsState extends State<CommunitySettings> {
                     title: "푸시 알림",
                     subtitle: "새로운 댓글이나 소식을 알려드립니다.",
                     trailing: Switch(
-                      value: _isPushEnabled,
-                      // 요청하신 회색 계열 적용
+                      value: _isPushEnabled, // 연결: isAlramChecked
                       activeColor: Colors.white,
                       activeTrackColor: Colors.blueGrey[400],
                       inactiveThumbColor: Colors.white,
                       inactiveTrackColor: Colors.grey[300],
                       onChanged: (bool value) {
-                        setState(() {
-                          _isPushEnabled = value;
-                        });
+                        // 4. 스위치 클릭 시 DB 업데이트 호출
+                        _updateAlarmSetting(value);
                       },
                     ),
                   ),

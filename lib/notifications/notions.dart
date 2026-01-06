@@ -113,7 +113,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final bool isRead = data['isRead'] ?? false;
     final String title = data['title'] ?? '알림';
     final String body = data['body'] ?? '';
-    final Timestamp? timestamp = data['createdAt'];
+    final dynamic timestamp = data['createdAt'];
 
     return GestureDetector(
       onTap: () {
@@ -187,9 +187,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   String _formatTimestamp(dynamic timestamp) {
     if (timestamp == null) return "방금 전";
-    DateTime date = (timestamp as Timestamp).toDate();
+
+    DateTime date;
+
+    // 타입에 따라 안전하게 DateTime으로 변환
+    if (timestamp is Timestamp) {
+      date = timestamp.toDate();
+    } else if (timestamp is String) {
+      date = DateTime.tryParse(timestamp) ?? DateTime.now();
+    } else {
+      return "방금 전";
+    }
+
     DateTime now = DateTime.now();
 
+    // 오늘인 경우 시간 표시, 아니면 날짜 표시
     if (date.year == now.year && date.month == now.month && date.day == now.day) {
       return "${date.hour}:${date.minute.toString().padLeft(2, '0')}";
     }
