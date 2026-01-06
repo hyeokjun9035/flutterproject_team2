@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_project/community/CommunityView.dart' hide Communityview;
+import 'package:flutter_project/community/CommunityView.dart'
+    hide Communityview;
 import 'CommunityAdd.dart';
 import '../headandputter/putter.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'CommunityEdit.dart';
 import 'CommunityView.dart';
 import 'package:chewie/chewie.dart';
@@ -12,11 +13,39 @@ import 'package:video_player/video_player.dart';
 class Notice extends StatefulWidget {
   const Notice({super.key});
 
+  // ✅ 일단 하드코딩 데이터
+  static const List<Map<String, dynamic>> posts = [];
+
   @override
   State<Notice> createState() => _NoticeState();
 }
 
 class _NoticeState extends State<Notice> {
+  String _timeAgoFromTs(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+
+    if (diff.inMinutes < 1) return "방금 전";
+    if (diff.inMinutes < 60) return "${diff.inMinutes}분 전";
+    if (diff.inHours < 24) return "${diff.inHours}시간 전";
+    if (diff.inDays < 7) return "${diff.inDays}일 전";
+
+    // 일주일 넘으면 날짜로
+    return "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
+  }
+
+  DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
+    final v = data[key];
+
+    // serverTimestamp -> Timestamp
+    if (v is Timestamp) return v.toDate();
+
+    // client epoch (millis)
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return PutterScaffold(
@@ -38,10 +67,8 @@ class _NoticeState extends State<Notice> {
             IconButton(
               onPressed: () async {
                 await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => Communityadd()
-                    )
+                  context,
+                  MaterialPageRoute(builder: (context) => Communityadd()),
                 );
               },
               icon: const Icon(Icons.add),
@@ -74,10 +101,15 @@ class _NoticeState extends State<Notice> {
                   final data = doc.data() as Map<String, dynamic>;
 
                   final title = (data["title"] ?? "").toString();
-                  final images = ((data["images"] as List?) ?? []).map((e) => e.toString()).toList();
-                  final videos = ((data["videos"] as List?) ?? []).map((e) => e.toString()).toList();
-                  final videoThumbs = ((data["videoThumbs"] as List?) ?? []).map((e) => e.toString()).toList();
-
+                  final images = ((data["images"] as List?) ?? [])
+                      .map((e) => e.toString())
+                      .toList();
+                  final videos = ((data["videos"] as List?) ?? [])
+                      .map((e) => e.toString())
+                      .toList();
+                  final videoThumbs = ((data["videoThumbs"] as List?) ?? [])
+                      .map((e) => e.toString())
+                      .toList();
 
                   // ✅ 사진/영상 섞어서 캐러셀용 아이템 만들기
                   final mediaItems = <Map<String, String>>[];
@@ -97,8 +129,14 @@ class _NoticeState extends State<Notice> {
                       } else if (t == 'video') {
                         final idx = (b['v'] as num?)?.toInt() ?? -1;
                         if (idx >= 0 && idx < videos.length) {
-                          final thumb = (idx < videoThumbs.length) ? videoThumbs[idx] : '';
-                          mediaItems.add({'type': 'video', 'url': videos[idx], 'thumb': thumb});
+                          final thumb = (idx < videoThumbs.length)
+                              ? videoThumbs[idx]
+                              : '';
+                          mediaItems.add({
+                            'type': 'video',
+                            'url': videos[idx],
+                            'thumb': thumb,
+                          });
                         }
                       }
                     }
@@ -116,16 +154,30 @@ class _NoticeState extends State<Notice> {
                   }
 
                   // author는 Map으로 저장했으니 문자열로 바로 못 씀
-                  final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
-                  final authorName = (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
-                  final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+                  final authorMap =
+                      (data["author"] as Map<String, dynamic>?) ?? {};
+                  final authorName =
+                  (authorMap["nickName"] ?? authorMap["name"] ?? "익명")
+                      .toString();
+                  final authorProfile = (authorMap['profile_image_url'] ?? '')
+                      .toString();
 
-                  final placeMap = (data["place"] as Map<String, dynamic>?) ?? {};
+                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                  final authorUid = (authorMap["uid"] ?? "").toString();
+                  final bool isMine =
+                      currentUid != null && currentUid == authorUid;
+
+                  final placeMap =
+                      (data["place"] as Map<String, dynamic>?) ?? {};
                   final placeName = (placeMap["name"] ?? "").toString().trim();
-                  final placeAddress = (placeMap["address"] ?? "").toString().trim();
+                  final placeAddress = (placeMap["address"] ?? "")
+                      .toString()
+                      .trim();
 
-                  final weatherMap = (data["weather"] as Map<String, dynamic>?) ?? {};
-                  final temp = weatherMap["temp"]; // _addCommunity에서 'weather': {'temp': _temp ...}
+                  final weatherMap =
+                      (data["weather"] as Map<String, dynamic>?) ?? {};
+                  final temp =
+                  weatherMap["temp"]; // _addCommunity에서 'weather': {'temp': _temp ...}
 
                   String weatherLabel = "";
                   if (temp != null) {
@@ -146,13 +198,41 @@ class _NoticeState extends State<Notice> {
                   }
 
                   // 화면에 보여줄 최종 라벨: placeName 우선, 없으면 regionLabel
-                  final locationLabel = placeName.isNotEmpty ? placeName : regionLabel;
+                  final locationLabel = placeName.isNotEmpty
+                      ? placeName
+                      : regionLabel;
+
+                  final bool hasMetaInfo =
+                      locationLabel.isNotEmpty || weatherLabel.isNotEmpty;
+
+                  final createdAt =
+                      _readFirestoreTime(data, "createdAt") ??
+                          _readFirestoreTime(data, "createdAtClient");
+                  final updatedAt =
+                      _readFirestoreTime(data, "updatedAt") ??
+                          _readFirestoreTime(data, "updatedAtClient");
+
+                  // 표시 기준: updatedAt 있으면 updatedAt, 없으면 createdAt
+                  final displayDt = updatedAt ?? createdAt;
+
+                  // 수정 여부 판단(둘 다 있을 때만 확실)
+                  final bool edited =
+                  (createdAt != null &&
+                      updatedAt != null &&
+                      updatedAt.isAfter(createdAt));
+
+                  final timeLabel = displayDt == null
+                      ? ""
+                      : _timeAgoFromTs(displayDt);
 
                   final views = (data["viewCount"] ?? 0);
                   final comments = (data["commentCount"] ?? 0);
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -162,9 +242,15 @@ class _NoticeState extends State<Notice> {
                             CircleAvatar(
                               radius: 14,
                               backgroundColor: Colors.black12,
-                              backgroundImage: authorProfile.isNotEmpty ? NetworkImage(authorProfile) : null,
+                              backgroundImage: authorProfile.isNotEmpty
+                                  ? NetworkImage(authorProfile)
+                                  : null,
                               child: authorProfile.isEmpty
-                                  ? const Icon(Icons.person, size: 16, color: Colors.black54)
+                                  ? const Icon(
+                                Icons.person,
+                                size: 16,
+                                color: Colors.black54,
+                              )
                                   : null,
                             ),
                             const SizedBox(width: 8),
@@ -173,37 +259,55 @@ class _NoticeState extends State<Notice> {
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: hasMetaInfo
+                                    ? MainAxisAlignment.start
+                                    : MainAxisAlignment.center,
                                 children: [
                                   Text(
                                     authorName,
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, height: 1.0),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
 
-                                  if (locationLabel.isNotEmpty || weatherLabel.isNotEmpty)
+                                  if (hasMetaInfo)
                                     Padding(
-                                      padding: const EdgeInsets.only(top: 1), // 여기 0~2로 조절
+                                      padding: const EdgeInsets.only(top: 2),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           if (locationLabel.isNotEmpty) ...[
-                                            const Icon(Icons.location_on_outlined, size: 16),
+                                            const Icon(
+                                              Icons.location_on_outlined,
+                                              size: 16,
+                                            ),
                                             Flexible(
                                               child: Text(
                                                 locationLabel,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(fontSize: 14),
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                ),
                                               ),
                                             ),
                                           ],
-                                          if (locationLabel.isNotEmpty && weatherLabel.isNotEmpty)
-                                            const SizedBox(width: 5),
+
+                                          if (locationLabel.isNotEmpty &&
+                                              weatherLabel.isNotEmpty)
+                                            const SizedBox(width: 6),
+
                                           if (weatherLabel.isNotEmpty) ...[
-                                            const Icon(Icons.thermostat, size: 16),
+                                            const Icon(
+                                              Icons.thermostat,
+                                              size: 16,
+                                            ),
                                             Text(
                                               weatherLabel,
-                                              style: const TextStyle(fontSize: 14),
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                              ),
                                             ),
                                           ],
                                         ],
@@ -212,55 +316,77 @@ class _NoticeState extends State<Notice> {
                                 ],
                               ),
                             ),
+
                             // ✅ 오른쪽 메뉴는 그대로
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert),
                               padding: EdgeInsets.zero,
-                              onSelected: (value) {
+                              onSelected: (value) async {
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => CommunityEdit(docId: doc.id,)),
+                                    MaterialPageRoute(
+                                      builder: (_) => CommunityEdit(
+                                        docId: doc.id,
+                                      ), // ✅ docId 유지
+                                    ),
                                   );
-                                }
-
-                                if (value == 'delete') {
+                                } else if (value == 'delete') {
                                   showDialog(
                                     context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        title: const Text("삭제?"),
-                                        content: const Text("정말 삭제하시겠습니까?"),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () async {
-                                              // ✅ 여기서 삭제 실행
-                                              print(doc.id);
-                                              await FirebaseFirestore.instance
-                                                  .collection("community")
-                                                  .doc(doc.id)
-                                                  .delete();
-                                              // ✅ 다이얼로그 닫기ㅁ
-                                              Navigator.of(context).pop();
-                                            },
-                                            child: const Text("삭제"),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.of(context).pop();
-                                            },
-                                            child: const Text("취소"),
-                                          ),
-                                        ],
-                                      );
-                                    },
+                                    builder: (context) => AlertDialog(
+                                      title: const Text("삭제"),
+                                      content: const Text("정말 삭제하시겠습니까?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () async {
+                                            await FirebaseFirestore.instance
+                                                .collection("community")
+                                                .doc(doc.id)
+                                                .delete();
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text("삭제"),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(),
+                                          child: const Text("취소"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                } else if (value == 'report') {
+                                  // 🚧 하드코딩: 아직 기능 없음
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('신고 기능은 준비중입니다.'),
+                                    ),
                                   );
                                 }
                               },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(value: 'edit', child: Text('수정')),
-                                PopupMenuItem(value: 'delete', child: Text('삭제')),
-                              ],
+
+                              itemBuilder: (_) {
+                                if (isMine) {
+                                  return const [
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('수정'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('삭제'),
+                                    ),
+                                  ];
+                                } else {
+                                  return const [
+                                    PopupMenuItem(
+                                      value: 'report',
+                                      child: Text('신고'),
+                                    ),
+                                  ];
+                                }
+                              },
                             ),
                           ],
                         ),
@@ -305,15 +431,41 @@ class _NoticeState extends State<Notice> {
                         Row(
                           children: [
                             // createdAt을 time(“3분전”)으로 만들려면 따로 변환 로직 필요
-                            Text("", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                            Text(
+                              edited ? "$timeLabel · 수정됨" : timeLabel,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
                             const Spacer(),
-                            Icon(Icons.remove_red_eye_outlined, size: 16, color: Colors.grey[600]),
+                            Icon(
+                              Icons.remove_red_eye_outlined,
+                              size: 16,
+                              color: Colors.grey[600],
+                            ),
                             const SizedBox(width: 4),
-                            Text("$views", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                            Text(
+                              "$views",
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
                             const SizedBox(width: 10),
-                            Icon(Icons.comment_outlined, size: 16, color: Colors.grey[600]),
+                            Icon(
+                              Icons.comment_outlined,
+                              size: 16,
+                              color: Colors.grey[600],
+                            ),
                             const SizedBox(width: 4),
-                            Text("$comments", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                            Text(
+                              "$comments",
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -359,9 +511,9 @@ class _MediaCarouselState extends State<_MediaCarousel> {
     } catch (e) {
       await _disposePlayer();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('영상 로드 실패: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('영상 로드 실패: $e')));
       return;
     }
 
@@ -432,7 +584,10 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                         top: 8,
                         right: 8,
                         child: IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                          ),
                           onPressed: () async {
                             await _disposePlayer();
                             if (mounted) setState(() {});
@@ -460,7 +615,11 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                             color: Colors.black.withOpacity(0.35),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                            size: 34,
+                          ),
                         ),
                       ],
                     ),
@@ -487,14 +646,21 @@ class _MediaCarouselState extends State<_MediaCarousel> {
               top: 8,
               right: 8,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.45),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
                   "${_index + 1}/$total",
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -515,7 +681,9 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                     width: active ? 10 : 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: active ? Colors.white : Colors.white.withOpacity(0.5),
+                      color: active
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   );

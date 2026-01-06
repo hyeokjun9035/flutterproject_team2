@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class AdminAlarmPage extends StatefulWidget {
   const AdminAlarmPage({super.key});
@@ -52,7 +54,7 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
 
     try {
       final callable = FirebaseFunctions.instanceFor(region: 'asia-northeast3')
-          .httpsCallable('sendAdminNotification'); // 서버 함수명은 그대로 유지(일반적 관례)
+          .httpsCallable('sendAdminNotification');
 
       await callable.call({
         'title': title,
@@ -78,6 +80,14 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
     }
   }
 
+  String _fmtTime(dynamic ts) {
+    if (ts is Timestamp) {
+      final dt = ts.toDate();
+      return DateFormat('MM/dd HH:mm').format(dt);
+    }
+    return '-';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -87,58 +97,137 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '🚨 긴급/공지 알림 발송',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '🚨 긴급/공지 알림 발송',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 24),
 
-            const Text('알림 제목', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                hintText: '알림 제목을 입력하세요',
-                border: OutlineInputBorder(),
+                  const Text('알림 제목', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _titleCtrl,
+                    decoration: const InputDecoration(
+                      hintText: '알림 제목을 입력하세요',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  const Text('알림 내용', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _bodyCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: '알림 상세 내용을 입력하세요',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _sending ? null : _sendGlobalAlarm,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: _sending
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('관리자가 즉시 알림 발송하기', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  const Divider(thickness: 1),
+                  const SizedBox(height: 20),
+                  const Row(
+                    children: [
+                      Icon(Icons.history, size: 20),
+                      SizedBox(width: 8),
+                      Text('최근 발송 이력 (전체 사용자 대상)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
+          ),
+          // ✅ 최근 발송 내역 리스트 (Firestore 연동)
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('type', isEqualTo: 'admin_alarm') // 관리자 발송분만 필터링
+                .orderBy('createdAt', descending: true)
+                .limit(10)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: Text('발송된 이력이 없습니다.', style: TextStyle(color: Colors.grey))),
+                  ),
+                );
+              }
 
-            const Text('알림 내용', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _bodyCtrl,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: '알림 상세 내용을 입력하세요',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _sending ? null : _sendGlobalAlarm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              final docs = snapshot.data!.docs;
+              return SliverList(
+                delegate: SliverChildBuilderExecutor(
+                  (context, index) {
+                    final data = docs[index].data();
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(child: Text(data['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              const SizedBox(width: 10),
+                              Text(_fmtTime(data['createdAt']), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(data['body'] ?? '', style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                        ],
+                      ),
+                    );
+                  },
+                  childCount: docs.length,
                 ),
-                child: _sending
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('지금 알림 발송하기', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
+              );
+            },
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
+        ],
       ),
     );
   }
+}
+
+// ListView 빌더를 위한 헬퍼 클래스 (SliverList용)
+class SliverChildBuilderExecutor extends SliverChildBuilderDelegate {
+  SliverChildBuilderExecutor(super.builder, {super.childCount});
 }

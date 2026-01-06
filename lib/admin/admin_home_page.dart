@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'admin_board_title/title_list_page.dart';
 import 'postDetailPage.dart';
 import 'notices/notice_create_page.dart';
 import 'admin_alarm_page.dart'; // ✅ 파일명 변경 반영 (alarm 포함)
+import 'package:flutter_project/admin/admin_report_detail_page.dart';
+import 'data/notice_repository.dart';
 
 class AdminHomePage extends StatefulWidget {
   const AdminHomePage({super.key});
@@ -14,14 +15,10 @@ class AdminHomePage extends StatefulWidget {
 }
 
 class _AdminHomePageState extends State<AdminHomePage> {
-  final GlobalKey<_AdminDashboardPageState> _dashboardKey =
-      GlobalKey<_AdminDashboardPageState>();
-
+  final GlobalKey<_AdminDashboardPageState> _dashboardKey = GlobalKey<_AdminDashboardPageState>();
   int _currentIndex = 0;
 
-  void _goToReportTab() {
-    setState(() => _currentIndex = 2);
-  }
+  void _goToReportTab() { setState(() => _currentIndex = 2); }
 
   late final List<Widget> _pages = [
     _AdminDashboardPage(
@@ -30,7 +27,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
       onGoPosts: () => setState(() => _currentIndex = 1),
       onGoUsers: () => setState(() => _currentIndex = 3),
     ),
-    _AdminPostListPage(),
+    const _AdminPostListPage(),
     const _AdminReportPage(),
     const _AdminUsersPage(),
   ];
@@ -43,74 +40,15 @@ class _AdminHomePageState extends State<AdminHomePage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            tooltip: '공지 관리',
-            icon: const Icon(Icons.campaign),
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TitleListPage()),
-              );
-            },
-          ),
-          IconButton(
-            tooltip: '새로고침',
-            onPressed: () async {
-              if (_currentIndex == 0) {
-                await _dashboardKey.currentState?.reload();
-                if (!mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('새로고침 완료')));
-              }
-            },
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: '알림 발송(Alarm)',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AdminAlarmPage()),
-              );
-            },
-            icon: const Icon(Icons.notifications_active),
-          ),
-          IconButton(
-            tooltip: '로그아웃',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('로그아웃'),
-                  content: const Text('로그아웃 하시겠습니까?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('취소'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('확인'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (ok != true) return;
-              if (!mounted) return;
-
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
-            },
-          ),
+          IconButton(tooltip: '공지 관리', icon: const Icon(Icons.campaign), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TitleListPage()))),
+          IconButton(tooltip: '새로고침', icon: const Icon(Icons.refresh), onPressed: () { if (_currentIndex == 0) _dashboardKey.currentState?.reload(); }),
+          IconButton(tooltip: '알림 발송(Alarm)', icon: const Icon(Icons.notifications_active), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAlarmPage()))),
+          IconButton(tooltip: '로그아웃', icon: const Icon(Icons.logout), onPressed: () async {
+            final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('로그아웃'), content: const Text('로그아웃 하시겠습니까?'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')), TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('확인'))]));
+            if (ok == true) Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+          }),
         ],
       ),
-
       body: _pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -119,22 +57,10 @@ class _AdminHomePageState extends State<AdminHomePage> {
         selectedItemColor: Colors.black,
         unselectedItemColor: Colors.grey,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            label: '대시보드',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.article_outlined),
-            label: '게시글',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.report_gmailerrorred_outlined),
-            label: '신고',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            label: '사용자들',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: '대시보드'),
+          BottomNavigationBarItem(icon: Icon(Icons.article_outlined), label: '게시글'),
+          BottomNavigationBarItem(icon: Icon(Icons.report_gmailerrorred_outlined), label: '신고'),
+          BottomNavigationBarItem(icon: Icon(Icons.people_outline), label: '사용자들'),
         ],
       ),
     );
@@ -146,86 +72,208 @@ class _AdminDashboardPage extends StatefulWidget {
   final VoidCallback onGoReport;
   final VoidCallback onGoPosts;
   final VoidCallback onGoUsers;
-
-  const _AdminDashboardPage({
-    super.key,
-    required this.onGoReport,
-    required this.onGoPosts,
-    required this.onGoUsers,
-  });
-
+  const _AdminDashboardPage({super.key, required this.onGoReport, required this.onGoPosts, required this.onGoUsers});
   @override
   State<_AdminDashboardPage> createState() => _AdminDashboardPageState();
 }
 
 class _AdminDashboardPageState extends State<_AdminDashboardPage> {
+  final repo = NoticeRepository();
+  
   int todayPostCount = 0;
-  bool loading = true;
   int totalUserCount = 0;
   bool loadingUsers = true;
+  int todayReportCount = 0;
+  int openReportCount = 0;
+  int closedReportCount = 0;
+  int blockedUserCount = 0;
+  bool loadingReports = true;
+  
+   bool loading = true;
+
+  List<int> weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
+  Map<String, int> categoryCounts = {};
+  int totalMediaPosts = 0;
 
   @override
   void initState() {
     super.initState();
     _loadTodayPostCount();
-    _loadTotalUserCount();
+    _loadReportCounts();
+    _loadBlockedUserCount();
+    reload();
   }
 
-  Future<void> reload() async {
-    setState(() {
-      loading = true;
-      loadingUsers = true;
-    });
-    await Future.wait([_loadTodayPostCount(), _loadTotalUserCount()]);
-  }
-
-  Future<void> _loadTodayPostCount() async {
+  Future<void> _loadTodayReportCount() async {
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
       final startOfTomorrow = startOfDay.add(const Duration(days: 1));
 
       final qs = await FirebaseFirestore.instance
-          .collection('community')
-          .where(
-            'createdAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
+          .collection('reports')
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
           .where('createdAt', isLessThan: Timestamp.fromDate(startOfTomorrow))
           .count()
           .get();
 
       if (!mounted) return;
-      setState(() {
-        todayPostCount = qs.count ?? 0;
-        loading = false;
-      });
+      setState(() => todayReportCount = qs.count ?? 0);
     } catch (e) {
-      debugPrint('todayPostCount error: $e');
+      debugPrint('todayReportCount error: $e');
+      if (!mounted) return;
+      setState(() => todayReportCount = 0);
+    }
+  }
+
+  Future<void> _loadOpenReportCount() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('status', isEqualTo: 'open')
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => openReportCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('openReportCount error: $e');
+      if (!mounted) return;
+      setState(() => openReportCount = 0);
+    }
+  }
+
+  Future<void> _loadBlockedUserCount() async {
+    try {
+      final now = Timestamp.fromDate(DateTime.now());
+      final qs = await FirebaseFirestore.instance
+          .collection('users')
+          .where('writeBlockedUntil', isGreaterThan: now)
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => blockedUserCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('blockedUserCount error: $e');
+      if (!mounted) return;
+      setState(() => blockedUserCount = 0);
+    }
+  }
+
+  Future<void> _loadClosedReportCount() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('status', isEqualTo: 'closed')
+          .count()
+          .get();
+
+      if (!mounted) return;
+      setState(() => closedReportCount = qs.count ?? 0);
+    } catch (e) {
+      debugPrint('closedReportCount error: $e');
+      if (!mounted) return;
+      setState(() => closedReportCount = 0);
+    }
+  }
+
+  Future<void> reload() async {
+    setState(() {
+      loading = true;
+      loadingUsers = true;
+      loadingReports = true;
+    });
+
+    await Future.wait([
+      _loadTodayPostCount(),
+      _loadTodayReportCount(),
+      _loadOpenReportCount(),
+      _loadClosedReportCount(),
+      _loadBlockedUserCount(),
+    ]);
+
+    if (!mounted) return;
+    setState(() {
+      loadingReports = false;
+    });
+  }
+
+  Future<void> _loadReportCounts() async {
+    setState(() => loadingReports = true);
+
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final startOfTomorrow = startOfDay.add(const Duration(days: 1));
+
+      final fs = FirebaseFirestore.instance;
+
+      final todayQ = fs
+          .collection('reports')
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('createdAt', isLessThan: Timestamp.fromDate(startOfTomorrow))
+          .count()
+          .get();
+
+      final openQ = fs
+          .collection('reports')
+          .where('status', isEqualTo: 'open')
+          .count()
+          .get();
+
+      final closedQ = fs
+          .collection('reports')
+          .where('status', isEqualTo: 'closed')
+          .count()
+          .get();
+
+      final results = await Future.wait([todayQ, openQ, closedQ]);
+
       if (!mounted) return;
       setState(() {
-        todayPostCount = 0;
-        loading = false;
+        todayReportCount = results[0].count ?? 0;
+        openReportCount = results[1].count ?? 0;
+        closedReportCount = results[2].count ?? 0;
+        loadingReports = false;
+        loadingUsers = false;
+      });
+    } catch (e) {
+      debugPrint('loadReportCounts error: $e');
+      if (!mounted) return;
+      setState(() {
+        todayReportCount = 0;
+        openReportCount = 0;
+        closedReportCount = 0;
+        loadingReports = false;
       });
     }
   }
 
-  Future<void> _loadTotalUserCount() async {
+  Future<void> _loadTodayPostCount() async {
     try {
-      final qs = await FirebaseFirestore.instance.collection('users').get();
+      final now = DateTime.now();
+      final start = Timestamp.fromDate(DateTime(now.year, now.month, now.day));
+      
+      final postsSnap = await FirebaseFirestore.instance.collection('community').where('createdAt', isGreaterThanOrEqualTo: start).count().get();
+      final usersSnap = await FirebaseFirestore.instance.collection('users').count().get();
+      
+      final weeklyData = await repo.getWeeklyPostCounts();
+      final categoryData = await repo.getCategoryCounts();
 
-      if (!mounted) return;
-      setState(() {
-        totalUserCount = qs.size;
-        loadingUsers = false;
-      });
+      if (mounted) {
+        setState(() {
+          todayPostCount = postsSnap.count ?? 0;
+          totalUserCount = usersSnap.count ?? 0;
+          weeklyCounts = weeklyData;
+          categoryCounts = categoryData;
+          totalMediaPosts = categoryData.values.fold(0, (sum, val) => sum + val);
+          loading = false;
+        });
+      }
     } catch (e) {
-      debugPrint('totalUserCount error: $e');
-      if (!mounted) return;
-      setState(() {
-        totalUserCount = 0;
-        loadingUsers = false;
-      });
+      debugPrint('대시보드 데이터 로드 에러: $e');
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -236,26 +284,18 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
       children: [
         _sectionTitle('요약'),
         const SizedBox(height: 10),
-
-        GridView(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.6,
-          ),
+        GridView.count(
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.6,
           children: [
             _StatCard(
-              title: '오늘 신고(하드코딩)',
-              value: '8',
+              title: '오늘 신고',
+              value: loadingReports ? '...' : '$todayReportCount',
               icon: Icons.report,
               onTap: widget.onGoReport,
             ),
             _StatCard(
-              title: '미처리(하드코딩)',
-              value: '3',
+              title: '미처리',
+              value: loadingReports ? '...' : '$openReportCount',
               icon: Icons.timelapse,
               onTap: widget.onGoReport,
             ),
@@ -273,141 +313,151 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
             ),
           ],
         ),
-
         const SizedBox(height: 18),
         _sectionTitle('빠른 작업'),
         const SizedBox(height: 10),
-
-        Row(
-          children: [
-            Expanded(
-              child: _QuickActionButton(
-                icon: Icons.add_circle_outline,
-                title: '공지 등록',
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NoticeCreatePage()),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickActionButton(
-                icon: Icons.notifications_active_outlined,
-                title: '알림 발송(Alarm)', // ✅ 명칭 변경
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AdminAlarmPage()),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Expanded(child: _QuickActionButton(icon: Icons.add_circle_outline, title: '공지 등록', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NoticeCreatePage())))),
+          const SizedBox(width: 12),
+          Expanded(child: _QuickActionButton(icon: Icons.notifications_active_outlined, title: '알림 발송(Alarm)', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminAlarmPage())))),
+        ]),
         const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _QuickActionButton(icon: Icons.campaign_outlined, title: '공지 관리', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TitleListPage())))),
+          const SizedBox(width: 12),
+          Expanded(child: _QuickActionButton(icon: Icons.shield_outlined, title: '신고 처리', onTap: widget.onGoReport)),
+        ]),
+
+        const SizedBox(height: 24),
+        _sectionTitle('주간 게시글 활동 (최근 7일)'),
+        const SizedBox(height: 12),
+        loading ? const Center(child: CircularProgressIndicator()) : _buildWeeklyBarChart(),
+
         Row(
           children: [
-            Expanded(
-              child: _QuickActionButton(
-                icon: Icons.campaign_outlined,
-                title: '공지 관리',
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const TitleListPage()),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickActionButton(
-                icon: Icons.shield_outlined,
-                title: '신고 처리',
-                onTap: () => widget.onGoReport(),
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 18),
-        _sectionTitle('운영 현황'),
-        const SizedBox(height: 10),
-
-        Row(
-          children: const [
             Expanded(
               child: _StatusMetricCard(
                 title: '미처리 신고',
-                value: 3,
+                value: loadingReports ? 0 : openReportCount,
                 color: Colors.red,
                 icon: Icons.report,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: _StatusMetricCard(
                 title: '처리 완료',
-                value: 12,
+                value: loadingReports ? 0 : closedReportCount,
                 color: Colors.green,
                 icon: Icons.check_circle,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: _StatusMetricCard(
                 title: '제재 사용자',
-                value: 1,
+                value: loadingUsers ? 0 : blockedUserCount,
                 color: Colors.orange,
                 icon: Icons.block,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 24),
+        _sectionTitle('카테고리별 비중'),
+        const SizedBox(height: 12),
+        loading ? const Center(child: CircularProgressIndicator()) : _buildCategoryDistribution(),
 
-        const SizedBox(height: 18),
-        _sectionTitle('운영 체크리스트'),
-        const SizedBox(height: 10),
-
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Column(
-            children: [
-              _ChecklistItem(
-                checked: true,
-                title: '미처리 신고 확인',
-                subtitle: '신고 게시글 검토 및 조치',
-              ),
-              Divider(height: 1),
-              _ChecklistItem(
-                checked: true,
-                title: '스팸 게시글 정리',
-                subtitle: '광고/도배 게시글 숨김 또는 삭제',
-              ),
-              Divider(height: 1),
-              _ChecklistItem(
-                checked: false,
-                title: '제재 사용자 확인',
-                subtitle: '작성 제한 기간 만료 여부',
-              ),
-              Divider(height: 1),
-              _ChecklistItem(
-                checked: false,
-                title: '공지사항 점검',
-                subtitle: '노출 상태 및 최신화',
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 24),
+        _sectionTitle('최근 시스템 로그'),
+        // const SizedBox(height: 10),
+        // _buildRecentLogs(),
+        // const SizedBox(height: 40),
       ],
     );
   }
+
+  Widget _buildWeeklyBarChart() {
+    final List<String> days = ['D-6', 'D-5', 'D-4', 'D-3', 'D-2', '어제', '오늘'];
+    int maxCount = weeklyCounts.fold(1, (max, e) => e > max ? e : max);
+
+    return Container(
+      height: 160, // ✅ 높이를 150에서 160으로 약간 늘려 공간 확보
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), // ✅ 상하 패딩 조정
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.03), borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(7, (i) {
+          double ratio = weeklyCounts[i] / maxCount;
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text('${weeklyCounts[i]}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              // 막대 높이도 공간에 맞춰 유동적으로 조절
+              Container(width: 14, height: 75 * ratio, decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(4))),
+              const SizedBox(height: 8),
+              Text(days[i], style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildCategoryDistribution() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(border: Border.all(color: Colors.black12), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
+          _categoryRow('사건/이슈', categoryCounts['사건/이슈'] ?? 0, Colors.redAccent),
+          const SizedBox(height: 12),
+          _categoryRow('수다', categoryCounts['수다'] ?? 0, Colors.blueAccent),
+          const SizedBox(height: 12),
+          _categoryRow('패션', categoryCounts['패션'] ?? 0, Colors.greenAccent),
+          const SizedBox(height: 12),
+          _categoryRow('공지사항', categoryCounts['공지사항'] ?? 0, Colors.orangeAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryRow(String label, int count, Color color) {
+    double ratio = totalMediaPosts > 0 ? count / totalMediaPosts : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), Text('$count건 (${(ratio * 100).toInt()}%)', style: const TextStyle(fontSize: 11))]),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(value: ratio, backgroundColor: Colors.grey.shade200, color: color, minHeight: 6, borderRadius: BorderRadius.circular(10)),
+      ],
+    );
+  }
+
+
+  // Widget _buildRecentLogs() {
+  //   final logs = [
+  //     {'t': '시스템 가동', 's': '대시보드 데이터 연동이 완료되었습니다.', 'time': '방금'},
+  //     {'t': '사용자 데이터', 's': '총 $totalUserCount명의 사용자가 등록되어 있습니다.', 'time': '현재'},
+  //     {'t': '게시글 데이터', 's': '오늘 총 $todayPostCount건의 제보가 올라왔습니다.', 'time': '오늘'},
+  //   ];
+  //
+  //   return Column(
+  //     children: logs.map((l) => Card(
+  //       elevation: 0, color: Colors.white,
+  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
+  //       child: ListTile(
+  //         dense: true,
+  //         leading: const CircleAvatar(radius: 12, backgroundColor: Colors.black12, child: Icon(Icons.analytics_outlined, size: 14, color: Colors.black54)),
+  //         title: Text(l['t']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+  //         subtitle: Text(l['s']!),
+  //         trailing: Text(l['time']!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+  //       ),
+  //     )).toList(),
+  //   );
+  // }
 }
 
 /* -------------------- 2) 게시글 관리 -------------------- */
@@ -419,24 +469,6 @@ class _AdminPostListPage extends StatefulWidget {
 
 class _AdminPostListPageState extends State<_AdminPostListPage> {
   String _keyword = '';
-  Stream<QuerySnapshot<Map<String, dynamic>>> _streamPosts() {
-    return FirebaseFirestore.instance
-        .collection('community')
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .snapshots();
-  }
-
-  String fmtKstFixed(dynamic ts) {
-    if (ts is! Timestamp) return '-';
-    final dtKst = DateTime.fromMillisecondsSinceEpoch(
-      ts.millisecondsSinceEpoch,
-      isUtc: true,
-    ).add(const Duration(hours: 9));
-    return '${dtKst.year}-${dtKst.month.toString().padLeft(2, '0')}-${dtKst.day.toString().padLeft(2, '0')} '
-        '${dtKst.hour.toString().padLeft(2, '0')}:${dtKst.minute.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -444,34 +476,29 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
       children: [
         _sectionTitle('게시글 관리'),
         const SizedBox(height: 10),
-        _SearchBar(hintText: '제목/내용 검색', onChanged: (v) => setState(() => _keyword = v.trim())),
+        _SearchBar(hintText: '제목/내용 검색', onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase())),
         const SizedBox(height: 12),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: _streamPosts(),
+          stream: FirebaseFirestore.instance.collection('community').orderBy('createdAt', descending: true).limit(50).snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
             final docs = snapshot.data!.docs.where((d) {
               final data = d.data();
-              final title = (data['title'] ?? '').toString().toLowerCase();
-              final plain = (data['plain'] ?? data['content'] ?? '').toString().toLowerCase();
-              return title.contains(_keyword.toLowerCase()) || plain.contains(_keyword.toLowerCase());
+              return (data['title'] ?? '').toString().toLowerCase().contains(_keyword) || (data['plain'] ?? '').toString().toLowerCase().contains(_keyword);
             }).toList();
-            return Column(
-              children: docs.map((doc) {
-                final data = doc.data();
-                final category = (data['category'] ?? data['board_type'] ?? '미분류').toString();
-                final isNotice = category == '공지사항';
-                return Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  child: ListTile(
-                    leading: CircleAvatar(child: Icon(isNotice ? Icons.campaign : Icons.article)),
-                    title: Text(data['title'] ?? '(제목없음)', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPostDetailPage(docId: doc.id))),
-                  ),
-                );
-              }).toList(),
-            );
+            return Column(children: docs.map((doc) {
+              final data = doc.data();
+              final category = (data['category'] ?? '미분류').toString();
+              return Card(
+                elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                child: ListTile(
+                  leading: CircleAvatar(child: Icon(category == '공지사항' ? Icons.campaign : Icons.article)),
+                  title: Text(data['title'] ?? '(제목없음)', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('$category · ${data['user_nickname'] ?? '익명'} · 이미지 ${(data['images'] as List?)?.length ?? 0}'),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPostDetailPage(docId: doc.id))),
+                ),
+              );
+            }).toList());
           },
         ),
       ],
@@ -480,32 +507,149 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
 }
 
 /* -------------------- 3) 신고 관리 -------------------- */
-class _AdminReportPage extends StatelessWidget {
+class _AdminReportPage extends StatefulWidget {
   const _AdminReportPage();
+
+  @override
+  State<_AdminReportPage> createState() => _AdminReportPageState();
+}
+
+class _AdminReportPageState extends State<_AdminReportPage> {
+  String _filter = 'open'; // open | all | closed
+
+  Query<Map<String, dynamic>> _query() {
+    final col = FirebaseFirestore.instance.collection('reports');
+
+    if (_filter == 'open') {
+      return col.where('status', isEqualTo: 'open'); // orderBy 제거
+    }
+    if (_filter == 'closed') {
+      return col.where('status', isEqualTo: 'closed'); // orderBy 제거
+    }
+    return col.orderBy('createdAt', descending: true); // 전체만 정렬
+  }
+
+  String _fmt(dynamic ts) {
+    if (ts is Timestamp) {
+      final dt = ts.toDate().toLocal();
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return '-';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final stream = _query().snapshots();
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
         _sectionTitle('신고 관리'),
         const SizedBox(height: 10),
-        Card(
-          elevation: 0,
-          color: Colors.red.withOpacity(0.06),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          child: const Padding(
-            padding: EdgeInsets.all(12),
-            child: Row(
-              children: [Icon(Icons.report, color: Colors.red), SizedBox(width: 10), Expanded(child: Text('미처리 신고가 있습니다. 빠르게 확인하세요.', style: TextStyle(fontWeight: FontWeight.bold)))],
+
+        // ✅ 필터 토글
+        Row(
+          children: [
+            ChoiceChip(
+              label: const Text('미처리'),
+              selected: _filter == 'open',
+              onSelected: (_) => setState(() => _filter = 'open'),
             ),
-          ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('전체'),
+              selected: _filter == 'all',
+              onSelected: (_) => setState(() => _filter = 'all'),
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('처리완료'),
+              selected: _filter == 'closed',
+              onSelected: (_) => setState(() => _filter = 'closed'),
+            ),
+          ],
         ),
+
         const SizedBox(height: 12),
-        ...List.generate(3, (i) => Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          child: ListTile(title: Text('신고 #${120 + i}'), subtitle: const Text('사유: 부적절한 게시글')),
-        )),
+
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: stream,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('에러: ${snap.error}'),
+              );
+            }
+
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snap.data!.docs; // ✅ 이 줄이 핵심!
+            if (docs.isEmpty) {
+              return const Center(child: Text('신고 데이터가 없습니다.'));
+            }
+
+            return Column(
+              children: docs.map((d) {
+                final r = d.data();
+                final title = (r['postTitle'] ?? '(제목없음)').toString();
+                final reason = (r['reason'] ?? '').toString();
+                final category = (r['category'] ?? '').toString();
+                final postId = (r['postId'] ?? '').toString();
+                final status = (r['status'] ?? 'open').toString();
+
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.report)),
+                      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '[$category] 사유: $reason\n상태: $status · ${_fmt(r['createdAt'])}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Wrap(
+                        spacing: 6,
+                        children: [
+                          OutlinedButton(
+                            onPressed: postId.isEmpty
+                                ? null
+                                : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminPostDetailPage(docId: postId),
+                                ),
+                              );
+                            },
+                            child: const Text('원문'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminReportDetailPage(reportId: d.id),
+                                ),
+                              );
+                            },
+                            child: const Text('처리'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
       ],
     );
   }
@@ -520,6 +664,98 @@ class _AdminUsersPage extends StatefulWidget {
 
 class _AdminUsersPageState extends State<_AdminUsersPage> {
   String _keyword = '';
+
+  void _showUserDetailDialog(BuildContext context, String docId) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('users').doc(docId).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const SizedBox(height: 240, child: Center(child: CircularProgressIndicator()));
+            final data = snap.data?.data();
+            if (data == null) return const SizedBox(height: 100, child: Center(child: Text('정보를 불러올 수 없습니다.')));
+
+            String s(String k) => (data[k] ?? '-').toString();
+            bool b(String k) => data[k] == true;
+
+            String createdDate = '-';
+            final ts = data['createdAt'];
+            if (ts is Timestamp) {
+              final dt = ts.toDate().toLocal();
+              createdDate = '${dt.year}.${dt.month}.${dt.day} ${dt.hour}:${dt.minute}';
+            }
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    CircleAvatar(radius: 25, backgroundImage: s('profile_image_url').startsWith('http') ? NetworkImage(s('profile_image_url')) : null, child: s('profile_image_url').startsWith('http') ? null : const Icon(Icons.person, size: 30)),
+                    const SizedBox(width: 15),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s('nickName'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text(s('email'), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    )),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                  ]),
+                  const Divider(height: 30),
+                  _infoTile('이름', s('name')),
+                  _infoTile('연락처', s('phone')),
+                  _infoTile('성별', s('gender')),
+                  _infoTile('소개', s('intro')),
+                  _infoTile('가입일', createdDate),
+                  const SizedBox(height: 15),
+                  const Text('설정 현황', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, children: [
+                    _statusPill('알림', b('isAlramChecked')),
+                    _statusPill('위치', b('isLocationChecked')),
+                    _statusPill('카메라', b('isCameraChecked')),
+                  ]),
+                  const Divider(height: 30),
+                  const Text('시스템 정보 (고유 키)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+                  const SizedBox(height: 10),
+                  _keyRow('Doc ID', docId),
+                  _keyRow('Auth UID', s('uid')),
+                  const SizedBox(height: 20),
+                  SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.black), onPressed: () => Navigator.pop(context), child: const Text('닫기', style: TextStyle(color: Colors.white)))),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _infoTile(String label, String value) {
+    return Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [SizedBox(width: 70, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)))]));
+  }
+
+  Widget _keyRow(String label, String key) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+          SelectableText(key, style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontFamily: 'monospace')),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusPill(String label, bool isOn) {
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: isOn ? Colors.green.withOpacity(0.1) : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text('$label: ${isOn ? "ON" : "OFF"}', style: TextStyle(fontSize: 11, color: isOn ? Colors.green : Colors.grey, fontWeight: FontWeight.bold)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -527,14 +763,17 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
       children: [
         _sectionTitle('사용자들'),
         const SizedBox(height: 10),
-        _SearchBar(hintText: '검색', onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase())),
+        _SearchBar(hintText: '이름/닉네임 검색', onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase())),
         const SizedBox(height: 12),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance.collection('users').snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final docs = snapshot.data!.docs;
-            return Column(children: docs.map((doc) => Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(doc.data()['nickName'] ?? doc.data()['name'] ?? '알수없음')))).toList());
+            final docs = snapshot.data!.docs.where((d) {
+              final data = d.data();
+              return (data['name'] ?? '').toString().toLowerCase().contains(_keyword) || (data['nickName'] ?? '').toString().toLowerCase().contains(_keyword);
+            }).toList();
+            return Column(children: docs.map((doc) => Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(doc.data()['nickName'] ?? doc.data()['name'] ?? '알수없음'), subtitle: Text(doc.data()['email'] ?? '-'), onTap: () => _showUserDetailDialog(context, doc.id)))).toList());
           },
         ),
       ],
@@ -543,40 +782,27 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
 }
 
 /* -------------------- 공용 위젯 -------------------- */
-Widget _sectionTitle(String text) {
-  return Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900));
-}
+Widget _sectionTitle(String text) { return Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)); }
 
 class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final VoidCallback? onTap;
+  final String title, value; final IconData icon; final VoidCallback? onTap;
   const _StatCard({required this.title, required this.value, required this.icon, this.onTap});
   @override
-  Widget build(BuildContext context) {
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Card(elevation: 0, color: Colors.black.withOpacity(0.04), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [CircleAvatar(backgroundColor: Colors.black, foregroundColor: Colors.white, child: Icon(icon, size: 18)), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(title, style: const TextStyle(color: Colors.black54, fontSize: 12)), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]))]))));
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  final String status;
-  const _StatusChip({required this.status});
-  @override
-  Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(12)), child: Text(status, style: const TextStyle(fontSize: 12)));
-  }
+  Widget build(BuildContext context) { return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Card(elevation: 0, color: Colors.black.withOpacity(0.04), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [CircleAvatar(backgroundColor: Colors.black, foregroundColor: Colors.white, child: Icon(icon, size: 18)), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(title, style: const TextStyle(color: Colors.black54, fontSize: 12)), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]))])))); }
 }
 
 class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
+  final IconData icon; final String title; final VoidCallback onTap;
   const _QuickActionButton({required this.icon, required this.title, required this.onTap});
   @override
-  Widget build(BuildContext context) {
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Container(padding: const EdgeInsets.symmetric(vertical: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(14)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])));
-  }
+  Widget build(BuildContext context) { return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Container(padding: const EdgeInsets.symmetric(vertical: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(14)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]))); }
+}
+
+class _SearchBar extends StatelessWidget {
+  final String hintText; final ValueChanged<String> onChanged;
+  const _SearchBar({required this.hintText, required this.onChanged});
+  @override
+  Widget build(BuildContext context) { return TextField(onChanged: onChanged, decoration: InputDecoration(hintText: hintText, prefixIcon: const Icon(Icons.search), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))); }
 }
 
 class _StatusMetricCard extends StatelessWidget {
@@ -584,30 +810,64 @@ class _StatusMetricCard extends StatelessWidget {
   final int value;
   final Color color;
   final IconData icon;
-  const _StatusMetricCard({required this.title, required this.value, required this.color, required this.icon});
-  @override
-  Widget build(BuildContext context) {
-    return Card(elevation: 0, color: color.withOpacity(0.05), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [Icon(icon, color: color, size: 20), const SizedBox(height: 4), Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54)), Text('$value', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color))])));
-  }
-}
+  final VoidCallback? onTap;
 
-class _ChecklistItem extends StatelessWidget {
-  final bool checked;
-  final String title;
-  final String subtitle;
-  const _ChecklistItem({required this.checked, required this.title, required this.subtitle});
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(leading: Icon(checked ? Icons.check_circle : Icons.radio_button_unchecked, color: checked ? Colors.green : Colors.grey), title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)));
-  }
-}
+  const _StatusMetricCard({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.icon,
+    this.onTap,
+    super.key,
+  });
 
-class _SearchBar extends StatelessWidget {
-  final String hintText;
-  final ValueChanged<String> onChanged;
-  const _SearchBar({required this.hintText, required this.onChanged});
   @override
   Widget build(BuildContext context) {
-    return TextField(onChanged: onChanged, decoration: InputDecoration(hintText: hintText, prefixIcon: const Icon(Icons.search), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)));
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.15),
+                foregroundColor: color,
+                child: Icon(icon, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

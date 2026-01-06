@@ -50,3 +50,8 @@ android/app/google-services.json
 linux/flutter/
 windows/flutter/
 macos/Flutter/
+
+# Android / Gradle local files
+android/.gradle/
+android/local.properties
+**/GeneratedPluginRegistrant.java

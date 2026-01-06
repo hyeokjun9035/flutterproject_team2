@@ -23,8 +23,53 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
   NearbyIssuePost? _selected;
   GoogleMapController? _mapCtrl;
 
+  final _service = NearbyIssuesService();
+
   double _radiusMeters = 1000; // 기본 1km
   static const _radiusOptionsMeters = <double>[1000, 3000, 5000]; // 1/3/5km
+
+  int _daysBack = 7;
+  static const _daysOptions = <int>[3, 7, 30];
+
+  bool _loading = false;
+  List<NearbyIssuePost> _posts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _posts = widget.posts;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+  }
+
+  Future<void> _reload() async {
+    setState(() => _loading = true);
+    try {
+      final res = await _service.fetchNearbyIssues(
+          myLat: widget.myLat,
+          myLng: widget.myLng,
+          radiusMeters: _radiusMeters.toInt(),
+          daysBack: _daysBack,
+          limit: 200,
+          batchSize: 200,
+          maxPages: 6,
+      );
+
+      setState(() {
+        _posts = res;
+        _loading = false;
+        if (_selected != null) {
+          final stillExists = _posts.any((p) => p.id == _selected!.id);
+          if (!stillExists) _selected = null;
+        }
+      });
+
+      final visible = _posts.where((p) => p.distanceMeters <= _radiusMeters).toList();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fitToAll(visible));
+    } catch (e) {
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
 
   double _zoomForRadius(double meters) {
     final km = meters / 1000.0;
@@ -128,7 +173,7 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
   Widget build(BuildContext context) {
     final myPos = LatLng(widget.myLat, widget.myLng);
 
-    final visiblePosts = widget.posts.where((p) => p.distanceMeters <= _radiusMeters).toList();
+    final visiblePosts = _posts.where((p) => p.distanceMeters <= _radiusMeters).toList();
 
     final markers = <Marker>{
       Marker(
@@ -138,14 +183,12 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         onTap: () => setState(() => _selected = null),
       ),
-      ...visiblePosts.map((p) {
-        return Marker(
+      ...visiblePosts.map((p) => Marker(
           markerId: MarkerId(p.id),
           position: LatLng(p.lat, p.lng),
           infoWindow: InfoWindow(title: p.title),
           onTap: () => setState(() => _selected = p),
-        );
-      }),
+      )),
     };
 
     final circles = <Circle>{
@@ -190,49 +233,111 @@ class _NearbyIssuesMapPageState extends State<NearbyIssuesMapPage> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: Colors.white.withOpacity(0.10)),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.radar, color: Colors.white70, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      '반경 ${( _radiusMeters / 1000).toStringAsFixed(0)}km',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final m in _radiusOptionsMeters) ...[
-                              ChoiceChip(
-                                label: Text('${(m / 1000).toStringAsFixed(0)}km'),
-                                selected: _radiusMeters == m,
-                                onSelected: (_) {
-                                  setState(() {
-                                    _radiusMeters = m;
-                                    if (_selected != null && (_selected!.distanceMeters > _radiusMeters)) {
-                                      _selected = null;
-                                    }
-                                  });
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    final v = widget.posts
-                                        .where((p) => p.distanceMeters <= _radiusMeters)
-                                        .toList();
-                                    _fitToAll(v);
-                                  });
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                          ],
+                    // ─────────────────────────────
+                    // 1) 반경 줄: 반경칩 + 직접입력 + 로딩
+                    // ─────────────────────────────
+                    Row(
+                      children: [
+                        const Icon(Icons.radar, color: Colors.white70, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          '반경 ${(_radiusMeters / 1000).toStringAsFixed(0)}km',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+
+                        // 반경 칩들(가로 스크롤)
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                for (final m in _radiusOptionsMeters) ...[
+                                  ChoiceChip(
+                                    label: Text('${(m / 1000).toStringAsFixed(0)}km'),
+                                    selected: _radiusMeters == m,
+                                    onSelected: (_) {
+                                      setState(() {
+                                        _radiusMeters = m;
+                                        _selected = null;
+                                      });
+                                      _reload(); // 반경 바뀌면 다시 fetch
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        IconButton(
+                          tooltip: '직접 입력',
+                          onPressed: _showRadiusInputDialog,
+                          icon: const Icon(Icons.edit, color: Colors.white70),
+                        ),
+
+                        // ✅ 로딩 표시: 제일 오른쪽(직접입력 옆)
+                        if (_loading) ...[
+                          const SizedBox(width: 6),
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ],
+                      ],
                     ),
-                    IconButton(
-                      tooltip: '직접 입력',
-                      onPressed: _showRadiusInputDialog,
-                      icon: const Icon(Icons.edit, color: Colors.white70),
+
+                    const SizedBox(height: 10),
+
+                    // ─────────────────────────────
+                    // 2) 기간 줄: 기간칩 + 표시 건수
+                    // ─────────────────────────────
+                    Row(
+                      children: [
+                        const Icon(Icons.schedule, color: Colors.white70, size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          '기간',
+                          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                for (final d in _daysOptions) ...[
+                                  ChoiceChip(
+                                    label: Text('${d}일'),
+                                    selected: _daysBack == d,
+                                    onSelected: (_) {
+                                      setState(() {
+                                        _daysBack = d;
+                                        _selected = null;
+                                      });
+                                      _reload(); // ✅ 기간 바뀌면 다시 fetch
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // ✅ 오른쪽 끝에 표시 건수(지금 화면에 찍히는 마커 수 기준이면 visiblePosts.length)
+                        Text(
+                          '${visiblePosts.length}건',
+                          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ),
                   ],
                 ),
