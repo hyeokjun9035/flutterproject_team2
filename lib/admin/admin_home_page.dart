@@ -912,6 +912,7 @@ class _AdminUsersPage extends StatefulWidget {
   State<_AdminUsersPage> createState() => _AdminUsersPageState();
 }
 
+// ====== (너가 만든 제재 관련 함수들: 그대로 둬도 됨) ======
 Future<void> _logBlockAction({
   required String userId,
   required String action, // 'unblock' | 'extend' | 'reason_update'
@@ -936,10 +937,7 @@ Future<void> _unblockUser({
   final now = Timestamp.fromDate(DateTime.now());
 
   await FirebaseFirestore.instance.collection('users').doc(userId).update({
-    'writeBlockedUntil': now, // ✅ now로 내려서 해제
-    // 필요하면 아래도 함께:
-    // 'writeUnblockedAt': FieldValue.serverTimestamp(),
-    // 'writeUnblockedBy': adminId,
+    'writeBlockedUntil': now,
   });
 
   await _logBlockAction(
@@ -964,9 +962,6 @@ Future<void> _extendBlock({
 
   await FirebaseFirestore.instance.collection('users').doc(userId).update({
     'writeBlockedUntil': nextUntil,
-    // 필요하면 아래도 함께:
-    // 'writeBlockedBy': adminId,
-    // 'writeBlockedAt': FieldValue.serverTimestamp(),
   });
 
   await _logBlockAction(
@@ -1022,6 +1017,7 @@ Future<void> _updateBlockReason({
     adminId: adminId,
   );
 }
+// ======================================================
 
 class _AdminUsersPageState extends State<_AdminUsersPage> {
   String _keyword = '';
@@ -1030,15 +1026,14 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
   @override
   void initState() {
     super.initState();
-    _blockedOnly = widget.blockedOnly; // 초기값 반영
+    _blockedOnly = widget.blockedOnly;
   }
 
   @override
   void didUpdateWidget(covariant _AdminUsersPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 대시보드에서 총사용자/제재사용자 눌러서 다시 들어오면 상태 반영
     if (oldWidget.blockedOnly != widget.blockedOnly) {
-      setState(() => _blockedOnly = widget.blockedOnly); // ✅ setState 필수
+      setState(() => _blockedOnly = widget.blockedOnly);
     }
   }
 
@@ -1110,13 +1105,29 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
             return Column(
               children: docs.map((doc) {
                 final data = doc.data();
+                final profileUrl = (data['profile_image_url'] ?? '').toString();
+
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    leading: GestureDetector(
+                      onTap: () {
+                        if (profileUrl.startsWith('http')) {
+                          _showEnlargedImage(context, profileUrl);
+                        }
+                      },
+                      child: CircleAvatar(
+                        backgroundImage: profileUrl.startsWith('http')
+                            ? NetworkImage(profileUrl)
+                            : null,
+                        child: profileUrl.startsWith('http')
+                            ? null
+                            : const Icon(Icons.person),
+                      ),
+                    ),
                     title: Text(data['nickName'] ?? data['name'] ?? '알수없음'),
                     subtitle: Text(data['email'] ?? '-'),
                     onTap: () => _showUserDetailDialog(context, doc.id),
@@ -1130,13 +1141,47 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
     );
   }
 
+  void _showEnlargedImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (_) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  maxScale: 5.0,
+                  child: Image.network(url, fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 10,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showUserDetailDialog(BuildContext context, String docId) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('users').doc(docId).snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(docId)
+              .snapshots(),
           builder: (context, snap) {
             if (!snap.hasData) {
               return const SizedBox(
@@ -1160,15 +1205,22 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
             final ts = data['createdAt'];
             if (ts is Timestamp) {
               final dt = ts.toDate().toLocal();
-              createdDate = '${dt.year}.${dt.month}.${dt.day} ${dt.hour}:${dt.minute}';
+              createdDate =
+              '${dt.year}.${dt.month}.${dt.day} ${dt.hour}:${dt.minute}';
             }
 
-            String blockedUntil = '-';
+            String blockedUntilText = '-';
             final wb = data['writeBlockedUntil'];
+            Timestamp? blockedUntilTs;
             if (wb is Timestamp) {
+              blockedUntilTs = wb;
               final dt = wb.toDate().toLocal();
-              blockedUntil = '${dt.year}.${dt.month}.${dt.day} ${dt.hour}:${dt.minute}';
+              blockedUntilText =
+              '${dt.year}.${dt.month}.${dt.day} ${dt.hour}:${dt.minute}';
             }
+
+            final blockReason = (data['writeBlockReason'] ?? '').toString();
+            final String? adminId = null; // 나중에 FirebaseAuth 붙이면 여기 넣기
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -1180,7 +1232,8 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
                     children: [
                       CircleAvatar(
                         radius: 25,
-                        backgroundImage: s('profile_image_url').startsWith('http')
+                        backgroundImage:
+                        s('profile_image_url').startsWith('http')
                             ? NetworkImage(s('profile_image_url'))
                             : null,
                         child: s('profile_image_url').startsWith('http')
@@ -1221,9 +1274,77 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
                   _infoTile('성별', s('gender')),
                   _infoTile('소개', s('intro')),
                   _infoTile('가입일', createdDate),
-                  _infoTile('제재 해제', blockedUntil),
+                  _infoTile('제재 해제', blockedUntilText),
+
+                  // ✅ 제재 탭에서 열었을 때만 제재 관리 버튼 노출
+                  if (_blockedOnly) ...[
+                    const Divider(height: 30),
+                    const Text(
+                      '제재 관리',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    _infoTile('제재 사유', blockReason.isEmpty ? '-' : blockReason),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.edit, size: 18),
+                          label: const Text('사유 수정'),
+                          onPressed: () async {
+                            final newReason =
+                            await _inputReasonDialog(context, blockReason);
+                            if (newReason == null) return;
+
+                            await _updateBlockReason(
+                              userId: docId,
+                              reason: newReason,
+                              adminId: adminId,
+                            );
+                          },
+                        ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.lock_open, size: 18),
+                          label: const Text('제재 해제'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () async {
+                            await _unblockUser(userId: docId, adminId: adminId);
+                          },
+                        ),
+                        OutlinedButton(
+                          onPressed: () async {
+                            await _extendBlock(
+                              userId: docId,
+                              currentUntil: blockedUntilTs,
+                              days: 7,
+                              adminId: adminId,
+                            );
+                          },
+                          child: const Text('+7일'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () async {
+                            await _extendBlock(
+                              userId: docId,
+                              currentUntil: blockedUntilTs,
+                              days: 30,
+                              adminId: adminId,
+                            );
+                          },
+                          child: const Text('+30일'),
+                        ),
+                      ],
+                    ),
+                  ],
+
                   const SizedBox(height: 15),
-                  const Text('설정 현황', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('설정 현황',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -1249,9 +1370,11 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black),
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('닫기', style: TextStyle(color: Colors.white)),
+                      child: const Text('닫기',
+                          style: TextStyle(color: Colors.white)),
                     ),
                   ),
                 ],
@@ -1263,38 +1386,6 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
     );
   }
 
-  void _showEnlargedImage(BuildContext context, String url) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.9),
-      builder: (_) => GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: Material(
-          color: Colors.transparent,
-          child: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  maxScale: 5.0,
-                  child: Image.network(url, fit: BoxFit.contain),
-                ),
-              ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                right: 10,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-
   Widget _infoTile(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1302,10 +1393,16 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
         children: [
           SizedBox(
             width: 70,
-            child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ),
           Expanded(
-            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -1318,10 +1415,21 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           SelectableText(
             key,
-            style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontFamily: 'monospace'),
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.blueGrey,
+              fontFamily: 'monospace',
+            ),
           ),
         ],
       ),
@@ -1329,54 +1437,24 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
   }
 
   Widget _statusPill(String label, bool isOn) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: isOn ? Colors.green.withOpacity(0.1) : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text('$label: ${isOn ? "ON" : "OFF"}', style: TextStyle(fontSize: 11, color: isOn ? Colors.green : Colors.grey, fontWeight: FontWeight.bold)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: [
-        _sectionTitle('사용자들'),
-        const SizedBox(height: 10),
-        _SearchBar(hintText: '이름/닉네임 검색', onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase())),
-        const SizedBox(height: 12),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('users').snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final docs = snapshot.data!.docs.where((d) {
-              final data = d.data();
-              return (data['name'] ?? '').toString().toLowerCase().contains(_keyword) || (data['nickName'] ?? '').toString().toLowerCase().contains(_keyword);
-            }).toList();
-            return Column(children: docs.map((doc) {
-              final data = doc.data();
-              final profileUrl = (data['profile_image_url'] ?? '').toString();
-              return Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                child: ListTile(
-                  leading: GestureDetector(
-                    onTap: () {
-                      if (profileUrl.startsWith('http')) _showEnlargedImage(context, profileUrl);
-                    },
-                    child: CircleAvatar(
-                      backgroundImage: profileUrl.startsWith('http') ? NetworkImage(profileUrl) : null,
-                      child: profileUrl.startsWith('http') ? null : const Icon(Icons.person),
-                    ),
-                  ),
-                  title: Text(data['nickName'] ?? data['name'] ?? '알수없음'),
-                  subtitle: Text(data['email'] ?? '-'),
-                  onTap: () => _showUserDetailDialog(context, doc.id),
-                ),
-              );
-            }).toList());
-          },
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isOn ? Colors.green.withOpacity(0.1) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$label: ${isOn ? "ON" : "OFF"}',
+        style: TextStyle(
+          fontSize: 11,
+          color: isOn ? Colors.green : Colors.grey,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
   }
 }
+
 
 /* -------------------- 공용 위젯 -------------------- */
 Widget _sectionTitle(String text) {
