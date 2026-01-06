@@ -1,34 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import '../firebase_options.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login.dart';
 
-
-void main() async{
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // Firebase 초기화 설정
-  );
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-
-    );
-  }
-}
 class JoinPage5 extends StatefulWidget {
   final String email;
-  final String password;
   final String intro;
   final String profile_image_url;
   final String name;
@@ -41,7 +17,6 @@ class JoinPage5 extends StatefulWidget {
   const JoinPage5({
     super.key,
     required this.email,
-    required this.password,
     required this.intro,
     required this.profile_image_url,
     required this.name,
@@ -49,91 +24,129 @@ class JoinPage5 extends StatefulWidget {
     required this.gender,
     required this.isLocationChecked,
     required this.isCameraChecked,
-    required this.isAlramChecked
+    required this.isAlramChecked,
   });
 
   @override
   State<JoinPage5> createState() => _JoinPage5State();
 }
-class _JoinPage5State extends State<JoinPage5>{
+
+class _JoinPage5State extends State<JoinPage5> {
   final FirebaseFirestore fs = FirebaseFirestore.instance;
   final FirebaseAuth auth = FirebaseAuth.instance;
 
-  // bool isLocationChecked = false;
-  // bool isCameraChecked = false;
-  // bool isAlramChecked = false;
+  bool _isLoading = false;
 
-
-
-  Future<void> JoinPage5() async{
-    //auth계정 생성
-    final UserCredential userCredential = await auth.createUserWithEmailAndPassword(
-        email: widget.email,
-        password: widget.password
+  void _showMessage(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
     );
-    final String finalUid = userCredential.user!.uid;
-
-    //add >> doc으로 변경
-    //add는 자동 uid 값 생성 doc은 기존의 값을 가져오는 방식
-    //저희 authentcation에서 uid를 먼저 생성하고
-    //users 테이블에 받은 uid를 넣는 식이라서 doc을 사용했음
-    await fs.collection("users").doc(finalUid).set({
-      "uid": finalUid,
-      "email": widget.email,
-      "intro": widget.intro,
-      "profile_image_url": widget.profile_image_url,
-      "name": widget.name,
-      "nickName": widget.nickName,
-      "gender": widget.gender,
-      "isLocationChecked": widget.isLocationChecked,
-      "isCameraChecked": widget.isCameraChecked,
-      "isAlramChecked": widget.isAlramChecked,
-      'writeBlockedUntil': null,
-      'status': 'active',
-      //가입시 가입시간 기록용 컬럼
-      "createdAt": FieldValue.serverTimestamp(),
-    });
-
   }
+
+  Future<bool> _finalizeSignup() async {
+    if (_isLoading) return false;
+    setState(() => _isLoading = true);
+
+    try {
+      final user = auth.currentUser;
+
+      // ✅ JoinPage1에서 이미 createUserWithEmailAndPassword가 성공한 상태여야 함
+      if (user == null) {
+        _showMessage("가입 세션이 만료되었습니다. 처음부터 다시 시도해주세요.");
+        return false;
+      }
+
+      final uid = user.uid;
+      final nickKey = widget.nickName.trim().toLowerCase();
+
+      await fs.runTransaction((tx) async {
+        final nickRef = fs.collection("usernames").doc(nickKey);
+        final nickSnap = await tx.get(nickRef);
+
+        if (nickSnap.exists) {
+          throw Exception("NICKNAME_EXISTS");
+        }
+
+        // 닉네임 예약
+        tx.set(nickRef, {
+          "uid": uid,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+
+        // 유저 저장
+        final userRef = fs.collection("users").doc(uid);
+        tx.set(userRef, {
+          "uid": uid,
+          "email": widget.email.trim(),
+          "intro": widget.intro,
+          "profile_image_url": widget.profile_image_url,
+          "name": widget.name,
+          "nickName": widget.nickName,
+          "gender": widget.gender,
+          "isLocationChecked": widget.isLocationChecked,
+          "isCameraChecked": widget.isCameraChecked,
+          "isAlramChecked": widget.isAlramChecked,
+          "writeBlockedUntil": null,
+          "status": "active",
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+      });
+
+      return true;
+    } on FirebaseException catch (e) {
+      // Firestore 권한/규칙/네트워크 등
+      _showMessage("저장 실패: ${e.message ?? e.code}");
+      return false;
+    } catch (e) {
+      if (e.toString().contains("NICKNAME_EXISTS")) {
+        _showMessage("중복된 닉네임 입니다.");
+        return false;
+      }
+      _showMessage("회원가입 중 오류: $e");
+      return false;
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("회원가입"),
+        title: const Text("회원가입"),
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(150, 0, 0, 100),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-
           children: [
             Padding(
-                padding: const EdgeInsets.fromLTRB(100, 0,0,0),
-                child: Image.asset("assets/joinIcon/colorSun.png", width: 30,)
+              padding: const EdgeInsets.fromLTRB(100, 0, 0, 0),
+              child: Image.asset("assets/joinIcon/colorSun.png", width: 30),
             ),
             Text("${widget.nickName}님 환영합니다!"),
-
+            const SizedBox(height: 16),
 
             ElevatedButton(
-                onPressed: () async{
+              onPressed: _isLoading
+                  ? null
+                  : () async {
+                final ok = await _finalizeSignup();
+                if (!mounted) return;
 
-                  await JoinPage5();
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_)=>LoginPage(
-
-                      ))
+                if (ok) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => LoginPage()),
                   );
-                },
-                child: Text("메인으로")
-            )
+                }
+              },
+              child: Text(_isLoading ? "처리중..." : "메인으로"),
+            ),
           ],
-
         ),
       ),
     );
   }
 }
-
-
-
