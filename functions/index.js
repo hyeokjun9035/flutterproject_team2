@@ -1010,49 +1010,99 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
   }
 });
 
+
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+
+
+
+
+
+
+
 
 // Firestore의 community 컬렉션에 새 문서가 생성될 때 실행 (v2 방식)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 exports.sendPostNotification = onDocumentCreated({
   document: "community/{postId}",
   region: "asia-northeast3"
 }, async (event) => {
   const snapshot = event.data;
-  if (!snapshot) return;
+  if (!snapshot) return null;
 
   const postData = snapshot.data();
-
-
-  if (postData.category !== "사건/이슈") {
-    console.log(`알림 생략: 카테고리가 '${postData.category}'입니다.`);
-    return null;
-  }
-  // -------------------------------------------------------
-
-  const nickname = postData.user_nickname || "익명";
-  // 게시글 본문(content)이 없으면 title이나 plain을 사용하도록 보완
-  const content = postData.title || postData.plain || "새로운 제보가 올라왔습니다.";
   const postId = event.params.postId;
 
-  const title = `⚠️ 새로운 사건/이슈 제보: ${nickname}님`;
+  console.log(`🚀 [시작] 새 게시글 감지 (ID: ${postId})`);
+
+  // 1. 카테고리 필터링
+  if (postData.category !== "사건/이슈") {
+    console.log(`ℹ️ 알림 생략: 카테고리가 '${postData.category}'입니다.`);
+    return null;
+  }
+
+  // 2. 게시글 위치 정보 가져오기 (?. 연산자로 안전하게 접근)
+  const postLat = parseFloat(postData.place?.lat);
+  const postLon = parseFloat(postData.place?.lng);
+
+  if (isNaN(postLat) || isNaN(postLon)) {
+    console.log("❌ 알림 생략: 게시글(place)에 유효한 위경도 좌표가 없습니다.");
+    return null;
+  }
+
+  // 데이터 구조에 맞춰 닉네임 가져오기 (대소문자 주의)
+  const nickname = postData.user_nickName || postData.author?.nickName || "익명";
+  const title = `📍 내 주변 사건/이슈 제보: ${nickname}님`;
+  const content = postData.title || postData.plain || "새로운 제보가 올라왔습니다.";
   const body = content.length > 30 ? content.substring(0, 30) + "..." : content;
 
-  const message = {
-    notification: { title, body },
-    data: { postId, type: "community" },
-    // ... 나머지 FCM 설정은 동일 ...
-    topic: "community_topic",
-  };
-
   try {
-    await admin.messaging().send(message);
+    const usersSnapshot = await admin.firestore().collection('users').get();
+    const targetTokens = [];
 
-    // DB 알림함 저장 (이미 앱에서 생성하고 있다면 이 부분은 중복일 수 있으니 확인 필요)
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      // 유저 위치 정보 안전하게 파싱
+      const userLat = parseFloat(userData.lastLocation?.latitude);
+      const userLon = parseFloat(userData.lastLocation?.longitude);
+      const token = userData.fcmToken;
+
+      if (!isNaN(userLat) && !isNaN(userLon) && token) {
+        const distance = calculateDistance(postLat, postLon, userLat, userLon);
+        if (distance <= 2.0) {
+          targetTokens.push(token);
+        }
+      }
+    });
+
+    console.log(`🔎 거리 계산 완료: 2km 이내 사용자 ${targetTokens.length}명 발견`);
+
+    if (targetTokens.length > 0) {
+      const message = {
+        notification: { title, body },
+        data: { postId, type: "community" },
+        tokens: targetTokens,
+      };
+
+      const response = await admin.messaging().sendEachForMulticast(message);
+      console.log(`✅ 알림 발송 완료: ${response.successCount}개 성공`);
+    }
+
+    // 알림함 저장
     await admin.firestore().collection("notifications").add({
       title: title,
       body: body,
@@ -1062,9 +1112,10 @@ exports.sendPostNotification = onDocumentCreated({
       type: "community",
       isRead: false
     });
-    console.log(`✅ 사건/이슈 알림 전송 및 저장 완료: ${postId}`);
+    console.log("✅ notifications 기록 완료");
+
   } catch (error) {
-    console.error("❌ 알림 처리 중 오류 발생:", error);
+    console.error("❌ 알림 처리 중 시스템 오류 발생:", error);
   }
 });
 
