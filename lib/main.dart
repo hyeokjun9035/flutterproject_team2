@@ -16,6 +16,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_project/notifications/notions.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,6 +30,13 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.debug,
+  );
+
+  final t = await FirebaseAppCheck.instance.getToken(true);
+  debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
@@ -104,8 +112,8 @@ Future<void> main() async {
 
   FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
-  // 에뮬레이터 설정 등...
-  bool isDebugMode = true;
+  // ✅ 에뮬레이터 설정을 끄고 실제 서버를 사용하도록 수정
+  bool isDebugMode = false; // 👈 true에서 false로 변경 260106jgh
   if (isDebugMode) {
     FirebaseFunctions.instanceFor(region: 'asia-northeast3')
         .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);

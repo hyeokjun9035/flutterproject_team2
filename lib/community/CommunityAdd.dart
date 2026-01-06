@@ -648,16 +648,16 @@ class _CommunityaddState extends State<Communityadd> {
     await File(outPath).writeAsBytes(await xf.readAsBytes(), flush: true);
     return outPath;
   }
-  //함수 추가
+
   Future<void> _ensureSignedIn() async {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser == null) {
-      // 로그인이 안 되어 있다면 익명 로그인을 시도합니다.
-      await auth.signInAnonymously();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('NOT_SIGNED_IN');
     }
   }
 
   Future<void> _addCommunity() async {
+    await _ensureSignedIn();
     final user = FirebaseAuth.instance.currentUser;
     debugPrint('[AUTH] uid=${user?.uid} email=${user?.email}');
     if (user == null) {
@@ -732,12 +732,20 @@ class _CommunityaddState extends State<Communityadd> {
     final videoThumbUrls = built['videoThumbs'] as List<String>;
     final plainForSearch = (built['plain'] as String?) ?? '';
 
+    final authUid = FirebaseAuth.instance.currentUser?.uid;
+    debugPrint('[CREATE CHECK] createdBy=$uid authUid=$authUid same=${uid == authUid}');
+
     try {
+      print('[WRITE DATA] $data');
+      print('[AUTH UID] ${FirebaseAuth.instance.currentUser?.uid}');
+      debugPrint('[COMMUNITY CHECK] createdBy(uid)=$uid authUid=${FirebaseAuth.instance.currentUser?.uid}');
+      print('[FINAL WRITE MAP] $data'); // data = Firestore에 넘기는 Map
+
       // ✅ Firestore 저장
       await docRef.set({
         'title': title,
         'category': categoryAtSubmit,
-        'user_nickname': myNickName,
+        'user_nickName': myNickName,
         'createdBy': uid,
         'author': author,
 
