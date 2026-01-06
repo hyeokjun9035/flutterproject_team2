@@ -2359,11 +2359,70 @@ class _TransitCardState extends State<_TransitCard> {
   Future<String?>? _busFuture;
   DateTime? _busUpdatedAt;
 
-  // ===== (C) 정류장 캐시(findNearestStop 과호출 방지) =====
-  TagoStop? _cachedStop;
-  DateTime? _cachedStopAt;
-  double? _cachedLat;
-  double? _cachedLon;
+  final Map<String, TagoStop> _stopCache = {};
+  final Map<String, DateTime> _stopCacheAt = {};
+
+  double? _toDouble(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v');
+
+  _BusLegInfo? _firstBusLegInfoFromRaw(TransitVariant v) {
+  final raw = widget.data.raw;
+  if (raw.isEmpty) return null;
+
+  final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
+  final plan = (meta['plan'] ?? {}) as Map? ?? {};
+  final itins = (plan['itineraries'] ?? []) as List? ?? const [];
+  if (itins.isEmpty) return null;
+
+  final idx = widget.data.indexOf(v);
+  if (idx < 0 || idx >= itins.length) return null;
+
+  final it = Map<String, dynamic>.from(itins[idx] as Map);
+  final legs = (it['legs'] ?? const []) as List;
+
+  for (final e in legs) {
+  final leg = Map<String, dynamic>.from(e as Map);
+  final mode = (leg['mode'] ?? '').toString().toUpperCase();
+  if (mode != 'BUS') continue;
+
+  // 노선 문자열
+  final rawRoute = (leg['route'] ?? leg['routeName'] ?? leg['lineName'] ?? '').toString();
+  final token = extractRouteToken(rawRoute);
+  if (token == null) continue;
+  final routeNo = _normRouteNo(token);
+  if (routeNo.isEmpty) continue;
+
+  // 승차 정류장 좌표 (start)
+  final start = (leg['start'] is Map) ? Map<String, dynamic>.from(leg['start'] as Map) : <String, dynamic>{};
+
+  final lat = _toDouble(start['lat'] ?? start['startY'] ?? start['y']);
+  final lon = _toDouble(start['lon'] ?? start['lng'] ?? start['startX'] ?? start['x']);
+  if (lat == null || lon == null) continue;
+
+  return _BusLegInfo(routeNo: routeNo, lat: lat, lon: lon);
+  }
+
+  return null;
+  }
+
+  String? extractRouteToken(String s) {
+    final cleaned = s
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('번', '')
+        .toUpperCase();
+
+    // ✅ 숫자가 1개 이상 포함된 연속 토큰(예: 1400, 1400-1, M6450, N26)
+    final m = RegExp(r'([0-9A-Z-]*\d[0-9A-Z-]*)').firstMatch(cleaned);
+    return m?.group(1);
+  }
+
+  String _normRouteNo(String s) => s
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('번', '')
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^0-9A-Z-]'), ''); // ✅ 한글 제거
+
+  String _stopKey(double lat, double lon, String routeNo) =>
+      '${_normRouteNo(routeNo)}@${lat.toStringAsFixed(5)},${lon.toStringAsFixed(5)}';
 
   @override
   void initState() {
@@ -2408,10 +2467,10 @@ class _TransitCardState extends State<_TransitCard> {
   void _startBusPolling() {
     _busTimer?.cancel();
 
-    // ✅ 즉시 1회 갱신
-    _refreshBusArrivalNow();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshBusArrivalNow(); // ✅ 첫 프레임 이후
+    });
 
-    // ✅ 15초 폴링
     _busTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _refreshBusArrivalNow();
     });
@@ -2423,17 +2482,18 @@ class _TransitCardState extends State<_TransitCard> {
   }
 
   void _invalidateStopCache() {
-    _cachedStop = null;
-    _cachedStopAt = null;
-    _cachedLat = null;
-    _cachedLon = null;
+    _stopCache.clear();
+    _stopCacheAt.clear();
   }
 
   void _refreshBusArrivalNow() {
     if (_busInFlight) return;
     _busInFlight = true;
 
-    final fut = _fetchBusArrivalForVariant(_selected);
+    final fut = _fetchBusArrivalForVariant(_selected).catchError((e) {
+      debugPrint('[BUS] _fetch error=$e');
+      return null;
+    });
 
     if (mounted) {
       setState(() {
@@ -2449,55 +2509,97 @@ class _TransitCardState extends State<_TransitCard> {
     });
   }
 
-  Future<TagoStop?> _ensureNearestStop(double lat, double lon) async {
+  Future<TagoStop?> _ensureStopForRoute({
+    required double lat,
+    required double lon,
+    required String routeNo,
+  }) async {
+    final key = _stopKey(lat, lon, routeNo);
     final now = DateTime.now();
 
-    // ✅ 캐시 재사용: 10분 이내 + 위치 크게 안 변하면(대충 200~300m)
-    if (_cachedStop != null &&
-        _cachedStopAt != null &&
-        now.difference(_cachedStopAt!).inMinutes < 10 &&
-        _cachedLat != null &&
-        _cachedLon != null) {
-      final d2 = (lat - _cachedLat!) * (lat - _cachedLat!) +
-          (lon - _cachedLon!) * (lon - _cachedLon!);
-      if (d2 < 0.000004) return _cachedStop;
+    final cached = _stopCache[key];
+    final cachedAt = _stopCacheAt[key];
+    if (cached != null && cachedAt != null && now.difference(cachedAt).inMinutes < 10) {
+      return cached;
     }
 
-    final stop = await widget.busArrivalService.findNearestStop(lat: lat, lon: lon);
-    if (stop != null) {
-      _cachedStop = stop;
-      _cachedStopAt = now;
-      _cachedLat = lat;
-      _cachedLon = lon;
+    final stops = await widget.busArrivalService.findNearbyStops(lat: lat, lon: lon, maxStops: 8);
+
+    // ✅ 여기서 "routeNo가 실제로 뜨는 정류장"을 찾는다
+    for (final st in stops) {
+      try {
+        final t = await widget.busArrivalService.fetchNextArrivalText(
+          cityCode: st.cityCode,
+          nodeId: st.nodeId,
+          routeNo: routeNo,
+        );
+        if (t != null && t.trim().isNotEmpty) {
+          _stopCache[key] = st;
+          _stopCacheAt[key] = now;
+          return st;
+        }
+      } catch (e) {
+        // 여기까지 오면 service가 throw한건데, 위 1번을 하면 사실상 안 옴
+        debugPrint('[BUS] arrival error stop=${st.nodeId} e=$e');
+      }
     }
-    return stop;
+
+    return null;
   }
 
   String? _extractRouteNo(String text) {
-    // 예: "버스 1400 ...", "버스 111-2 ..." 등
-    final m = RegExp(r'버스\s*([0-9A-Za-z가-힣-]+)').firstMatch(text);
-    var s = m?.group(1)?.trim();
-    if (s == null || s.isEmpty) return null;
+    return extractRouteToken(text); // ✅ 너가 만든 함수 그대로 사용
+  }
 
-    // "1400번" 같은 꼬리 제거
-    s = s.replaceAll('번', '').trim();
-    return s;
+  bool _hasBusLeg(TransitVariant v) {
+    final raw = widget.data.raw;
+    if (raw.isEmpty) return false;
+
+    final meta = (raw['metaData'] ?? raw['meta']) as Map? ?? {};
+    final plan = (meta['plan'] ?? {}) as Map? ?? {};
+    final itins = (plan['itineraries'] ?? []) as List? ?? const [];
+    if (itins.isEmpty) return false;
+
+    final idx = widget.data.indexOf(v);
+    if (idx < 0 || idx >= itins.length) return false;
+
+    final it = Map<String, dynamic>.from(itins[idx] as Map);
+    final legs = (it['legs'] ?? const []) as List;
+
+    for (final e in legs) {
+      final leg = Map<String, dynamic>.from(e as Map);
+      final mode = (leg['mode'] ?? '').toString().toUpperCase();
+      if (mode == 'BUS') return true;
+    }
+    return false;
   }
 
   Future<String?> _fetchBusArrivalForVariant(TransitVariant v) async {
-    final lat = widget.startLat;
-    final lon = widget.startLon;
+    
+    if (!_hasBusLeg(v)) return null;
+    // ✅ 1) raw에서 "버스 승차정류장 좌표 + 노선" 우선 추출
+    final info = _firstBusLegInfoFromRaw(v);
+
+    // ✅ 2) 좌표/노선 fallback: raw에서 못 뽑으면 기존 방식(즐겨찾기 start/텍스트) 사용
+    final lat = info?.lat ?? widget.startLat;
+    final lon = info?.lon ?? widget.startLon;
     if (lat == 0.0 || lon == 0.0) return null;
 
     final s = widget.data.summaryOf(v);
 
-    // 첫 구간이 버스가 아닐 수도 있음(지하철/도보 등)
-    final routeNo = _extractRouteNo(s.firstArrivalText) ?? _extractRouteNo(s.secondArrivalText);
-    if (routeNo == null || routeNo.isEmpty) return null;
+    final routeNo = info?.routeNo ??
+        _normRouteNo(
+          (_extractRouteNo(s.firstArrivalText) ?? _extractRouteNo(s.secondArrivalText)) ?? '',
+        );
 
-    final stop = await _ensureNearestStop(lat, lon);
+    if (routeNo.isEmpty) return '버스 노선번호 추출 실패';
+    debugPrint('[BUS] v=$v route=$routeNo lat=$lat lon=$lon rawInfo=${info != null}');
+
+    // ✅ 3) routeNo가 실제로 뜨는 정류장 찾기(주변 8개 탐색)
+    final stop = await _ensureStopForRoute(lat: lat, lon: lon, routeNo: routeNo);
     if (stop == null) return null;
 
+    // ✅ 4) 도착정보 조회
     return widget.busArrivalService.fetchNextArrivalText(
       cityCode: stop.cityCode,
       nodeId: stop.nodeId,
@@ -2601,11 +2703,6 @@ class _TransitCardState extends State<_TransitCard> {
         .where((e) => e.isNotEmpty)
         .join(' / ');
 
-    // final busFuture = _busArrivalFutureByVariant.putIfAbsent(
-    //   _selected,
-    //       () => _fetchBusArrivalForVariant(_selected),
-    // );
-
     ChoiceChip chip(String label, TransitVariant v) {
       return ChoiceChip(
         label: Text(label),
@@ -2656,7 +2753,11 @@ class _TransitCardState extends State<_TransitCard> {
                 );
               }
               final live = snap.data?.trim() ?? '';
+
               if (live.isEmpty) {
+                if (!_hasBusLeg(_selected)) {
+                  return const SizedBox.shrink();
+                }
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -2732,6 +2833,13 @@ class _TransitCardState extends State<_TransitCard> {
       ),
     );
   }
+}
+
+class _BusLegInfo {
+  const _BusLegInfo({required this.routeNo, required this.lat, required this.lon});
+  final String routeNo;
+  final double lat;
+  final double lon;
 }
 
 class _LegUiStep {
