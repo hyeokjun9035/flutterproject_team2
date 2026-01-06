@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -17,12 +18,38 @@ class TagoStop {
   });
 }
 
+class BusArrivalMatch {
+  final String routeId;
+  final String routeNo;
+  final int arrSec;
+  final int prevStops;
+
+  BusArrivalMatch({
+    required this.routeId,
+    required this.routeNo,
+    required this.arrSec,
+    required this.prevStops,
+  });
+
+  String toText() {
+    final min = (arrSec / 60).ceil();
+    final prevText = (prevStops >= 0) ? ' (${prevStops}정거장 전)' : '';
+    return '버스 $routeNo · ${min}분 후$prevText';
+  }
+}
+
 class BusArrivalService {
   BusArrivalService({required this.serviceKey, http.Client? client})
       : _client = client ?? http.Client();
 
   final String serviceKey;
   final http.Client _client;
+
+  String _normRoute(String s) => s
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('번', '')
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
   Future<TagoStop?> findNearestStop({
     required double lat,
@@ -121,63 +148,75 @@ class BusArrivalService {
   Future<String?> fetchNextArrivalText({
     required String cityCode,
     required String nodeId,
-    required String routeNo, // 예: "1400"
+    required String routeNo,
   }) async {
-    final uri = Uri.https(
-      'apis.data.go.kr',
-      '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList',
-      {
-        'serviceKey': serviceKey,
-        '_type': 'json',
-        'cityCode': cityCode,
-        'nodeId': nodeId,
-        'numOfRows': '200',
-        'pageNo': '1',
-      },
-    );
+    try {
+      final uri = Uri.https(
+        'apis.data.go.kr',
+        '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList',
+        {
+          'serviceKey': serviceKey,
+          '_type': 'json',
+          'cityCode': cityCode,
+          'nodeId': nodeId,
+          'numOfRows': '200',
+          'pageNo': '1',
+        },
+      );
 
-    final res = await _client.get(uri).timeout(const Duration(seconds: 3));
-    final decoded = jsonDecode(res.body);
+      // ✅ onTimeout에서 null 리턴(throw 금지)
+      final res = await _client
+          .get(uri)
+          .timeout(const Duration(seconds: 5), onTimeout: () => throw TimeoutException('tago arrival timeout'));
 
-    final items = decoded?['response']?['body']?['items']?['item'];
-    if (items == null) return null;
+      if (res.statusCode != 200) return null;
 
-    final list = (items is List) ? items : [items];
+      final decoded = jsonDecode(res.body);
 
-    // routeNo 일치하는 것 중 가장 빠른 arrtime 선택
-    Map<String, dynamic>? best;
-    int bestArr = 1 << 30;
-    String _normRoute(String s) => s
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceAll('번', '')
-        .replaceAll(RegExp(r'[^0-9A-Za-z가-힣-]'), '')
-        .toUpperCase();
-    final target = _normRoute(routeNo);
+      final items = decoded?['response']?['body']?['items']?['item'];
+      if (items == null) return null;
 
-    bool seen = false;
+      final list = (items is List) ? items : [items];
 
-    for (final it in list) {
-      final rn = _normRoute('${it['routeno'] ?? ''}');
-      if (rn != target) continue;
+      String _normRoute(String s) => s
+          .replaceAll(RegExp(r'\s+'), '')
+          .replaceAll('번', '')
+          .toUpperCase()
+      // ✅ 한글 유지
+          .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
-      seen = true;
+      final target = _normRoute(routeNo);
 
-      final arrSec = int.tryParse('${it['arrtime'] ?? ''}') ?? 0;
-      if (arrSec > 0 && arrSec < bestArr) {
-        bestArr = arrSec;
-        best = Map<String, dynamic>.from(it);
+      Map<String, dynamic>? best;
+      int bestArr = 1 << 30;
+      bool seen = false;
+
+      for (final it in list) {
+        final rn = _normRoute('${it['routeno'] ?? ''}');
+        if (rn != target) continue;
+
+        seen = true;
+        final arrSec = int.tryParse('${it['arrtime'] ?? ''}') ?? 0;
+        if (arrSec > 0 && arrSec < bestArr) {
+          bestArr = arrSec;
+          best = Map<String, dynamic>.from(it);
+        }
       }
-    }
 
-    if (best == null) {
-      if (seen) return '버스 $routeNo · 도착 정보 없음';
+      if (best == null) {
+        if (seen) return '버스 $routeNo · 도착 정보 없음';
+        return null;
+      }
+
+      final min = (bestArr / 60).ceil();
+      final prev = int.tryParse('${best['arrprevstationcnt'] ?? ''}') ?? -1;
+      final prevText = (prev >= 0) ? ' ($prev정거장 전)' : '';
+      return '버스 $routeNo · ${min}분 후$prevText';
+    } on TimeoutException {
+      // ✅ 여기서 절대 throw하지 말고 null
+      return null;
+    } catch (_) {
       return null;
     }
-
-    final min = (bestArr / 60).ceil();
-    final prev = int.tryParse('${best['arrprevstationcnt'] ?? ''}') ?? -1;
-
-    final prevText = (prev >= 0) ? ' ($prev정거장 전)' : '';
-    return '버스 $routeNo · ${min}분 후$prevText';
   }
 }
