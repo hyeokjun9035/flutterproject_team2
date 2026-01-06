@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../firebase_options.dart';
@@ -26,8 +27,8 @@ class MyApp extends StatelessWidget {
   }
 }
 class JoinPage5 extends StatefulWidget {
-  final String uid;
   final String email;
+  final String password;
   final String intro;
   final String profile_image_url;
   final String name;
@@ -39,8 +40,8 @@ class JoinPage5 extends StatefulWidget {
 
   const JoinPage5({
     super.key,
-    required this.uid,
     required this.email,
+    required this.password,
     required this.intro,
     required this.profile_image_url,
     required this.name,
@@ -56,18 +57,28 @@ class JoinPage5 extends StatefulWidget {
 }
 class _JoinPage5State extends State<JoinPage5>{
   final FirebaseFirestore fs = FirebaseFirestore.instance;
-  bool isLocationChecked = false;
-  bool isCameraChecked = false;
-  bool isAlramChecked = false;
+  final FirebaseAuth auth = FirebaseAuth.instance;
+
+  // bool isLocationChecked = false;
+  // bool isCameraChecked = false;
+  // bool isAlramChecked = false;
+
 
 
   Future<void> JoinPage5() async{
+    //auth계정 생성
+    final UserCredential userCredential = await auth.createUserWithEmailAndPassword(
+        email: widget.email,
+        password: widget.password
+    );
+    final String finalUid = userCredential.user!.uid;
+
     //add >> doc으로 변경
     //add는 자동 uid 값 생성 doc은 기존의 값을 가져오는 방식
     //저희 authentcation에서 uid를 먼저 생성하고
     //users 테이블에 받은 uid를 넣는 식이라서 doc을 사용했음
-    await fs.collection("users").doc(widget.uid).set({
-      "uid": widget.uid,
+    await fs.collection("users").doc(finalUid).set({
+      "uid": finalUid,
       "email": widget.email,
       "intro": widget.intro,
       "profile_image_url": widget.profile_image_url,
@@ -103,6 +114,7 @@ class _JoinPage5State extends State<JoinPage5>{
 
             ElevatedButton(
                 onPressed: () async{
+
                   await JoinPage5();
                   Navigator.push(
                       context,

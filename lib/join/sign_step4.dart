@@ -27,8 +27,8 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage4 extends StatefulWidget {
   //authcation 과 동일한 uid 사용을 위해서 끌어옴
-  final String uid;
   final String email;
+  final String password;
   final String intro;
   final String name;
   final String profile_image_url;
@@ -38,13 +38,12 @@ class JoinPage4 extends StatefulWidget {
   const JoinPage4({
     super.key,
     required this.email,
+    required this.password,
     required this.intro,
     required this.name,
     required this.profile_image_url,
     required this.nickName,
     required this.gender,
-    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-    required this.uid
   });
 
   @override
@@ -57,53 +56,39 @@ class _JoinPage4State extends State<JoinPage4>{
  bool isAlramChecked = false;
 
 
-  Future<void> _join() async {
-    final uid = widget.uid;
+  Future<bool> _join() async {
+    final nickNameText = widget.nickName.trim();
 
-    final nickKey = widget.nickName.trim().toLowerCase();
-    final userRef = fs.collection('users').doc(uid);
-    final nickRef = fs.collection('usernames').doc(nickKey);
+    // 닉네임이 비어있으면 안되지만, 이전에 검사되었다고 가정하고 중복 체크만 수행-------------이거 'user'라고 써져있게 해놓기
+    // 3. 🔑 Firestore에서 이메일 중복 검사
+    try {
+      final QuerySnapshot result = await fs.collection('users')
+          .where('nickName', isEqualTo: nickNameText) // emailText 사용
+          .limit(1)
+          .get();
 
-    await fs.runTransaction((tx) async {
-      // 1) 닉네임 선점 확인(없으면 생성)
-      final nickSnap = await tx.get(nickRef);
-      if (nickSnap.exists) {
-        // 이미 다른 uid가 쓰고 있으면 중복 처리
-        final existingUid = (nickSnap.data()?['uid'] ?? '').toString();
-        if (existingUid.isNotEmpty && existingUid != uid) {
-          throw Exception('DUPLICATE_NICKNAME');
-        }
-        // existingUid == uid 면 이미 내가 선점한 상태 -> 그대로 진행
-      } else {
-        tx.set(nickRef, {
-          'uid': uid,
-          'nickName': widget.nickName,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      if (result.docs.isNotEmpty) {
+        _showMessage('이미 사용중인 닉네임 입니다.');
+        return false; // 🛑 중복 시 즉시 종료
       }
+    } catch (e) {
+      // Firestore 접근 중 오류 발생
+      _showMessage('닉네임 중복 확인 중 오류발생: ${e.toString()}');
+      return false; // 🛑 오류 시 즉시 종료
+    }
 
-      // 2) users/{uid} 생성/병합 저장
-      tx.set(userRef, {
-        'uid': uid,
-        'email': widget.email,
-        'name': widget.name,
-        'nickName': widget.nickName,
-        'intro': widget.intro,
-        'gender': widget.gender,
-        'profile_image_url': widget.profile_image_url,
-        'isLocationChecked': isLocationChecked,
-        'isCameraChecked': isCameraChecked,
-        'isAlramChecked': isAlramChecked,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    });
+    // 4. 모든 검사 통과
+    return true;
   }
 
-  void _showmessage(String msg){
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg))
-    );
-  }
+
+
+void _showMessage(String msg) {
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg))
+  );
+}
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -171,20 +156,23 @@ class _JoinPage4State extends State<JoinPage4>{
             ElevatedButton(
                 onPressed: () async {
                   if (isLocationChecked == false || isCameraChecked == false) {
-                    _showmessage("필수사항은 반드시 체크하셔야 합니다.");
+                    _showMessage("필수사항은 반드시 체크하셔야 합니다.");
                     return;
                   }
 
                   try {
-                    await _join();
+                    bool success = await _join();
 
-                    if (!mounted) return;
+                    if (!success) {
+                      return;
+                    }
+                    if(!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => JoinPage5(
-                          uid: widget.uid,
                           email: widget.email,
+                          password: widget.password,
                           intro: widget.intro,
                           name: widget.name,
                           nickName: widget.nickName,
@@ -197,11 +185,7 @@ class _JoinPage4State extends State<JoinPage4>{
                       ),
                     );
                   } catch (e) {
-                    if (e.toString().contains('DUPLICATE_NICKNAME')) {
-                      _showmessage("중복된 닉네임 입니다.");
-                    } else {
-                      _showmessage("회원가입 저장 실패: $e");
-                    }
+                    _showMessage("회원가입 처리 중 오류가 발생했습니다: $e");
                   }
                 },
                 child: Text("다음")
