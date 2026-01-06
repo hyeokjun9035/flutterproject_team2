@@ -16,6 +16,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_project/notifications/notions.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,6 +30,13 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.debug,
+  );
+
+  final t = await FirebaseAppCheck.instance.getToken(true);
+  debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
