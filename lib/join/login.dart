@@ -21,26 +21,26 @@ class _LoginPageState extends State<LoginPage> {
   //firebase Auth 인스턴스 _login 함수 밖에서 초기화
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-
-  @override
-  void initState() {
-    super.initState();
-    //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
-    _checkIfAlreadySignedIn();
-  }
-
-  void _checkIfAlreadySignedIn(){
-    final user = FirebaseAuth.instance.currentUser;
-    if(user != null){
-      //이미 로그인된 상태면 즉시 홈 페이지로 이동
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if(!mounted) return;
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomePage()));
-      });
-    }
-  }
+//테스트
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
+  //   _checkIfAlreadySignedIn();
+  // }
+  //
+  // void _checkIfAlreadySignedIn(){
+  //   final user = FirebaseAuth.instance.currentUser;
+  //   if(user != null){
+  //     //이미 로그인된 상태면 즉시 홈 페이지로 이동
+  //     WidgetsBinding.instance.addPostFrameCallback((_) {
+  //       if(!mounted) return;
+  //       Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => const AdminHomePage()));
+  //     });
+  //   }
+  // }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
