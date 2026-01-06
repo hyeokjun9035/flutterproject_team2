@@ -35,8 +35,12 @@ Future<void> main() async {
     androidProvider: AndroidProvider.debug,
   );
 
-  final t = await FirebaseAppCheck.instance.getToken(true);
-  debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+  try {
+    final t = await FirebaseAppCheck.instance.getToken(true);
+    debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+  } catch(e) {
+    debugPrint('[APPCHECK TOKEN] $e');
+  }
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
