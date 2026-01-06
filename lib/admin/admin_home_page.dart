@@ -694,7 +694,17 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    CircleAvatar(radius: 25, backgroundImage: s('profile_image_url').startsWith('http') ? NetworkImage(s('profile_image_url')) : null, child: s('profile_image_url').startsWith('http') ? null : const Icon(Icons.person, size: 30)),
+                    GestureDetector(
+                      onTap: () {
+                        final url = s('profile_image_url');
+                        if (url.startsWith('http')) _showEnlargedImage(context, url);
+                      },
+                      child: CircleAvatar(
+                        radius: 25,
+                        backgroundImage: s('profile_image_url').startsWith('http') ? NetworkImage(s('profile_image_url')) : null,
+                        child: s('profile_image_url').startsWith('http') ? null : const Icon(Icons.person, size: 30),
+                      ),
+                    ),
                     const SizedBox(width: 15),
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -735,6 +745,38 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
     );
   }
 
+  void _showEnlargedImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (_) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  maxScale: 5.0,
+                  child: Image.network(url, fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 10,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
   Widget _infoTile(String label, String value) {
     return Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [SizedBox(width: 70, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)))]));
   }
@@ -773,7 +815,28 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
               final data = d.data();
               return (data['name'] ?? '').toString().toLowerCase().contains(_keyword) || (data['nickName'] ?? '').toString().toLowerCase().contains(_keyword);
             }).toList();
-            return Column(children: docs.map((doc) => Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(doc.data()['nickName'] ?? doc.data()['name'] ?? '알수없음'), subtitle: Text(doc.data()['email'] ?? '-'), onTap: () => _showUserDetailDialog(context, doc.id)))).toList());
+            return Column(children: docs.map((doc) {
+              final data = doc.data();
+              final profileUrl = (data['profile_image_url'] ?? '').toString();
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                child: ListTile(
+                  leading: GestureDetector(
+                    onTap: () {
+                      if (profileUrl.startsWith('http')) _showEnlargedImage(context, profileUrl);
+                    },
+                    child: CircleAvatar(
+                      backgroundImage: profileUrl.startsWith('http') ? NetworkImage(profileUrl) : null,
+                      child: profileUrl.startsWith('http') ? null : const Icon(Icons.person),
+                    ),
+                  ),
+                  title: Text(data['nickName'] ?? data['name'] ?? '알수없음'),
+                  subtitle: Text(data['email'] ?? '-'),
+                  onTap: () => _showUserDetailDialog(context, doc.id),
+                ),
+              );
+            }).toList());
           },
         ),
       ],
