@@ -28,7 +28,6 @@ class MyApp extends StatelessWidget {
 class JoinPage4 extends StatefulWidget {
   //authcation 과 동일한 uid 사용을 위해서 끌어옴
   final String email;
-  final String password;
   final String intro;
   final String name;
   final String profile_image_url;
@@ -38,7 +37,6 @@ class JoinPage4 extends StatefulWidget {
   const JoinPage4({
     super.key,
     required this.email,
-    required this.password,
     required this.intro,
     required this.name,
     required this.profile_image_url,
@@ -54,34 +52,6 @@ class _JoinPage4State extends State<JoinPage4>{
  bool isLocationChecked = false;
  bool isCameraChecked = false;
  bool isAlramChecked = false;
-
-
-  Future<bool> _join() async {
-    final nickNameText = widget.nickName.trim();
-
-    // 닉네임이 비어있으면 안되지만, 이전에 검사되었다고 가정하고 중복 체크만 수행-------------이거 'user'라고 써져있게 해놓기
-    // 3. 🔑 Firestore에서 이메일 중복 검사
-    try {
-      final QuerySnapshot result = await fs.collection('users')
-          .where('nickName', isEqualTo: nickNameText) // emailText 사용
-          .limit(1)
-          .get();
-
-      if (result.docs.isNotEmpty) {
-        _showMessage('이미 사용중인 닉네임 입니다.');
-        return false; // 🛑 중복 시 즉시 종료
-      }
-    } catch (e) {
-      // Firestore 접근 중 오류 발생
-      _showMessage('닉네임 중복 확인 중 오류발생: ${e.toString()}');
-      return false; // 🛑 오류 시 즉시 종료
-    }
-
-    // 4. 모든 검사 통과
-    return true;
-  }
-
-
 
 void _showMessage(String msg) {
   if (!mounted) return;
@@ -154,39 +124,28 @@ void _showMessage(String msg) {
             ),
 
             ElevatedButton(
-                onPressed: () async {
-                  if (isLocationChecked == false || isCameraChecked == false) {
+                onPressed: () {
+                  if (!isLocationChecked || !isCameraChecked) {
                     _showMessage("필수사항은 반드시 체크하셔야 합니다.");
                     return;
                   }
 
-                  try {
-                    bool success = await _join();
-
-                    if (!success) {
-                      return;
-                    }
-                    if(!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JoinPage5(
-                          email: widget.email,
-                          password: widget.password,
-                          intro: widget.intro,
-                          name: widget.name,
-                          nickName: widget.nickName,
-                          profile_image_url: widget.profile_image_url,
-                          gender: widget.gender,
-                          isLocationChecked: isLocationChecked,
-                          isCameraChecked: isCameraChecked,
-                          isAlramChecked: isAlramChecked,
-                        ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => JoinPage5(
+                        email: widget.email,
+                        intro: widget.intro,
+                        name: widget.name,
+                        nickName: widget.nickName,
+                        profile_image_url: widget.profile_image_url,
+                        gender: widget.gender,
+                        isLocationChecked: isLocationChecked,
+                        isCameraChecked: isCameraChecked,
+                        isAlramChecked: isAlramChecked,
                       ),
-                    );
-                  } catch (e) {
-                    _showMessage("회원가입 처리 중 오류가 발생했습니다: $e");
-                  }
+                    ),
+                  );
                 },
                 child: Text("다음")
             )
