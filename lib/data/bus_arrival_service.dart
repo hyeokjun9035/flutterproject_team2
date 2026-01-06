@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
 
 class TagoStop {
@@ -164,17 +165,33 @@ class BusArrivalService {
         },
       );
 
-      // ✅ onTimeout에서 null 리턴(throw 금지)
       final res = await _client
           .get(uri)
           .timeout(const Duration(seconds: 5), onTimeout: () => throw TimeoutException('tago arrival timeout'));
 
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) {
+        debugPrint('[TAGO] HTTP ${res.statusCode} city=$cityCode node=$nodeId');
+        return null;
+      }
 
       final decoded = jsonDecode(res.body);
 
+      final header = decoded?['response']?['header'];
+      final code = '${header?['resultCode'] ?? ''}';
+      final msg  = '${header?['resultMsg'] ?? ''}';
+
+      // ✅ resultCode가 00이 아니면(키/권한/미지원/기타) 여기서 바로 로그로 구분
+      if (code.isNotEmpty && code != '00') {
+        debugPrint('[TAGO] resultCode=$code msg=$msg city=$cityCode node=$nodeId route=$routeNo');
+        // 보통 "데이터없음"도 코드로 내려오는 케이스가 있어서 일단 null 처리(화면엔 기존처럼)
+        return null;
+      }
+
       final items = decoded?['response']?['body']?['items']?['item'];
-      if (items == null) return null;
+      if (items == null) {
+        debugPrint('[TAGO] items=null (no data) city=$cityCode node=$nodeId route=$routeNo');
+        return null;
+      }
 
       final list = (items is List) ? items : [items];
 
@@ -182,7 +199,6 @@ class BusArrivalService {
           .replaceAll(RegExp(r'\s+'), '')
           .replaceAll('번', '')
           .toUpperCase()
-      // ✅ 한글 유지
           .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
       final target = _normRoute(routeNo);
@@ -204,8 +220,20 @@ class BusArrivalService {
       }
 
       if (best == null) {
-        if (seen) return '버스 $routeNo · 도착 정보 없음';
-        return null;
+        if (!seen) {
+          // ✅ “이 정류장에 어떤 노선이 내려오는데?”를 찍으면
+          //    정류장 매칭 실패인지(route가 아예 없음) / routeNo 정규화 문제인지 바로 보임
+          final avail = list
+              .map((it) => _normRoute('${it['routeno'] ?? ''}'))
+              .where((s) => s.isNotEmpty)
+              .toSet()
+              .take(25)
+              .join(', ');
+          debugPrint('[TAGO] route NOT FOUND at stop city=$cityCode node=$nodeId '
+              'target=$target raw=$routeNo avail=[$avail]');
+          return null;
+        }
+        return '버스 $routeNo · 도착 정보 없음';
       }
 
       final min = (bestArr / 60).ceil();
@@ -213,9 +241,10 @@ class BusArrivalService {
       final prevText = (prev >= 0) ? ' ($prev정거장 전)' : '';
       return '버스 $routeNo · ${min}분 후$prevText';
     } on TimeoutException {
-      // ✅ 여기서 절대 throw하지 말고 null
+      debugPrint('[TAGO] timeout city=$cityCode node=$nodeId route=$routeNo');
       return null;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[TAGO] exception $e city=$cityCode node=$nodeId route=$routeNo');
       return null;
     }
   }

@@ -145,13 +145,6 @@ class WeatherBackground extends StatelessWidget {
         ? (nowLocal.isBefore(sunrise) || nowLocal.isAfter(sunset))
         : _isNightFallback(nowLocal);
 
-    if (kDebugMode) {
-      debugPrint(
-        '[WB] nowLocal=$nowLocal '
-            'rawUtc(sunrise/sunset)=${ss.sunrise.isUtc}/${ss.sunset.isUtc} '
-            'sunrise=$sunrise sunset=$sunset valid=$valid night=$night',
-      );
-    }
     return night;
   }
 
