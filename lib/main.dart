@@ -16,6 +16,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_project/notifications/notions.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,6 +30,22 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.debug,
+  );
+
+  // 260106 주석처리
+  // final t = await FirebaseAppCheck.instance.getToken(true);
+  // debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+
+  // App Check 토큰 가져오기 실패 시 앱이 멈추지 않도록 예외 처리 추가 260106 전경환추가
+  try {
+    final t = await FirebaseAppCheck.instance.getToken(true);
+    debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+  } catch (e) {
+    debugPrint('[APPCHECK ERROR] $e');
+  }
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
@@ -79,6 +96,8 @@ Future<void> main() async {
     AndroidNotification? android = message.notification?.android;
 
     if (notification != null && android != null) {
+
+      // ✅ jgh260106 수정: 컬러 이미지를 오른쪽에 고정하고 왼쪽 아이콘 문제를 해결하기 위해 largeIcon 방식 적용
       flutterLocalNotificationsPlugin.show(
         notification.hashCode,
         notification.title,
@@ -88,9 +107,19 @@ Future<void> main() async {
             channel.id,
             channel.name,
             channelDescription: channel.description,
-            icon: android.smallIcon,
+            // icon: android.smallIcon, //jgh260106주석처리
+            // jgh260106 추가
+            icon: 'ic_notification', // 작은 아이콘 (배경 투명 흰색 실루엣 이미지여야 하얀 네모가 안 생김)
+            // ✅ 컬러 이미지를 알림창 오른쪽에 항상 보이도록 설정
+            largeIcon: const DrawableResourceAndroidBitmap('ic_notification'),
+            // ✅ 왼쪽 원형 배경색을 브랜드 컬러(파란색 계열)로 지정
+            color: const Color(0xFF1976D2),
+            priority: Priority.high,
+            importance: Importance.max,
+            // MessagingStyleInformation은 요약 시 이미지를 숨기므로 제거함
           ),
         ),
+        // jgh260106 수정 끝
         payload: message.data['postId'], // 클릭 시 전달할 데이터
       );
     }
@@ -104,8 +133,8 @@ Future<void> main() async {
 
   FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
-  // 에뮬레이터 설정 등...
-  bool isDebugMode = true;
+  // ✅ 에뮬레이터 설정을 끄고 실제 서버를 사용하도록 수정
+  bool isDebugMode = false; // 👈 true에서 false로 변경 260106jgh
   if (isDebugMode) {
     FirebaseFunctions.instanceFor(region: 'asia-northeast3')
         .useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
