@@ -117,7 +117,10 @@ class _CommunitySettingsState extends State<CommunitySettings> {
                 title: const Text("커뮤니티 이용 가이드", style: TextStyle(fontSize: 15)),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
                 onTap: () {
-                  // 가이드 페이지 이동 로직
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PreparingPage()),
+                  );
                 },
               ),
             ),
@@ -159,6 +162,45 @@ class _CommunitySettingsState extends State<CommunitySettings> {
           ),
           trailing,
         ],
+      ),
+    );
+  }
+}
+
+
+class PreparingPage extends StatelessWidget {
+  const PreparingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.construction_rounded, size: 80, color: Colors.blueGrey[200]),
+            const SizedBox(height: 20),
+            const Text(
+              "페이지 준비 중",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "더 나은 서비스를 위해\n열심히 준비하고 있습니다.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
+            ),
+          ],
+        ),
       ),
     );
   }
