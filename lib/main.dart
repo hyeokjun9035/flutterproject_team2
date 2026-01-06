@@ -35,8 +35,18 @@ Future<void> main() async {
     androidProvider: AndroidProvider.debug,
   );
 
-  final t = await FirebaseAppCheck.instance.getToken(true);
-  debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+  // 260106 주석처리
+  // final t = await FirebaseAppCheck.instance.getToken(true);
+  // debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+
+  // App Check 토큰 가져오기 실패 시 앱이 멈추지 않도록 예외 처리 추가 260106 전경환추가
+  try {
+    final t = await FirebaseAppCheck.instance.getToken(true);
+    debugPrint('[APPCHECK TOKEN] ${t ?? "NULL"}');
+  } catch (e) {
+    debugPrint('[APPCHECK ERROR] $e');
+  }
+  
 
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
