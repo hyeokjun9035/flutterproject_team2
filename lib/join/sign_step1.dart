@@ -214,7 +214,7 @@ class _JoinPage1State extends State<JoinPage1> {
                 child: Text("다음"),
                 )
           ],
-          
+
         ),
       ),
     );
