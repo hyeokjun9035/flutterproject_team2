@@ -88,6 +88,8 @@ class _JoinPage5State extends State<JoinPage5>{
       "isLocationChecked": widget.isLocationChecked,
       "isCameraChecked": widget.isCameraChecked,
       "isAlramChecked": widget.isAlramChecked,
+      'writeBlockedUntil': null,
+      'status': 'active',
       //가입시 가입시간 기록용 컬럼
       "createdAt": FieldValue.serverTimestamp(),
     });
