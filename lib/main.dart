@@ -96,6 +96,8 @@ Future<void> main() async {
     AndroidNotification? android = message.notification?.android;
 
     if (notification != null && android != null) {
+
+      // ✅ jgh260106 수정: 컬러 이미지를 오른쪽에 고정하고 왼쪽 아이콘 문제를 해결하기 위해 largeIcon 방식 적용
       flutterLocalNotificationsPlugin.show(
         notification.hashCode,
         notification.title,
@@ -105,9 +107,19 @@ Future<void> main() async {
             channel.id,
             channel.name,
             channelDescription: channel.description,
-            icon: android.smallIcon,
+            // icon: android.smallIcon, //jgh260106주석처리
+            // jgh260106 추가
+            icon: 'ic_notification', // 작은 아이콘 (배경 투명 흰색 실루엣 이미지여야 하얀 네모가 안 생김)
+            // ✅ 컬러 이미지를 알림창 오른쪽에 항상 보이도록 설정
+            largeIcon: const DrawableResourceAndroidBitmap('ic_notification'),
+            // ✅ 왼쪽 원형 배경색을 브랜드 컬러(파란색 계열)로 지정
+            color: const Color(0xFF1976D2),
+            priority: Priority.high,
+            importance: Importance.max,
+            // MessagingStyleInformation은 요약 시 이미지를 숨기므로 제거함
           ),
         ),
+        // jgh260106 수정 끝
         payload: message.data['postId'], // 클릭 시 전달할 데이터
       );
     }
