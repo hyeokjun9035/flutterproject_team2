@@ -21,7 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   //firebase Auth 인스턴스 _login 함수 밖에서 초기화
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-
+//테스트
   // @override
   // void initState() {
   //   super.initState();
