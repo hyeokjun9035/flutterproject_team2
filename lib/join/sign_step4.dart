@@ -94,6 +94,11 @@ class _JoinPage4State extends State<JoinPage4>{
         'isLocationChecked': isLocationChecked,
         'isCameraChecked': isCameraChecked,
         'isAlramChecked': isAlramChecked,
+
+        // 🔥 이 두 줄이 핵심
+        'writeBlockedUntil': null,
+        'status': 'active',
+
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     });
