@@ -1222,6 +1222,8 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
             final blockReason = (data['writeBlockReason'] ?? '').toString();
             final String? adminId = null; // 나중에 FirebaseAuth 붙이면 여기 넣기
 
+            final String profileImageUrl = s('profile_image_url');
+
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -1230,15 +1232,21 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
                 children: [
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 25,
-                        backgroundImage:
-                        s('profile_image_url').startsWith('http')
-                            ? NetworkImage(s('profile_image_url'))
-                            : null,
-                        child: s('profile_image_url').startsWith('http')
-                            ? null
-                            : const Icon(Icons.person, size: 30),
+                      GestureDetector(
+                        onTap: () {
+                          if (profileImageUrl.startsWith('http')) {
+                            _showEnlargedImage(context, profileImageUrl);
+                          }
+                        },
+                        child: CircleAvatar(
+                          radius: 25,
+                          backgroundImage: profileImageUrl.startsWith('http')
+                              ? NetworkImage(profileImageUrl)
+                              : null,
+                          child: profileImageUrl.startsWith('http')
+                              ? null
+                              : const Icon(Icons.person, size: 30),
+                        ),
                       ),
                       const SizedBox(width: 15),
                       Expanded(
