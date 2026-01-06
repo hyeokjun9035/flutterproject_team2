@@ -22,25 +22,25 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
 //테스트
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
-  //   _checkIfAlreadySignedIn();
-  // }
-  //
-  // void _checkIfAlreadySignedIn(){
-  //   final user = FirebaseAuth.instance.currentUser;
-  //   if(user != null){
-  //     //이미 로그인된 상태면 즉시 홈 페이지로 이동
-  //     WidgetsBinding.instance.addPostFrameCallback((_) {
-  //       if(!mounted) return;
-  //       Navigator.pushReplacement(
-  //           context,
-  //           MaterialPageRoute(builder: (_) => const AdminHomePage()));
-  //     });
-  //   }
-  // }
+//   @override
+//   void initState() {
+//     super.initState();
+//     //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
+//     _checkIfAlreadySignedIn();
+//   }
+//
+//   void _checkIfAlreadySignedIn(){
+//     final user = FirebaseAuth.instance.currentUser;
+//     if(user != null){
+//       //이미 로그인된 상태면 즉시 홈 페이지로 이동
+//       WidgetsBinding.instance.addPostFrameCallback((_) {
+//         if(!mounted) return;
+//         Navigator.pushReplacement(
+//             context,
+//             MaterialPageRoute(builder: (_) => const HomePage()));
+//       });
+//     }
+//   }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
@@ -63,16 +63,16 @@ class _LoginPageState extends State<LoginPage> {
         _showMessage("관리자 로그인 성공!");
         if(!mounted) return;
         Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminHomePage()),
+          context,
+          MaterialPageRoute(builder: (_) => const AdminHomePage()),
         );
       } else {
         //일반 사용자 로그인
         // _showMessage("로그인 성공!");
         if(!mounted) return;
         Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomePage()),
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
         );
       }
 
@@ -149,11 +149,11 @@ class _LoginPageState extends State<LoginPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Padding(padding: const EdgeInsets.only(right: 30),
-                child:
-                ElevatedButton(
-                  onPressed: _login,
-                  child: const Text("로그인"),
-                ),
+                  child:
+                  ElevatedButton(
+                    onPressed: _login,
+                    child: const Text("로그인"),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -176,9 +176,9 @@ class _LoginPageState extends State<LoginPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Padding (
-                padding: const EdgeInsets.fromLTRB(0,20,10,0),
-                child:
-                GestureDetector(
+                  padding: const EdgeInsets.fromLTRB(0,20,10,0),
+                  child:
+                  GestureDetector(
                     onTap: (){
                       Navigator.push(
                           context,
@@ -187,21 +187,21 @@ class _LoginPageState extends State<LoginPage> {
                     },
                     child: Image.asset("assets/joinIcon/google.png", width: 50),
 
+                  ),
                 ),
-    ),
                 Padding(
                     padding: const EdgeInsets.fromLTRB(10,20,0,0),
-                child:
-                GestureDetector(
-                    onTap: (){
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_)=> kakaoLogin())
-                      );
-                    },
-                    child: Image.asset("assets/joinIcon/kakao.png", width: 50,),
-                )
-    ),
+                    child:
+                    GestureDetector(
+                      onTap: (){
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_)=> kakaoLogin())
+                        );
+                      },
+                      child: Image.asset("assets/joinIcon/kakao.png", width: 50,),
+                    )
+                ),
 
 
 

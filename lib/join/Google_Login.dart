@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_project/home/home_page.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ Firestore 패키지 임포트
 import '../firebase_options.dart';
@@ -64,7 +65,7 @@ class _GoogleLoginState extends State<GoogleLogin> {
         'name': displayName ?? '',
         'nickName': displayName ?? email?.split('@').first ?? 'User',
         'gender': '', // 초기값 빈 문자열 또는 'unknown'
-        'intro': '반갑습니다. 새로운 사용자입니다.',
+        'intro': 'hi!',
 
         // 권한 및 상태 관련 필드 (초기값: true 또는 null)
         'isAlramChecked': true,
@@ -76,7 +77,7 @@ class _GoogleLoginState extends State<GoogleLogin> {
         'createdAt': FieldValue.serverTimestamp(), // 생성 시점
         'lastLogin': FieldValue.serverTimestamp(), // 최종 로그인
       });
-      debugPrint('Firestore: 새 사용자 (${user.email}) 정보 저장 완료');
+      // debugPrint('Firestore: 새 사용자 (${user.email}) 정보 저장 완료');
     } else {
       // 문서가 존재할 때 (재로그인)
       // 기존 필드는 유지하고 최종 로그인 시간만 업데이트
@@ -111,7 +112,7 @@ class _GoogleLoginState extends State<GoogleLogin> {
 
       return userCredential;
     } catch (e) {
-      debugPrint('구글 로그인 중 오류 발생: $e');
+      // debugPrint('구글 로그인 중 오류 발생: $e');
       return null;
     }
   }
@@ -122,6 +123,13 @@ class _GoogleLoginState extends State<GoogleLogin> {
     await _googleSignIn.signOut();
   }
 
+
+  void _showMessage(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // FirebaseAuth.instance.currentUser를 사용하여 로그인 상태 확인
@@ -130,7 +138,7 @@ class _GoogleLoginState extends State<GoogleLogin> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('구글 로그인 & 사용자 프로필 저장'),
+        title: const Text('구글 로그인/회원가입'),
         actions: [
           if (isLoggedIn)
             IconButton(
@@ -154,15 +162,20 @@ class _GoogleLoginState extends State<GoogleLogin> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('${user!.displayName ?? "사용자"}님 로그인 상태입니다.'),
-            Text('UID: ${user.uid}'),
+            // Text('UID: ${user.uid}'), 사용자 uid가 보임
             const SizedBox(height: 20,),
             ElevatedButton(
-              child: const Text('로그인 후 이동 페이지로'),
+              child: const Text('메인화면으로'),
               onPressed: (){
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_)=> const LoginPage()));
-              },
+                if(user != null){
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_)=> const HomePage()));
+                }else{
+                  _showMessage("사용자가 없습니다. 다시 시도해주세요.");
+                }
+                }
+
             )
           ],
         )
@@ -170,7 +183,7 @@ class _GoogleLoginState extends State<GoogleLogin> {
             : // 로그아웃 상태
         ElevatedButton.icon(
           icon: const Icon(Icons.login),
-          label: const Text('구글로 로그인'),
+          label: const Text('구글로 로그인/회원가입'),
           onPressed: () async {
             final userCredential = await googleLogin();
             if (!mounted) return;
@@ -180,15 +193,15 @@ class _GoogleLoginState extends State<GoogleLogin> {
               final user = FirebaseAuth.instance.currentUser;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('${user?.displayName ?? "사용자"}님 환영합니다! Firestore에 저장됨.'),
-                  action: SnackBarAction(
-                      label: '페이지 이동',
-                      onPressed: (){
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_)=> const LoginPage())
-                        );
-                      }),
+                  content: Text('${user?.displayName ?? "사용자"}님 환영합니다!'),
+                  // action: SnackBarAction(
+                  //     label: '페이지 이동',
+                  //     onPressed: (){
+                  //       Navigator.push(
+                  //           context,
+                  //           MaterialPageRoute(builder: (_)=> const HomePage())
+                  //       );
+                  //     }),
                 ),
               );
             } else {
