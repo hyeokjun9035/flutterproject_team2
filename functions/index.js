@@ -1070,14 +1070,13 @@ exports.sendPostNotification = onDocumentCreated({
 
 
 
-
 /** -----------------------------
  *  2. 관리자 알림 발송 (Alarm 전용)
  * ------------------------------ */
 exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (request) => {
   const { title, body, topic } = request.data || {};
 
-  // ✅ FieldValue를 안정적으로 가져오는 선언 추가
+  // ✅ 오류 해결을 위한 FieldValue 명시적 선언
   const { FieldValue } = require("firebase-admin/firestore");
 
   if (!title || !body) {
@@ -1085,9 +1084,17 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
   }
 
   try {
-    // FCM 발송
+    // 1. FCM 발송
     await admin.messaging().send({
       notification: { title, body },
+        //  관리자 알림 아이콘 설정을 위해 이 부분을 추가 jgh260106----s
+        android: {
+          notification: {
+            icon: 'ic_notification', // 안드로이드 리소스 폴더에 저장할 이미지 파일명 (확장자 제외)
+            color: '#000000',       // 아이콘 배경색 (선택사항)
+          },
+        },
+        //  관리자 알림 아이콘 설정을 위해 이 부분을 추가 jgh260106----E
       data: {
         type: "admin_alarm",
         click_action: "FLUTTER_NOTIFICATION_CLICK"
@@ -1095,12 +1102,12 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
       topic: topic || "community_topic",
     });
 
-    // 발송 기록 저장 (이 부분이 성공해야 하단 리스트에 뜹니다)
+    // 2. 발송 기록 저장 (이 부분이 성공해야 앱 하단 리스트에 나타납니다)
     await admin.firestore().collection("notifications").add({
       title: title,
       body: body,
       type: "admin_alarm",
-      createdAt: FieldValue.serverTimestamp(), // ✅ 수정됨
+      createdAt: FieldValue.serverTimestamp(), // ✅ 수정 완료
       isRead: false
     });
 

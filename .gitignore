@@ -49,3 +49,13 @@ app.*.map.json
 linux/flutter/
 windows/flutter/
 macos/Flutter/
+
+# Android / Gradle local files
+android/.gradle/
+android/local.properties
+**/GeneratedPluginRegistrant.java
+
+
+# 최상위 .gitignore에 추가 중복이라 제거 260106 전경환
+#android/.gradle/
+#android/local.properties

@@ -39,6 +39,239 @@ class _CommunityviewState extends State<Communityview> {
   VideoPlayerController? _vp;
   ChewieController? _chewie;
 
+  final TextEditingController _commentCtrl = TextEditingController();
+  bool _sendingComment = false;
+
+  Future<void> _addComment({
+    required DocumentSnapshot postDoc,
+    required Map<String, dynamic> postData,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _sendingComment = true);
+
+    try {
+      final fs = FirebaseFirestore.instance;
+
+      // 작성자 정보: postData의 author 말고 users에서 가져오는 게 정확함(닉 변경 등)
+      final userSnap = await fs.collection('users').doc(user.uid).get();
+      final u = userSnap.data() ?? {};
+
+      final author = {
+        'uid': user.uid,
+        'nickName': (u['nickName'] ?? u['nickname'] ?? '익명').toString(),
+        'profile_image_url': (u['profile_image_url'] ?? '').toString(),
+      };
+
+      final postRef = fs.collection('community').doc(postDoc.id);
+      final commentRef = postRef.collection('comments').doc();
+
+      await fs.runTransaction((tx) async {
+        tx.set(commentRef, {
+          'text': text,
+          'author': author,
+          'createdAt': FieldValue.serverTimestamp(),
+          'createdAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+
+        // commentCount +1
+        tx.update(postRef, {
+          'commentCount': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+      });
+
+      _commentCtrl.clear();
+      FocusScope.of(context).unfocus();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('댓글 저장 실패: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingComment = false);
+    }
+  }
+
+  Future<void> _deleteComment({
+    required String postId,
+    required String commentId,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final fs = FirebaseFirestore.instance;
+    final postRef = fs.collection('community').doc(postId);
+    final commentRef = postRef.collection('comments').doc(commentId);
+
+    try {
+      await fs.runTransaction((tx) async {
+        final cSnap = await tx.get(commentRef);
+        if (!cSnap.exists) return;
+
+        final data = cSnap.data() as Map<String, dynamic>;
+        final author = (data['author'] as Map<String, dynamic>?) ?? {};
+        final authorUid = (author['uid'] ?? '').toString();
+
+        // 내 댓글만 삭제
+        if (authorUid != user.uid) return;
+
+        tx.delete(commentRef);
+        tx.update(postRef, {
+          'commentCount': FieldValue.increment(-1),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('댓글 삭제 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> _addReply({
+    required String postId,
+    required String commentId,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final ctrl = _replyCtrlOf(commentId);
+    final text = ctrl.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _sendingReply.add(commentId));
+
+    try {
+      final fs = FirebaseFirestore.instance;
+
+      final userSnap = await fs.collection('users').doc(user.uid).get();
+      final u = userSnap.data() ?? {};
+
+      final author = {
+        'uid': user.uid,
+        'nickName': (u['nickName'] ?? u['nickname'] ?? '익명').toString(),
+        'profile_image_url': (u['profile_image_url'] ?? '').toString(),
+      };
+
+      final commentRef = fs
+          .collection('community').doc(postId)
+          .collection('comments').doc(commentId);
+
+      final replyRef = commentRef.collection('replies').doc();
+
+      await fs.runTransaction((tx) async {
+        tx.set(replyRef, {
+          'text': text,
+          'author': author,
+          'createdAt': FieldValue.serverTimestamp(),
+          'createdAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+
+        // (선택) comment 문서에 replyCount 저장하고 싶으면:
+        tx.update(commentRef, {
+          'replyCount': FieldValue.increment(1),
+        });
+
+        // (선택) post updatedAt 갱신하고 싶으면:
+        tx.update(fs.collection('community').doc(postId), {
+          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+      });
+
+      ctrl.clear();
+      FocusScope.of(context).unfocus();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('답글 저장 실패: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingReply.remove(commentId));
+    }
+  }
+
+  Future<void> _deleteReply({
+    required String postId,
+    required String commentId,
+    required String replyId,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final fs = FirebaseFirestore.instance;
+
+    final commentRef = fs
+        .collection('community').doc(postId)
+        .collection('comments').doc(commentId);
+
+    final replyRef = commentRef.collection('replies').doc(replyId);
+
+    try {
+      await fs.runTransaction((tx) async {
+        final rSnap = await tx.get(replyRef);
+        if (!rSnap.exists) return;
+
+        final data = rSnap.data() as Map<String, dynamic>;
+        final author = (data['author'] as Map<String, dynamic>?) ?? {};
+        final authorUid = (author['uid'] ?? '').toString();
+
+        if (authorUid != user.uid) return;
+
+        tx.delete(replyRef);
+
+        // replyCount -1 (선택)
+        tx.update(commentRef, {
+          'replyCount': FieldValue.increment(-1),
+        });
+
+        tx.update(fs.collection('community').doc(postId), {
+          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
+        });
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('답글 삭제 실패: $e')),
+      );
+    }
+  }
+
+  DateTime? _readCommentTime(Map<String, dynamic> data) {
+    final v = data['createdAt'];
+    if (v is Timestamp) return v.toDate();
+    final c = data['createdAtClient'];
+    if (c is int) return DateTime.fromMillisecondsSinceEpoch(c);
+    return null;
+  }
+
+  final Map<String, bool> _replyOpen = {};
+  final Map<String, TextEditingController> _replyCtrls = {};
+  final Set<String> _sendingReply = {};
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    for (final c in _replyCtrls.values) {
+      c.dispose();
+    }
+    _disposePlayer();
+    super.dispose();
+  }
+
+  TextEditingController _replyCtrlOf(String commentId) {
+    return _replyCtrls.putIfAbsent(commentId, () => TextEditingController());
+  }
+
   Future<void> _reportPost({
     required DocumentSnapshot doc,
     required Map<String, dynamic> data,
@@ -168,12 +401,6 @@ class _CommunityviewState extends State<Communityview> {
   }
 
   @override
-  void dispose() {
-    _disposePlayer();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return PutterScaffold(
       currentIndex: 1,
@@ -226,6 +453,9 @@ class _CommunityviewState extends State<Communityview> {
     final images = (data['images'] as List?)?.cast<String>() ?? [];
     final videos = (data['videos'] as List?)?.cast<String>() ?? [];
     final videoThumbs = (data['videoThumbs'] as List?)?.cast<String>() ?? [];
+
+    final category = (data['category'] ?? '').toString();
+    final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
     final authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
@@ -295,64 +525,61 @@ class _CommunityviewState extends State<Communityview> {
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                padding: EdgeInsets.zero,
-                onSelected: (value) async {
-                  if (value == 'edit') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            CommunityEdit(docId: doc.id), // ✅ docId 유지
-                      ),
-                    );
-                  } else if (value == 'delete') {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("삭제"),
-                        content: const Text("정말 삭제하시겠습니까?"),
-                        actions: [
-                          TextButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection("community")
-                                  .doc(doc.id)
-                                  .delete();
+              if (!isNotice)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  padding: EdgeInsets.zero,
+                  onSelected: (value) async {
+                    if (value == 'edit') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CommunityEdit(docId: doc.id),
+                        ),
+                      );
+                    } else if (value == 'delete') {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("삭제"),
+                          content: const Text("정말 삭제하시겠습니까?"),
+                          actions: [
+                            TextButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
+                                    .collection("community")
+                                    .doc(doc.id)
+                                    .delete();
 
-                              if (context.mounted)
-                                Navigator.of(context).pop(); // 다이얼로그 닫기
-                              if (mounted)
-                                Navigator.of(this.context).pop(); // 상세 화면 닫기
-                            },
-                            child: const Text("삭제"),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text("취소"),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else if (value == 'report') {
-                    await _reportPost(doc: doc, data: data);
-                  }
-                },
-
-                itemBuilder: (_) {
-                  if (isMine) {
-                    return const [
-                      PopupMenuItem(value: 'edit', child: Text('수정')),
-                      PopupMenuItem(value: 'delete', child: Text('삭제')),
-                    ];
-                  } else {
-                    return const [
-                      PopupMenuItem(value: 'report', child: Text('신고')),
-                    ];
-                  }
-                },
-              ),
+                                if (context.mounted) Navigator.of(context).pop();
+                                if (mounted) Navigator.of(this.context).pop();
+                              },
+                              child: const Text("삭제"),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text("취소"),
+                            ),
+                          ],
+                        ),
+                      );
+                    } else if (value == 'report') {
+                      await _reportPost(doc: doc, data: data);
+                    }
+                  },
+                  itemBuilder: (_) {
+                    if (isMine) {
+                      return const [
+                        PopupMenuItem(value: 'edit', child: Text('수정')),
+                        PopupMenuItem(value: 'delete', child: Text('삭제')),
+                      ];
+                    } else {
+                      return const [
+                        PopupMenuItem(value: 'report', child: Text('신고')),
+                      ];
+                    }
+                  },
+                ),
             ],
           ),
         ),
@@ -411,11 +638,369 @@ class _CommunityviewState extends State<Communityview> {
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
-              _commentInput(),
+
+              _commentInput(doc, data),
+
               const SizedBox(height: 12),
-              const Text(
-                "댓글 기능 연결 예정",
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('community')
+                    .doc(doc.id)
+                    .collection('comments')
+                    .orderBy('createdAt', descending: false)
+                    .limit(50)
+                    .snapshots(),
+                builder: (context, csnap) {
+                  if (!csnap.hasData) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  }
+
+                  final items = csnap.data!.docs;
+                  if (items.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        "첫 댓글을 남겨보세요.",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: items.map((c) {
+                      final cdata = c.data() as Map<String, dynamic>;
+                      final author = (cdata['author'] as Map<String, dynamic>?) ?? {};
+                      final name = (author['nickName'] ?? '익명').toString();
+                      final profile = (author['profile_image_url'] ?? '').toString();
+                      final uid = (author['uid'] ?? '').toString();
+                      final isMe = FirebaseAuth.instance.currentUser?.uid == uid;
+
+                      final dt = _readCommentTime(cdata);
+                      final when = dt == null ? "" : _timeAgoFromTs(dt);
+                      final text = (cdata['text'] ?? '').toString();
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 12,
+                              backgroundColor: Colors.black12,
+                              backgroundImage:
+                              profile.isNotEmpty ? NetworkImage(profile) : null,
+                              child: profile.isEmpty
+                                  ? const Icon(Icons.person, size: 14, color: Colors.black54)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            name,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        if (when.isNotEmpty)
+                                          Text(
+                                            when,
+                                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                          ),
+                                        if (isMe) ...[
+                                          const SizedBox(width: 6),
+                                          InkWell(
+                                            onTap: () async {
+                                              final ok = await showDialog<bool>(
+                                                context: context,
+                                                builder: (_) => AlertDialog(
+                                                  title: const Text('댓글 삭제'),
+                                                  content: const Text('삭제하시겠습니까?'),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () => Navigator.pop(context, false),
+                                                      child: const Text('취소'),
+                                                    ),
+                                                    TextButton(
+                                                      onPressed: () => Navigator.pop(context, true),
+                                                      child: const Text('삭제'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                              if (ok == true) {
+                                                await _deleteComment(
+                                                  postId: doc.id,
+                                                  commentId: c.id,
+                                                );
+                                              }
+                                            },
+                                            child: const Padding(
+                                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              child: Icon(Icons.delete_outline, size: 16),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      text,
+                                      style: const TextStyle(fontSize: 13, height: 1.35),
+                                    ),
+                                    const SizedBox(height: 8),
+
+                                    Row(
+                                      children: [
+                                        InkWell(
+                                          onTap: () {
+                                            // 답글 입력창 토글
+                                            setState(() {
+                                              _replyOpen[c.id] = !(_replyOpen[c.id] ?? false);
+                                            });
+                                          },
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                            child: Text(
+                                              "답글",
+                                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        InkWell(
+                                          onTap: () {
+                                            // 답글 보기(=펼치기) 토글 (인스타 느낌)
+                                            setState(() {
+                                              _replyOpen[c.id] = !(_replyOpen[c.id] ?? false);
+                                            });
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                            child: Text(
+                                              (_replyOpen[c.id] ?? false) ? "답글 접기" : "답글 보기",
+                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+// ✅ 펼쳐졌을 때만 로드
+                                    if (_replyOpen[c.id] ?? false) ...[
+                                      const SizedBox(height: 8),
+
+                                      // 답글 입력
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.black12),
+                                          borderRadius: BorderRadius.circular(10),
+                                          color: Colors.white,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextField(
+                                                controller: _replyCtrlOf(c.id),
+                                                decoration: const InputDecoration(
+                                                  hintText: "답글을 입력하세요...",
+                                                  border: InputBorder.none,
+                                                  isDense: true,
+                                                ),
+                                                minLines: 1,
+                                                maxLines: 3,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _sendingReply.contains(c.id)
+                                                ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                                : IconButton(
+                                              onPressed: () => _addReply(
+                                                postId: doc.id,
+                                                commentId: c.id,
+                                              ),
+                                              icon: const Icon(Icons.send, size: 18),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 10),
+
+                                      // 답글 목록
+                                      StreamBuilder<QuerySnapshot>(
+                                        stream: FirebaseFirestore.instance
+                                            .collection('community')
+                                            .doc(doc.id)
+                                            .collection('comments')
+                                            .doc(c.id)
+                                            .collection('replies')
+                                            .orderBy('createdAt', descending: false)
+                                            .limit(50)
+                                            .snapshots(),
+                                        builder: (context, rsnap) {
+                                          if (!rsnap.hasData) {
+                                            return const Padding(
+                                              padding: EdgeInsets.symmetric(vertical: 6),
+                                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                            );
+                                          }
+
+                                          final replies = rsnap.data!.docs;
+                                          if (replies.isEmpty) {
+                                            return const Text(
+                                              "답글이 없습니다.",
+                                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                                            );
+                                          }
+
+                                          return Column(
+                                            children: replies.map((r) {
+                                              final rdata = r.data() as Map<String, dynamic>;
+                                              final rauthor = (rdata['author'] as Map<String, dynamic>?) ?? {};
+                                              final rname = (rauthor['nickName'] ?? '익명').toString();
+                                              final rprofile = (rauthor['profile_image_url'] ?? '').toString();
+                                              final ruid = (rauthor['uid'] ?? '').toString();
+                                              final isMeReply = FirebaseAuth.instance.currentUser?.uid == ruid;
+
+                                              final rdt = _readCommentTime(rdata);
+                                              final rwhen = rdt == null ? "" : _timeAgoFromTs(rdt);
+                                              final rtext = (rdata['text'] ?? '').toString();
+
+                                              return Padding(
+                                                padding: const EdgeInsets.only(bottom: 8),
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    const SizedBox(width: 18), // ✅ 들여쓰기
+                                                    CircleAvatar(
+                                                      radius: 10,
+                                                      backgroundColor: Colors.black12,
+                                                      backgroundImage:
+                                                      rprofile.isNotEmpty ? NetworkImage(rprofile) : null,
+                                                      child: rprofile.isEmpty
+                                                          ? const Icon(Icons.person, size: 12, color: Colors.black54)
+                                                          : null,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Container(
+                                                        padding: const EdgeInsets.all(9),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white,
+                                                          border: Border.all(color: Colors.black12),
+                                                          borderRadius: BorderRadius.circular(10),
+                                                        ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Row(
+                                                              children: [
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    rname,
+                                                                    style: const TextStyle(
+                                                                      fontSize: 12,
+                                                                      fontWeight: FontWeight.w700,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                if (rwhen.isNotEmpty)
+                                                                  Text(
+                                                                    rwhen,
+                                                                    style: const TextStyle(
+                                                                      fontSize: 11,
+                                                                      color: Colors.grey,
+                                                                    ),
+                                                                  ),
+                                                                if (isMeReply) ...[
+                                                                  const SizedBox(width: 6),
+                                                                  InkWell(
+                                                                    onTap: () async {
+                                                                      final ok = await showDialog<bool>(
+                                                                        context: context,
+                                                                        builder: (_) => AlertDialog(
+                                                                          title: const Text('답글 삭제'),
+                                                                          content: const Text('삭제하시겠습니까?'),
+                                                                          actions: [
+                                                                            TextButton(
+                                                                              onPressed: () => Navigator.pop(context, false),
+                                                                              child: const Text('취소'),
+                                                                            ),
+                                                                            TextButton(
+                                                                              onPressed: () => Navigator.pop(context, true),
+                                                                              child: const Text('삭제'),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      );
+                                                                      if (ok == true) {
+                                                                        await _deleteReply(
+                                                                          postId: doc.id,
+                                                                          commentId: c.id,
+                                                                          replyId: r.id,
+                                                                        );
+                                                                      }
+                                                                    },
+                                                                    child: const Padding(
+                                                                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                      child: Icon(Icons.delete_outline, size: 16),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 6),
+                                                            Text(
+                                                              rtext,
+                                                              style: const TextStyle(fontSize: 13, height: 1.3),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
             ],
           ),
@@ -525,7 +1110,7 @@ class _CommunityviewState extends State<Communityview> {
     );
   }
 
-  Widget _commentInput() {
+  Widget _commentInput(DocumentSnapshot doc, Map<String, dynamic> data) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -534,14 +1119,27 @@ class _CommunityviewState extends State<Communityview> {
       ),
       child: Row(
         children: [
-          const Expanded(
-            child: Text(
-              "댓글을 입력하세요...",
-              style: TextStyle(fontSize: 13, color: Colors.grey),
+          Expanded(
+            child: TextField(
+              controller: _commentCtrl,
+              decoration: const InputDecoration(
+                hintText: "댓글을 입력하세요...",
+                border: InputBorder.none,
+                isDense: true,
+              ),
+              minLines: 1,
+              maxLines: 4,
             ),
           ),
-          IconButton(
-            onPressed: () {},
+          const SizedBox(width: 8),
+          _sendingComment
+              ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+              : IconButton(
+            onPressed: () => _addComment(postDoc: doc, postData: data),
             icon: const Icon(Icons.send, size: 18),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),

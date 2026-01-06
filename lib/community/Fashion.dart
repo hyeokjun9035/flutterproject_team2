@@ -43,6 +43,101 @@ class _FashionState extends State<Fashion> {
     return null;
   }
 
+  Future<void> _reportPost({
+    required DocumentSnapshot doc,
+    required Map<String, dynamic> data,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final reasons = ['스팸/광고', '욕설/비방', '음란물', '개인정보 노출', '기타'];
+    String selected = reasons.first;
+    final detailCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('신고하기'),
+        content: StatefulBuilder(
+          builder: (context, setState) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButton<String>(
+                value: selected,
+                isExpanded: true,
+                items: reasons
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
+                onChanged: (v) => setState(() => selected = v!),
+              ),
+              if (selected == '기타')
+                TextField(
+                  controller: detailCtrl,
+                  decoration: const InputDecoration(hintText: '사유를 입력하세요'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('신고'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final postId = doc.id;
+    final reporterUid = user.uid;
+    final reportId = '${postId}_$reporterUid';
+
+    final category = (data['category'] ?? '').toString();
+    final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
+    final postAuthorUid =
+    (data['createdBy'] ?? authorMap['uid'] ?? '').toString();
+
+    final title = (data['title'] ?? '').toString();
+    final plain = (data['plain'] ?? data['content'] ?? '').toString();
+
+    try {
+      await FirebaseFirestore.instance.collection('reports').doc(reportId).set({
+        'postId': postId,
+        'postRef': FirebaseFirestore.instance.collection('community').doc(postId),
+        'category': category,
+
+        'postAuthorUid': postAuthorUid,
+        'postTitle': title,
+        'postPlain': plain,
+
+        'reportedByUid': reporterUid,
+        'reportedByEmail': user.email ?? '',
+
+        'reason': selected,
+        'detail': selected == '기타' ? detailCtrl.text.trim() : '',
+
+        'status': 'open',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: false));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('신고가 접수되었습니다.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('신고 저장 실패: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PutterScaffold(
@@ -354,12 +449,7 @@ class _FashionState extends State<Fashion> {
                                     ),
                                   );
                                 } else if (value == 'report') {
-                                  // 🚧 하드코딩: 아직 기능 없음
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('신고 기능은 준비중입니다.'),
-                                    ),
-                                  );
+                                  await _reportPost(doc: doc, data: data);
                                 }
                               },
 
