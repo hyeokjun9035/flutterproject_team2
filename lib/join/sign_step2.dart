@@ -31,18 +31,11 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage2 extends StatefulWidget {
   final String email;
-  //authcation 과 동일한 uid 사용을 위해서 끌어옴
-  final String uid;
 
   const JoinPage2({
     super.key,
     required this.email,
-    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-    required this.uid,
   });
-
-
-
 
   @override
   State<JoinPage2> createState() => _JoinPage2State();
@@ -159,12 +152,14 @@ class _JoinPage2State extends State<JoinPage2>{
                 }
 
                 //닉네임 체크
-                final result = await fs
-                    .collection('users')
-                    .where('nickName', isEqualTo: _nickName.text.trim())
+                final nickKey = _nickName.text.trim().toLowerCase();
+
+                final nickDoc = await fs
+                    .collection('usernames')
+                    .doc(nickKey)
                     .get();
 
-                if(result.docs.isNotEmpty){
+                if (nickDoc.exists) {
                   _showmessage("중복된 닉네임 입니다.");
                   return;
                 }
@@ -179,18 +174,16 @@ class _JoinPage2State extends State<JoinPage2>{
 
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_)=> JoinPage3(
-                    email: widget.email,
-                    name: _name.text,
-                    profile_image_url: imageUrl,
-                    nickName: _nickName.text,
-                    intro: _intro.text,
-                    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-                    uid: widget.uid,
-                  )
-                  )
+                  MaterialPageRoute(
+                    builder: (_) => JoinPage3(
+                      email: widget.email,
+                      name: _name.text,
+                      profile_image_url: imageUrl,
+                      nickName: _nickName.text,
+                      intro: _intro.text,
+                    ),
+                  ),
                 );
-
               },
               child: const Text("다음"),
             ),

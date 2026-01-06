@@ -27,7 +27,6 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage4 extends StatefulWidget {
   //authcation 과 동일한 uid 사용을 위해서 끌어옴
-  final String uid;
   final String email;
   final String intro;
   final String name;
@@ -43,8 +42,6 @@ class JoinPage4 extends StatefulWidget {
     required this.profile_image_url,
     required this.nickName,
     required this.gender,
-    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-    required this.uid
   });
 
   @override
@@ -56,22 +53,12 @@ class _JoinPage4State extends State<JoinPage4>{
  bool isCameraChecked = false;
  bool isAlramChecked = false;
 
-
-  Future<void> _join() async{
-    await fs.collection("users").add({
-      "isLocationChecked" : isLocationChecked,
-      "isCameraChecked" : isCameraChecked,
-      "isAlramChecked" :  isAlramChecked
-
-    });
-
-  }
-
-  void _showmessage(String msg){
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg))
-    );
-  }
+void _showMessage(String msg) {
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg))
+  );
+}
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -138,26 +125,26 @@ class _JoinPage4State extends State<JoinPage4>{
 
             ElevatedButton(
                 onPressed: () {
-                  if(isLocationChecked == false || isCameraChecked == false){
-                      _showmessage("필수사항은 반드시 체크하셔야 합니다.");
-                      return;
+                  if (!isLocationChecked || !isCameraChecked) {
+                    _showMessage("필수사항은 반드시 체크하셔야 합니다.");
+                    return;
                   }
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_)=>JoinPage5(
-                        //authcation 과 동일한 uid 사용을 위해서 끌어옴
-                          uid: widget.uid,
-                          email: widget.email,
-                          intro: widget.intro,
-                          name: widget.name,
-                          nickName: widget.nickName,
-                          profile_image_url: widget.profile_image_url,
-                          gender: widget.gender, //성별 값 전달
-                        isLocationChecked: isLocationChecked,
-                          isCameraChecked: isCameraChecked,
-                          isAlramChecked: isAlramChecked
 
-                      ))
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => JoinPage5(
+                        email: widget.email,
+                        intro: widget.intro,
+                        name: widget.name,
+                        nickName: widget.nickName,
+                        profile_image_url: widget.profile_image_url,
+                        gender: widget.gender,
+                        isLocationChecked: isLocationChecked,
+                        isCameraChecked: isCameraChecked,
+                        isAlramChecked: isAlramChecked,
+                      ),
+                    ),
                   );
                 },
                 child: Text("다음")
@@ -170,5 +157,7 @@ class _JoinPage4State extends State<JoinPage4>{
   }
 }
 
+
+///
 
 
