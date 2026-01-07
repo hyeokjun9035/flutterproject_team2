@@ -27,6 +27,7 @@ class _LoginPageState extends State<LoginPage> {
         password: pwd,
       );
 
+      // ... (관리자/일반 사용자 처리 로직은 동일)
       final uid = userCredential.user!.uid; // 유지
 
       if (email == "admin@gmail.com") {
@@ -37,26 +38,44 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (_) => const AdminHomePage()),
         );
       } else {
+        _showMessage("로그인 성공!"); // 일반 사용자 로그인 성공 메시지 추가
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomePage()),
         );
       }
+
     } on FirebaseAuthException catch (e) {
       String message;
-      if (e.code == 'user-not-found') {
-        message = '등록되지 않은 이메일 입니다.';
-      } else if (e.code == 'wrong-password') {
-        message = '비밀번호가 일치하지 않습니다.';
-      } else if (e.code == 'invalid-email') {
-        message = '유효하지 않은 이메일 형식입니다.';
-      } else {
-        message = '로그인 중 오류가 발생했습니다';
+
+      switch (e.code) {
+      // ✅ 이 두 경우를 통합하여 사용자에게 모호한(보안적인) 메시지를 제공합니다.
+        case 'user-not-found':
+        case 'wrong-password':
+        case 'invalid-credential': // 추가: 최신 버전에서 이 코드가 반환될 수 있습니다.
+          message = '이메일 또는 비밀번호가 일치하지 않습니다.'; // 또는 '등록되지 않은 계정입니다.'
+          break;
+
+        case 'invalid-email':
+          message = '유효하지 않은 이메일 형식입니다.';
+          break;
+        case 'user-disabled':
+          message = '비활성화된 계정입니다. 관리자에게 문의하세요.';
+          break;
+        case 'network-request-failed':
+          message = '네트워크 오류입니다. 인터넷 연결을 확인해주세요.';
+          break;
+        case 'too-many-requests':
+          message = '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.';
+          break;
+        default:
+          message = '로그인 실패: ${e.message ?? e.code}';
       }
+
       _showMessage(message);
     } catch (e) {
-      _showMessage("알 수 없는 오류 발생");
+      _showMessage('알 수 없는 오류 발생: $e');
     }
   }
 
@@ -108,7 +127,7 @@ class _LoginPageState extends State<LoginPage> {
                     // ✅ 로고 위에 텍스트 오버레이
                     Positioned(
                       child: Text(
-                        "날씨 어때",
+                        "오늘 어때",
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 30,
