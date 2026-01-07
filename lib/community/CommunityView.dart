@@ -28,6 +28,95 @@ class _CommunityviewState extends State<Communityview> {
     return "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
   }
 
+  bool _viewCounted = false; // ✅ 추가
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _increaseViewCountOnce());
+  }
+
+  Future<void> _increaseViewCountOnce() async {
+    if (_viewCounted) return;
+    _viewCounted = true;
+
+    try {
+      final ref = FirebaseFirestore.instance.collection('community').doc(widget.docId);
+      await ref.update({'viewCount': FieldValue.increment(1)});
+    } catch (e) {
+      // 실패해도 화면은 계속 보이게
+      debugPrint('viewCount update failed: $e');
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
+    final likeRef = postRef.collection('likes').doc(user.uid);
+
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final likeSnap = await tx.get(likeRef);
+
+      if (likeSnap.exists) {
+        tx.delete(likeRef);
+        tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
+      } else {
+        tx.set(likeRef, {
+          'uid': user.uid,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+      }
+    });
+  }
+//
+  Widget _likeButton(String postId, int likeCount) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // 로그인 안 했으면 숫자만 보여주거나 숨겨도 됨
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.favorite_border, size: 18),
+          const SizedBox(width: 4),
+          Text('$likeCount', style: const TextStyle(fontSize: 12)),
+        ],
+      );
+    }
+
+    final likeDocStream = FirebaseFirestore.instance
+        .collection('community')
+        .doc(postId)
+        .collection('likes')
+        .doc(user.uid)
+        .snapshots();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: likeDocStream,
+      builder: (context, snap) {
+        final liked = snap.data?.exists ?? false;
+
+        return InkWell(
+          onTap: _toggleLike,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                liked ? Icons.favorite : Icons.favorite_border,
+                size: 18,
+                color: liked ? Colors.red : Colors.black54,
+              ),
+              const SizedBox(width: 4),
+              Text('$likeCount', style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
     final v = data[key];
     if (v is Timestamp) return v.toDate();
@@ -481,6 +570,9 @@ class _CommunityviewState extends State<Communityview> {
         updatedAt.isAfter(createdAt));
     final timeLabel = displayDt == null ? "" : _timeAgoFromTs(displayDt);
 
+    final likeCount = (data['likeCount'] as num?)?.toInt() ?? 0;
+    final viewCount = (data['viewCount'] as num?)?.toInt() ?? 0;
+
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -525,6 +617,21 @@ class _CommunityviewState extends State<Communityview> {
                   ],
                 ),
               ),
+              if (!isNotice) ...[
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text('$viewCount', style: const TextStyle(fontSize: 12)),
+                      const SizedBox(width: 12),
+                      _likeButton(doc.id, likeCount),
+                    ],
+                  ),
+                ),
+              ],
               if (!isNotice)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
