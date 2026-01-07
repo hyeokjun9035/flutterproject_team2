@@ -96,7 +96,6 @@ Future<void> main() async {
     AndroidNotification? android = message.notification?.android;
 
     if (notification != null && android != null) {
-
       // ✅ jgh260106 수정: 컬러 이미지를 오른쪽에 고정하고 왼쪽 아이콘 문제를 해결하기 위해 largeIcon 방식 적용
       flutterLocalNotificationsPlugin.show(
         notification.hashCode,
