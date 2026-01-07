@@ -63,7 +63,8 @@ class _HomePageState extends State<HomePage> {
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
   String? _weatherNuriCode;
   late final NearbyIssuesService _nearbyIssuesService;
-  Future<List<NearbyIssuePost>>? _nearbyIssuesFuture;
+  Stream<List<NearbyIssuePost>>? _nearbyIssuesStream;
+  List<NearbyIssuePost> _nearbyIssuesLatest3 = const [];
 
   Future<void> _openForecastWeb() async {
     if (_lat == null || _lon == null) return;
@@ -545,7 +546,10 @@ class _HomePageState extends State<HomePage> {
       case HomeCardId.nearbyIssues:
         return _Card(
           child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
-            future: _nearbyIssuesFuture ?? Future.value(const []),
+              stream: _nearbyIssuesStream ?? const Stream.empty(),
+            onData: (issues) {
+                _nearbyIssuesLatest3 = issues;
+            },
             onOpenPost: (docId) {
               Navigator.push(
                 context,
@@ -554,17 +558,14 @@ class _HomePageState extends State<HomePage> {
                 ),
               );
             },
-            onMapPressed: () async {
-              // 1) Future에서 가져온 최신 3개를 같이 넘겨야 함
-              final posts = await (_nearbyIssuesFuture ?? Future.value(const <NearbyIssuePost>[]));
-
+            onMapPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => NearbyIssuesMapPage(
                     myLat: _lat!,
                     myLng: _lon!,
-                    posts: posts,
+                    posts: _nearbyIssuesLatest3,
                   ),
                 ),
               );
@@ -922,10 +923,14 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    _nearbyIssuesFuture = _nearbyIssuesService.fetchNearbyIssueTop3(
+    _nearbyIssuesStream = _nearbyIssuesService.watchNearbyIssueTop3(
       myLat: _lat!,
       myLng: _lon!,
+      radiusMeters: 1000,
+      maxCandidates: 200,
+      daysBack: 7,
     );
+    if (mounted) setState(() {});
 
     final nowTime = DateTime.now();
     final today = DateTime(nowTime.year, nowTime.month, nowTime.day);

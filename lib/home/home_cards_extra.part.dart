@@ -172,18 +172,23 @@ class _CarryCardFromFirestoreState extends State<_CarryCardFromFirestore> {
 
 class _NearbyIssuesCard extends StatelessWidget {
   const _NearbyIssuesCard({
-    required this.future,
+    required this.stream,
     required this.onMapPressed,
     required this.onReportPressed,
     required this.onOpenPost,
     required this.onAddPressed,
+    this.onData,
   });
 
-  final Future<List<NearbyIssuePost>> future;
+  final Stream<List<NearbyIssuePost>> stream;
+
   final VoidCallback onMapPressed;
   final VoidCallback onReportPressed;
   final ValueChanged<String> onOpenPost;
   final VoidCallback onAddPressed;
+
+  /// ✅ 최신 3개를 Home(State) 쪽으로 올려보내기 위한 콜백
+  final ValueChanged<List<NearbyIssuePost>>? onData;
 
   String _prettyTime(DateTime dt) {
     final now = DateTime.now();
@@ -193,7 +198,6 @@ class _NearbyIssuesCard extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
     if (diff.inHours < 24) return '${diff.inHours}시간 전';
 
-    // 24시간 넘으면 MM/dd
     final mm = dt.month.toString().padLeft(2, '0');
     final dd = dt.day.toString().padLeft(2, '0');
     return '$mm/$dd';
@@ -221,17 +225,18 @@ class _NearbyIssuesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
 
-    return FutureBuilder<List<NearbyIssuePost>>(
-      future: future,
+    return StreamBuilder<List<NearbyIssuePost>>(
+      stream: stream,
       builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          // 너 프로젝트의 스켈레톤 컴포넌트 있으면 그걸로 교체
+        // 로딩
+        if (snap.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator())),
           );
         }
 
+        // 에러
         if (snap.hasError) {
           return Padding(
             padding: const EdgeInsets.all(16),
@@ -242,7 +247,14 @@ class _NearbyIssuesCard extends StatelessWidget {
           );
         }
 
-        final issues = snap.data ?? const [];
+        final issues = snap.data ?? const <NearbyIssuePost>[];
+
+        // ✅ Home으로 최신 리스트 전달 (무한 rebuild 안전하게 post-frame)
+        if (onData != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            onData!.call(issues);
+          });
+        }
 
         return Padding(
           padding: const EdgeInsets.all(16),
@@ -275,15 +287,17 @@ class _NearbyIssuesCard extends StatelessWidget {
               const SizedBox(height: 10),
 
               if (issues.isEmpty)
-                Text('1km 내 사건/이슈 글이 없습니다.',
-                    style: t.bodySmall?.copyWith(color: Colors.white70))
+                Text(
+                  '1km 내 사건/이슈 글이 없습니다.',
+                  style: t.bodySmall?.copyWith(color: Colors.white70),
+                )
               else
                 for (final p in issues)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      onTap: () => onOpenPost(p.id), // ✅ docId 전달
+                      onTap: () => onOpenPost(p.id),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Row(
@@ -340,9 +354,7 @@ class _NearbyIssuesCard extends StatelessWidget {
                       label: const Text('지도 보기'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(0, 44),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -354,9 +366,7 @@ class _NearbyIssuesCard extends StatelessWidget {
                       label: const Text('제보'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(0, 44),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
