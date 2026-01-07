@@ -70,7 +70,7 @@ class _JoinPage2State extends State<JoinPage2>{
     await ref.putFile(file); //실제업로드
     return await ref.getDownloadURL(); //다운로드 URL반환
   }
-  
+
   void _showmessage(String msg){
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg))
