@@ -66,7 +66,6 @@ class _HomePageState extends State<HomePage> {
   Stream<List<NearbyIssuePost>>? _nearbyIssuesStream;
   List<NearbyIssuePost> _nearbyIssuesLatest3 = const [];
   final GlobalKey<ScaffoldState> _scaffoldkey = GlobalKey<ScaffoldState>();
-  final user = FirebaseAuth.instance.currentUser;
 
   Future<void> _openForecastWeb() async {
     if (_lat == null || _lon == null) return;
@@ -1054,27 +1053,55 @@ class _HomePageState extends State<HomePage> {
           final now = data?.now;
           final safeData = data;
           final updatedAt = safeData?.updatedAt ?? DateTime.now();
+          final user = FirebaseAuth.instance.currentUser;
+          final userStream = (user == null)
+              ? const Stream<DocumentSnapshot<Map<String, dynamic>>>.empty()
+              : FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+
+          final hasCoord = _lat != null && _lon != null;
 
           return Scaffold(
             key: _scaffoldkey,
 
-            drawer: AppDrawerFactory.buildWithNearbyMap(
+            drawer: (user == null)
+                ? null
+                : (hasCoord
+                ? AppDrawerFactory.buildWithNearbyMap(
               context: context,
-              userStream: FirebaseFirestore.instance.collection('users').doc(user!.uid).snapshots(),
+              userStream: userStream,
               locationLabel: _locationLabel,
+
+              // ✅ 홈에서는 "홈/닫기"가 뜨는 쪽
               isHome: true,
               onGoHome: () {},
-              myLat: _lat!,
-              myLng: _lon!,
-              // ✅ stream -> 1회 가져오기
+
+              myLat: _lat!, // ✅ hasCoord라 안전
+              myLng: _lon!, // ✅ hasCoord라 안전
               getNearbyTopPosts: () async {
-                final s = _nearbyIssuesStream; // Stream<List<NearbyIssuePost>>
+                final s = _nearbyIssuesStream;
                 if (s == null) return const <NearbyIssuePost>[];
                 return await s.first;
               },
 
-              // background: const _DaySkyDrawerBackground(), // 필요하면 주입
-            ),
+              // background: ... (원하면)
+            )
+                : AppDrawerFactory.buildBasic(
+              context: context,
+              userStream: userStream,
+              locationLabel: _locationLabel,
+
+              // ✅ 홈에서는 "홈/닫기"가 뜨는 쪽
+              isHome: true,
+              onGoHome: () {},
+
+              // ✅ 위치 없을 때 '내 주변 지도' 눌러도 크래시 안 나게
+              onGoNearbyMapOverride: () {
+                Navigator.pop(context); // drawer 닫기
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('위치를 불러오는 중입니다. 잠시 후 다시 시도해주세요.')),
+                );
+              },
+            )),
 
             body: Stack(
               children: [
