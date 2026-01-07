@@ -52,14 +52,22 @@ class _ChatterState extends State<Chatter> {
           errorBuilder: (_, __, ___) => Container(
             color: Colors.black12,
             alignment: Alignment.center,
-            child: Icon(Icons.person, size: radius * 1.7, color: Colors.black54),
+            child: Icon(
+              Icons.person,
+              size: radius * 1.7,
+              color: Colors.black54,
+            ),
           ),
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
             return Container(
               color: Colors.black12,
               alignment: Alignment.center,
-              child: Icon(Icons.person, size: radius, color: Colors.black54),
+              child: Icon(
+                Icons.person,
+                size: radius,
+                color: Colors.black54,
+              ),
             );
           },
         )
@@ -140,8 +148,8 @@ class _ChatterState extends State<Chatter> {
 
     final category = (data['category'] ?? '').toString();
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final postAuthorUid =
-    (data['createdBy'] ?? authorMap['uid'] ?? '').toString();
+    final postAuthorUid = (data['createdBy'] ?? authorMap['uid'] ?? '')
+        .toString();
 
     final title = (data['title'] ?? '').toString();
     final plain = (data['plain'] ?? data['content'] ?? '').toString();
@@ -149,7 +157,9 @@ class _ChatterState extends State<Chatter> {
     try {
       await FirebaseFirestore.instance.collection('reports').doc(reportId).set({
         'postId': postId,
-        'postRef': FirebaseFirestore.instance.collection('community').doc(postId),
+        'postRef': FirebaseFirestore.instance
+            .collection('community')
+            .doc(postId),
         'category': category,
 
         'postAuthorUid': postAuthorUid,
@@ -168,14 +178,14 @@ class _ChatterState extends State<Chatter> {
       }, SetOptions(merge: false));
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('신고가 접수되었습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('신고 저장 실패: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('신고 저장 실패: $e')));
     }
   }
 
@@ -287,13 +297,17 @@ class _ChatterState extends State<Chatter> {
                   }
 
                   // author는 Map으로 저장했으니 문자열로 바로 못 씀
-                  final authorMap =
-                      (data["author"] as Map<String, dynamic>?) ?? {};
-                  final authorName =
-                  (authorMap["nickName"] ?? authorMap["name"] ?? "익명")
-                      .toString();
-                  final authorProfile = (authorMap['profile_image_url'] ?? '')
-                      .toString();
+                  final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
+                  final bool authorDeleted =
+                      (data["authorDeleted"] == true) || (authorMap["deleted"] == true);
+
+                  final authorName = authorDeleted
+                      ? "탈퇴한 사용자"
+                      : (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
+
+                  final authorProfile = authorDeleted
+                      ? ""
+                      : (authorMap['profile_image_url'] ?? '').toString();
 
                   final currentUid = FirebaseAuth.instance.currentUser?.uid;
                   final authorUid = (authorMap["uid"] ?? "").toString();
@@ -371,7 +385,8 @@ class _ChatterState extends State<Chatter> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center, // ✅ 항상 가운데
+                          crossAxisAlignment:
+                          CrossAxisAlignment.center, // ✅ 항상 가운데
                           children: [
                             buildProfileAvatar(authorProfile, avatarRadius),
 
@@ -399,24 +414,37 @@ class _ChatterState extends State<Chatter> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         if (hasLocation) ...[
-                                          const Icon(Icons.location_on_outlined, size: 16),
+                                          const Icon(
+                                            Icons.location_on_outlined,
+                                            size: 16,
+                                          ),
                                           const SizedBox(width: 2),
                                           Flexible(
                                             child: Text(
                                               locationLabel,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontSize: 14, height: 1.1),
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                height: 1.1,
+                                              ),
                                             ),
                                           ),
                                         ],
-                                        if (hasLocation && hasWeather) const SizedBox(width: 8),
+                                        if (hasLocation && hasWeather)
+                                          const SizedBox(width: 8),
                                         if (hasWeather) ...[
-                                          const Icon(Icons.thermostat, size: 16),
+                                          const Icon(
+                                            Icons.thermostat,
+                                            size: 16,
+                                          ),
                                           const SizedBox(width: 2),
                                           Text(
                                             weatherLabel,
-                                            style: const TextStyle(fontSize: 14, height: 1.1),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              height: 1.1,
+                                            ),
                                           ),
                                         ],
                                       ],
@@ -433,7 +461,10 @@ class _ChatterState extends State<Chatter> {
                                 if (value == 'edit') {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (_) => CommunityEdit(docId: doc.id)),
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          CommunityEdit(docId: doc.id),
+                                    ),
                                   );
                                 } else if (value == 'delete') {
                                   showDialog(
@@ -453,7 +484,8 @@ class _ChatterState extends State<Chatter> {
                                           child: const Text("삭제"),
                                         ),
                                         TextButton(
-                                          onPressed: () => Navigator.of(context).pop(),
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(),
                                           child: const Text("취소"),
                                         ),
                                       ],
@@ -466,12 +498,21 @@ class _ChatterState extends State<Chatter> {
                               itemBuilder: (_) {
                                 if (isMine) {
                                   return const [
-                                    PopupMenuItem(value: 'edit', child: Text('수정')),
-                                    PopupMenuItem(value: 'delete', child: Text('삭제')),
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('수정'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('삭제'),
+                                    ),
                                   ];
                                 } else {
                                   return const [
-                                    PopupMenuItem(value: 'report', child: Text('신고')),
+                                    PopupMenuItem(
+                                      value: 'report',
+                                      child: Text('신고'),
+                                    ),
                                   ];
                                 }
                               },

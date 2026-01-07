@@ -95,13 +95,31 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-
-
-
   void _showMessage(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg)),
     );
+  }
+
+  bool _shownDeleteMessage = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_shownDeleteMessage) return;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['deleted'] == true) {
+      _shownDeleteMessage = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("탈퇴가 완료되었습니다.")),
+        );
+      });
+    }
   }
 
   @override

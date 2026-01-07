@@ -55,6 +55,16 @@ class _CommunityviewState extends State<Communityview> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final postSnap = await FirebaseFirestore.instance
+        .collection('community')
+        .doc(widget.docId)
+        .get();
+
+    final postData = postSnap.data() ?? {};
+    final authorDeleted = postData['authorDeleted'] == true;
+
+    if (authorDeleted) return;
+
     final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
 
@@ -189,20 +199,34 @@ class _CommunityviewState extends State<Communityview> {
     );
   }
 
-  Widget _likeButton(String postId, int likeCount) {
+  Widget _likeButton(String postId, int likeCount, {required bool authorDeleted}) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // 로그인 안 했으면 숫자만 보여주거나 숨겨도 됨
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.favorite_border, size: 18),
-          const SizedBox(width: 4),
-          Text('$likeCount', style: const TextStyle(fontSize: 12)),
-        ],
+
+    // ✅ (A) 로그인 안했거나, 탈퇴글이면: 아이콘은 보여주되 비활성 + 카운트 표시
+    if (user == null || authorDeleted) {
+      return InkWell(
+        onTap: authorDeleted
+            ? () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('탈퇴한 사용자의 글에는 좋아요를 누를 수 없습니다.')),
+          );
+        }
+            : null, // 로그인 유도하고 싶으면 여기에 스낵바 추가 가능
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.favorite_border, size: 18, color: Colors.black26),
+            const SizedBox(width: 4),
+            Text(
+              '$likeCount',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ],
+        ),
       );
     }
 
+    // ✅ (B) 정상글 + 로그인 상태면: 기존처럼 실시간 liked 반영
     final likeDocStream = FirebaseFirestore.instance
         .collection('community')
         .doc(postId)
@@ -216,7 +240,7 @@ class _CommunityviewState extends State<Communityview> {
         final liked = snap.data?.exists ?? false;
 
         return InkWell(
-          onTap: _toggleLike,
+          onTap: _toggleLike, // _toggleLike 안에서 authorDeleted 방어 이미 해둠(굿)
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -254,6 +278,14 @@ class _CommunityviewState extends State<Communityview> {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    if (postData['authorDeleted'] == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
 
     final text = _commentCtrl.text.trim();
     if (text.isEmpty) return;
@@ -346,6 +378,24 @@ class _CommunityviewState extends State<Communityview> {
     required String postId,
     required String commentId,
   }) async {
+
+    final postSnap = await FirebaseFirestore.instance
+        .collection('community')
+        .doc(postId)
+        .get();
+
+    final postData = postSnap.data() ?? {};
+    final postAuthorDeleted = (postData['authorDeleted'] == true) ||
+        ((postData['author'] is Map) && ((postData['author']['deleted'] == true)));
+
+    if (postAuthorDeleted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 답글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -664,9 +714,16 @@ class _CommunityviewState extends State<Communityview> {
     final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
-        .toString();
-    final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+    final bool authorDeleted =
+        (data['authorDeleted'] == true) || (authorMap['deleted'] == true);
+
+    final authorName = authorDeleted
+        ? '탈퇴한 사용자'
+        : (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
+
+    final authorProfile = authorDeleted
+        ? ''
+        : (authorMap['profile_image_url'] ?? '').toString();
 
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final authorUid = (authorMap['uid'] ?? '').toString();
@@ -751,8 +808,9 @@ class _CommunityviewState extends State<Communityview> {
                       const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.black54),
                       const SizedBox(width: 4),
                       Text('$viewCount', style: const TextStyle(fontSize: 12)),
+
                       const SizedBox(width: 12),
-                      _likeButton(doc.id, likeCount),
+                      _likeButton(doc.id, likeCount, authorDeleted: authorDeleted),
                     ],
                   ),
                 ),
@@ -872,7 +930,16 @@ class _CommunityviewState extends State<Communityview> {
               ),
               const SizedBox(height: 10),
 
-              _commentInput(doc, data),
+              if (authorDeleted)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: const Text(
+                    "탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                )
+              else
+                _commentInput(doc, data),
 
               const SizedBox(height: 12),
 
@@ -893,7 +960,13 @@ class _CommunityviewState extends State<Communityview> {
                   }
 
                   final items = csnap.data!.docs;
+
                   if (items.isEmpty) {
+                    // ✅ 탈퇴한 사용자의 글이면 "첫 댓글..." 문구 숨김
+                    if (authorDeleted) {
+                      return const SizedBox.shrink();
+                    }
+
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
@@ -1000,6 +1073,7 @@ class _CommunityviewState extends State<Communityview> {
                                     ),
                                     const SizedBox(height: 8),
 
+                                    if (!authorDeleted)
                                     Row(
                                       children: [
                                         InkWell(
@@ -1037,7 +1111,7 @@ class _CommunityviewState extends State<Communityview> {
                                     ),
 
 // ✅ 펼쳐졌을 때만 로드
-                                    if (_replyOpen[c.id] ?? false) ...[
+                                    if (!authorDeleted && (_replyOpen[c.id] ?? false)) ...[
                                       const SizedBox(height: 8),
 
                                       // 답글 입력
