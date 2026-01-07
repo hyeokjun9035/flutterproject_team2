@@ -144,17 +144,17 @@ class AppDrawer extends StatelessWidget {
                 ),
                 _Item(
                   icon: Icons.campaign_outlined,
-                  label: '공지 (Notice)',
+                  label: '공지',
                   onTap: () => _closeThen(context, onGoNotice)
                 ),
                 _Item(
                   icon: Icons.checkroom_outlined,
-                  label: '패션 (Fashion)',
+                  label: '패션',
                   onTap: () => _closeThen(context, onGoFashion)
                 ),
                 _Item(
                   icon: Icons.chat_bubble_outline,
-                  label: '잡담 (Chatter)',
+                  label: '수다',
                   onTap: () => _closeThen(context, onGoChatter)
                 ),
                 _Item(
