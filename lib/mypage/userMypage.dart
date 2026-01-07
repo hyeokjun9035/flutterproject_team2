@@ -17,6 +17,12 @@ class UserMypage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
+    if (user == null) {
+      // 로그인 안 된 상태면 로그인 화면으로 보내거나 안내
+      return const Scaffold(
+        body: Center(child: Text("로그인이 필요합니다.")),
+      );
+    }
 
     return PutterScaffold(
       currentIndex: 2,
