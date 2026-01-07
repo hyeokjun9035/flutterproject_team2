@@ -53,8 +53,17 @@ class _CommunityviewState extends State<Communityview> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final fs = FirebaseFirestore.instance;
-    final postRef = fs.collection('community').doc(widget.docId);
+    final postSnap = await FirebaseFirestore.instance
+        .collection('community')
+        .doc(widget.docId)
+        .get();
+
+    final postData = postSnap.data() ?? {};
+    final authorDeleted = postData['authorDeleted'] == true;
+
+    if (authorDeleted) return;
+
+    final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
 
       try {
@@ -109,6 +118,85 @@ class _CommunityviewState extends State<Communityview> {
           'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
+    });
+  }
+
+  Widget _placeMapWidget(Map<String, dynamic>? place, String weatherLabel) {
+    if (place == null) return const SizedBox.shrink();
+
+    final lat = (place['lat'] as num?)?.toDouble();
+    final lng = (place['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return const SizedBox.shrink();
+
+    final name = (place['name'] ?? '위치').toString();
+    final address = (place['address'] ?? '').toString();
+    final pos = LatLng(lat, lng);
+
+    LatLngBounds _boundsFromCenter(LatLng c, double radiusMeters) {
+      // 위도 1도 ≈ 111km
+      final latDelta = radiusMeters / 111000.0;
+      // 경도는 위도에 따라 달라짐
+      final lngDelta = radiusMeters / (111000.0 * (cos(c.latitude * pi / 180)));
+
+      return LatLngBounds(
+        southwest: LatLng(c.latitude - latDelta, c.longitude - lngDelta),
+        northeast: LatLng(c.latitude + latDelta, c.longitude + lngDelta),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.black12),
+          color: Colors.white,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 상단 텍스트
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (address.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                address,
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (weatherLabel.trim().isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      const Icon(Icons.thermostat, size: 18, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text(
+                        weatherLabel,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
 
         debugPrint("$type 알림 생성 성공 (수신자: $postAuthorUid)");
       } catch (e) {
@@ -124,6 +212,7 @@ class _CommunityviewState extends State<Communityview> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
+    // ✅ (B) 정상글 + 로그인 상태면: 기존처럼 실시간 liked 반영
     final likeDocStream = FirebaseFirestore.instance
         .collection('community')
         .doc(postId)
@@ -188,6 +277,14 @@ class _CommunityviewState extends State<Communityview> {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    if (postData['authorDeleted'] == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
 
     final text = _commentCtrl.text.trim();
     if (text.isEmpty) return;
@@ -282,6 +379,24 @@ class _CommunityviewState extends State<Communityview> {
     required String commentId,
     required Map<String, dynamic> postData,
   }) async {
+
+    final postSnap = await FirebaseFirestore.instance
+        .collection('community')
+        .doc(postId)
+        .get();
+
+    final postData = postSnap.data() ?? {};
+    final postAuthorDeleted = (postData['authorDeleted'] == true) ||
+        ((postData['author'] is Map) && ((postData['author']['deleted'] == true)));
+
+    if (postAuthorDeleted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 답글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -600,8 +715,16 @@ class _CommunityviewState extends State<Communityview> {
     final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final String authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
-    final String authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+    final bool authorDeleted =
+        (data['authorDeleted'] == true) || (authorMap['deleted'] == true);
+
+    final authorName = authorDeleted
+        ? '탈퇴한 사용자'
+        : (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
+
+    final authorProfile = authorDeleted
+        ? ''
+        : (authorMap['profile_image_url'] ?? '').toString();
 
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final authorUid = (authorMap['uid'] ?? '').toString();
@@ -624,6 +747,14 @@ class _CommunityviewState extends State<Communityview> {
 
     final likeCount = (data['likeCount'] as num?)?.toInt() ?? 0;
     final viewCount = (data['viewCount'] as num?)?.toInt() ?? 0;
+
+    final place = (data['place'] as Map?)?.cast<String, dynamic>();
+
+    final weather = (data['weather'] as Map?)?.cast<String, dynamic>();
+    final temp = (weather?['temp'] as num?)?.toDouble();
+
+    final String weatherLabel =
+    (temp == null) ? '' : '온도 ${temp.round()}°';
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -680,6 +811,7 @@ class _CommunityviewState extends State<Communityview> {
                       const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.black54),
                       const SizedBox(width: 4),
                       Text('$viewCount', style: const TextStyle(fontSize: 12)),
+
                       const SizedBox(width: 12),
                       Flexible(
                         child: _likeButton(doc.id, likeCount,data),
@@ -760,6 +892,7 @@ class _CommunityviewState extends State<Communityview> {
               ),
             ),
           ),
+        if (!isNotice) _placeMapWidget(place, weatherLabel),
 
         // 본문 렌더링
         if (blocks.isNotEmpty)
@@ -802,7 +935,16 @@ class _CommunityviewState extends State<Communityview> {
               ),
               const SizedBox(height: 10),
 
-              _commentInput(doc, data),
+              if (authorDeleted)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: const Text(
+                    "탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                )
+              else
+                _commentInput(doc, data),
 
               const SizedBox(height: 12),
 
@@ -823,7 +965,13 @@ class _CommunityviewState extends State<Communityview> {
                   }
 
                   final items = csnap.data!.docs;
+
                   if (items.isEmpty) {
+                    // ✅ 탈퇴한 사용자의 글이면 "첫 댓글..." 문구 숨김
+                    if (authorDeleted) {
+                      return const SizedBox.shrink();
+                    }
+
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
@@ -930,6 +1078,7 @@ class _CommunityviewState extends State<Communityview> {
                                     ),
                                     const SizedBox(height: 8),
 
+                                    if (!authorDeleted)
                                     Row(
                                       children: [
                                         InkWell(
@@ -967,7 +1116,7 @@ class _CommunityviewState extends State<Communityview> {
                                     ),
 
 // ✅ 펼쳐졌을 때만 로드
-                                    if (_replyOpen[c.id] ?? false) ...[
+                                    if (!authorDeleted && (_replyOpen[c.id] ?? false)) ...[
                                       const SizedBox(height: 8),
 
                                       // 답글 입력
