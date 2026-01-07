@@ -21,23 +21,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _markAllAsRead() async {
+    // 상단에서 이미 uid를 선언했다고 가정 (final String? uid = ...)
     if (uid == null) return;
-    try {
-      final snapshots = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('receiverId', isEqualTo: uid)
-          .where('isRead', isEqualTo: false)
-          .get();
 
-      if (snapshots.docs.isNotEmpty) {
+    try {
+      // 1. snapshots() 대신 get()을 사용하여 현재 상태의 문서들을 가져옵니다.
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('receiverUid', isEqualTo: uid) // ✅ 위에서 검사한 uid 변수 사용
+          .where('isRead', isEqualTo: false)
+          .get(); // 👈 중요: snapshots()가 아닌 get() 사용
+
+      if (querySnapshot.docs.isNotEmpty) {
         final batch = FirebaseFirestore.instance.batch();
-        for (var doc in snapshots.docs) {
+
+        for (var doc in querySnapshot.docs) {
           batch.update(doc.reference, {'isRead': true});
         }
+
+        // 2. 일괄 업데이트 실행
         await batch.commit();
+        debugPrint("${querySnapshot.docs.length}개의 알림을 읽음 처리했습니다.");
       }
     } catch (e) {
-      print("읽음 처리 오류: $e");
+      debugPrint("읽음 처리 오류: $e");
     }
   }
 
