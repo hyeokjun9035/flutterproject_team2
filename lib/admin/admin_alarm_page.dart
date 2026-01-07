@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AdminAlarmPage extends StatefulWidget {
   const AdminAlarmPage({super.key});
@@ -168,7 +169,8 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('notifications')
-                .where('type', isEqualTo: 'admin_alarm') // 관리자 발송분만 필터링
+                .where('receiverUid', isEqualTo: FirebaseAuth.instance.currentUser?.uid) // ✅ 이 줄을 반드시 추가하세요!
+                .where('type', isEqualTo: 'admin_alarm')
                 .orderBy('createdAt', descending: true)
                 .limit(10)
                 .snapshots(),
