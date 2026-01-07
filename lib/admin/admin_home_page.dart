@@ -62,7 +62,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('관리자 페이지'),
-        backgroundColor: Colors.black,
+        // backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1A237E), // 👈 딥 네이비로 변경
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -124,7 +125,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.black,
+        // selectedItemColor: Colors.black,
+        selectedItemColor: const Color(0xFF1A237E), // 👈 강조색 변경
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(
@@ -290,6 +292,8 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
 
     if (!mounted) return;
     setState(() {
+      loading = false;        // 260107 전경환 추가 총 사용자수 새로고침시 보이게
+      loadingUsers = false;   // 260107 전경환 추가 총 사용자수 새로고침시 보이게
       loadingReports = false;
     });
   }
@@ -525,8 +529,8 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
             ? const Center(child: CircularProgressIndicator())
             : _buildCategoryDistribution(),
 
-        const SizedBox(height: 24),
-        _sectionTitle('최근 시스템 로그'),
+        // const SizedBox(height: 24),
+        // _sectionTitle('최근 시스템 로그'),
         // const SizedBox(height: 10),
         // _buildRecentLogs(),
         // const SizedBox(height: 40),
@@ -672,6 +676,11 @@ class _AdminPostListPage extends StatefulWidget {
 
 class _AdminPostListPageState extends State<_AdminPostListPage> {
   String _keyword = '';
+  String _selectedCategory = '전체';
+
+  final List<String> _categories = ['전체', '사건/이슈', '수다', '패션', '공지사항'];
+
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -679,6 +688,33 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
       children: [
         _sectionTitle('게시글 관리'),
         const SizedBox(height: 10),
+
+        // ✅ 카테고리 필터 칩 추가
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _categories.map((cat) {
+              final isSelected = _selectedCategory == cat;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(cat, style: TextStyle(
+                    // color: isSelected ? Colors.white : Colors.black87,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  )),
+                  selected: isSelected,
+                  // selectedColor: const Color(0xFF1A237E), // AppBar와 맞춘 딥 네이비
+                  // backgroundColor: Colors.grey.shade200,
+                  onSelected: (selected) {
+                    if (selected) setState(() => _selectedCategory = cat);
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 12),
         _SearchBar(
           hintText: '제목/내용 검색',
           onChanged: (v) => setState(() => _keyword = v.trim().toLowerCase()),
@@ -693,15 +729,30 @@ class _AdminPostListPageState extends State<_AdminPostListPage> {
           builder: (context, snapshot) {
             if (!snapshot.hasData)
               return const Center(child: CircularProgressIndicator());
+            
             final docs = snapshot.data!.docs.where((d) {
               final data = d.data();
-              return (data['title'] ?? '').toString().toLowerCase().contains(
-                    _keyword,
-                  ) ||
-                  (data['plain'] ?? '').toString().toLowerCase().contains(
-                    _keyword,
-                  );
+              final category = (data['category'] ?? '미분류').toString();
+              
+              // ✅ 카테고리 필터링 조건 추가
+              final matchesCategory = _selectedCategory == '전체' || category == _selectedCategory;
+              
+              // ✅ 키워드 필터링 조건
+              final matchesKeyword = (data['title'] ?? '').toString().toLowerCase().contains(_keyword) ||
+                  (data['plain'] ?? '').toString().toLowerCase().contains(_keyword);
+              
+              return matchesCategory && matchesKeyword;
             }).toList();
+            
+            if (docs.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 40),
+                  child: Text('해당하는 게시글이 없습니다.', style: TextStyle(color: Colors.grey)),
+                ),
+              );
+            }
+
             return Column(
               children: docs.map((doc) {
                 final data = doc.data();
