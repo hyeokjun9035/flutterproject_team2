@@ -71,7 +71,7 @@ class _CommunityviewState extends State<Communityview> {
       }
     });
   }
-
+//
   Widget _likeButton(String postId, int likeCount) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
