@@ -87,9 +87,9 @@ class _JoinPage3State extends State<JoinPage3>{
               ],
               onChanged: (String? value) {
                 if(value != null)
-                setState(() {
-                  _gender = value;
-                });
+                  setState(() {
+                    _gender = value;
+                  });
               },
             ),
 
@@ -119,6 +119,3 @@ class _JoinPage3State extends State<JoinPage3>{
     );
   }
 }
-
-
-

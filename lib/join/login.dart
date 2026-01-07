@@ -14,6 +14,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
+
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _pwdController = TextEditingController();
@@ -170,44 +171,50 @@ class _LoginPageState extends State<LoginPage> {
                   },
                   child: const Text("회원가입"),
                 ),
+
               ],
+
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Padding (
-                  padding: const EdgeInsets.fromLTRB(0,20,10,0),
-                  child:
-                  GestureDetector(
-                    onTap: (){
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => GoogleLogin())
-                      );
-                    },
-                    child: Image.asset("assets/joinIcon/google.png", width: 50),
+            // 가로 선 추가
+            const Padding(padding: EdgeInsets.only(top: 20)),
+            const Divider(
+              color: Colors.grey,
+              thickness: 1.0,
+              height: 30, // 여백 포함
+            ),
+
+            // OutlinedButton을 전체 Column의 children으로 바로 배치하여 전체 너비를 사용하게 합니다.
+            OutlinedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GoogleLogin()),
+                );
+              },
+
+              // TextField와 유사한 스타일 적용
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50), // 버튼 높이 지정
+                side: const BorderSide(color: Colors.grey, width: 1.0), // 테두리 색상과 두께
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(5.0), // 둥근 모서리
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset("assets/joinIcon/google.png", width: 30,),
+                  const Text(
+                    "구글로 로그인 하기",
+                    style: TextStyle(color: Colors.black),
 
                   ),
-                ),
-                Padding(
-                    padding: const EdgeInsets.fromLTRB(10,20,0,0),
-                    child:
-                    GestureDetector(
-                      onTap: (){
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_)=> kakaoLogin())
-                        );
-                      },
-                      child: Image.asset("assets/joinIcon/kakao.png", width: 50,),
-                    )
-                ),
+                ],
+              )
 
 
 
-
-              ],
-            )
+            ),
 
 
           ],
