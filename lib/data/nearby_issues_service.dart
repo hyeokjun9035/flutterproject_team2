@@ -113,16 +113,66 @@ class NearbyIssuesService {
     return out;
   }
 
+  // ----------------------------
+  // ✅ NEW: 홈 Top3를 "실시간"으로 감시
+  // ----------------------------
+  Stream<List<NearbyIssuePost>> watchNearbyIssueTop3({
+    required double myLat,
+    required double myLng,
+    int radiusMeters = 1000,
+    int maxCandidates = 200,
+    int daysBack = 7, // 원하면 0으로 두고 where 제거해도 됨
+  }) {
+    final cutoff = DateTime.now().subtract(Duration(days: daysBack));
+    final cutoffTs = Timestamp.fromDate(cutoff);
+
+    Query<Map<String, dynamic>> q = _db
+        .collection('community')
+        .where('category', isEqualTo: '사건/이슈')
+    // createdAt이 Timestamp로 저장돼있다는 전제 (너 코드도 그 전제로 쓰는 중)
+        .where('createdAt', isGreaterThanOrEqualTo: cutoffTs)
+        .orderBy('createdAt', descending: true)
+        .limit(maxCandidates);
+
+    return q.snapshots().map((snap) {
+      final out = <NearbyIssuePost>[];
+
+      for (final doc in snap.docs) {
+        final post = _docToPost(
+          docId: doc.id,
+          data: doc.data(),
+          myLat: myLat,
+          myLng: myLng,
+        );
+        if (post == null) continue;
+
+        if (post.distanceMeters > radiusMeters) continue;
+        out.add(post);
+
+        if (out.length >= 3) break;
+      }
+
+      return out;
+    });
+  }
+
+  // ----------------------------
+  // (기존) Future Top3도 유지하고 싶으면 이렇게 정리 가능
+  // ----------------------------
   Future<List<NearbyIssuePost>> fetchNearbyIssueTop3({
     required double myLat,
     required double myLng,
     int radiusMeters = 1000,
     int maxCandidates = 200,
+    int daysBack = 7,
   }) async {
-    // ⚠️ 인덱스 필요할 수 있음: category + createdAt
+    final cutoff = DateTime.now().subtract(Duration(days: daysBack));
+    final cutoffTs = Timestamp.fromDate(cutoff);
+
     final q = _db
         .collection('community')
         .where('category', isEqualTo: '사건/이슈')
+        .where('createdAt', isGreaterThanOrEqualTo: cutoffTs)
         .orderBy('createdAt', descending: true)
         .limit(maxCandidates);
 
@@ -130,58 +180,76 @@ class NearbyIssuesService {
 
     final out = <NearbyIssuePost>[];
     for (final doc in snap.docs) {
-      final data = doc.data();
-
-      final place = (data['place'] is Map)
-          ? Map<String, dynamic>.from(data['place'])
-          : <String, dynamic>{};
-
-      final lat = (place['lat'] is num) ? (place['lat'] as num).toDouble() : double.nan;
-      final lng = (place['lng'] is num) ? (place['lng'] as num).toDouble() : double.nan;
-      if (lat.isNaN || lng.isNaN) continue;
-
-      final dist = _haversineMeters(myLat, myLng, lat, lng);
-      if (dist > radiusMeters) continue;
-
-      final title = (data['title'] ?? '').toString();
-      final address = (place['address'] ?? '').toString();
-
-      final likeCount = (data['likeCount'] is num) ? (data['likeCount'] as num).toInt() : 0;
-      final commentCount = (data['commentCount'] is num) ? (data['commentCount'] as num).toInt() : 0;
-
-      final createdAt = _parseCreatedAt(data['createdAt']);
-
-      final imagesRaw = data['images'];
-      final images = (imagesRaw is List)
-          ? imagesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
-          : <String>[];
-
-      out.add(
-        NearbyIssuePost(
-          id: doc.id,
-          title: title,
-          lat: lat,
-          lng: lng,
-          address: address,
-          likeCount: likeCount,
-          commentCount: commentCount,
-          createdAt: createdAt,
-          images: images,
-          distanceMeters: dist.round(),
-        ),
+      final post = _docToPost(
+        docId: doc.id,
+        data: doc.data(),
+        myLat: myLat,
+        myLng: myLng,
       );
+      if (post == null) continue;
 
-      if (out.length >= 3) break; // 최신순이므로 3개 모이면 종료
+      if (post.distanceMeters > radiusMeters) continue;
+      out.add(post);
+
+      if (out.length >= 3) break;
     }
 
     return out;
   }
 
+  // ----------------------------
+  // ✅ NEW: 문서 -> NearbyIssuePost 변환 공통화
+  // ----------------------------
+  NearbyIssuePost? _docToPost({
+    required String docId,
+    required Map<String, dynamic> data,
+    required double myLat,
+    required double myLng,
+  }) {
+    final place = (data['place'] is Map)
+        ? Map<String, dynamic>.from(data['place'])
+        : <String, dynamic>{};
+
+    final lat = (place['lat'] is num) ? (place['lat'] as num).toDouble() : double.nan;
+    final lng = (place['lng'] is num) ? (place['lng'] as num).toDouble() : double.nan;
+    if (lat.isNaN || lng.isNaN) return null;
+
+    final dist = _haversineMeters(myLat, myLng, lat, lng);
+
+    final title = (data['title'] ?? '').toString();
+    final address = (place['address'] ?? '').toString();
+
+    final likeCount = (data['likeCount'] is num) ? (data['likeCount'] as num).toInt() : 0;
+    final commentCount = (data['commentCount'] is num) ? (data['commentCount'] as num).toInt() : 0;
+
+    final createdAt = _parseCreatedAt(data['createdAt']);
+
+    final imagesRaw = data['images'];
+    final images = (imagesRaw is List)
+        ? imagesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : <String>[];
+
+    return NearbyIssuePost(
+      id: docId,
+      title: title,
+      lat: lat,
+      lng: lng,
+      address: address,
+      likeCount: likeCount,
+      commentCount: commentCount,
+      createdAt: createdAt,
+      images: images,
+      distanceMeters: dist.round(),
+    );
+  }
+
+  // ----------------------------
+  // 너가 이미 갖고 있던 유틸들 (그대로)
+  // ----------------------------
   static DateTime _parseCreatedAt(dynamic v) {
     if (v is Timestamp) return v.toDate();
     if (v is DateTime) return v;
     if (v is String) {
-      // "2025년 12월 31일 PM 6시 3분" 방어 파싱
       final re = RegExp(r'(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*(AM|PM)\s*(\d{1,2})시\s*(\d{1,2})분');
       final m = re.firstMatch(v);
       if (m != null) {
@@ -211,6 +279,5 @@ class NearbyIssuesService {
   }
 
   static double _degToRad(double deg) => deg * (pi / 180.0);
-
 
 }
