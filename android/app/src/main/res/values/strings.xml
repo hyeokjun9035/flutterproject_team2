@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">오늘어때</string>
     <string name="default_web_client_id">
         361819871944-u001da6ng95a0job4u5s76or4ht2939a.apps.googleusercontent.com
     </string>

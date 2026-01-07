@@ -413,59 +413,68 @@ class _CommunityPageState extends State<CommunityPage> {
                                 final createdAt = data['createdAt'];
                                 final timeText = _timeAgo(createdAt);
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => Communityview(docId: doc.id),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            "$authorName | $timeText | ",
-                                            style: const TextStyle(
-                                              fontSize: 12,
+                                        Row(
+                                          children: [
+                                            Text(
+                                              "$authorName | $timeText | ",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.remove_red_eye_outlined,
+                                              size: 14,
                                               color: Colors.grey,
                                             ),
-                                          ),
-                                          const Icon(
-                                            Icons.remove_red_eye_outlined,
-                                            size: 14,
-                                            color: Colors.grey,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            "$views | ",
-                                            style: const TextStyle(
-                                              fontSize: 12,
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              "$views | ",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.comment_outlined,
+                                              size: 14,
                                               color: Colors.grey,
                                             ),
-                                          ),
-                                          const Icon(
-                                            Icons.comment_outlined,
-                                            size: 14,
-                                            color: Colors.grey,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            "$comments",
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              "$comments",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               }).toList(),
@@ -543,59 +552,68 @@ class _CommunityPageState extends State<CommunityPage> {
                                 final createdAt = data['createdAt'];
                                 final timeText = _timeAgo(createdAt);
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => Communityview(docId: doc.id),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            "$authorName | $timeText | ",
-                                            style: const TextStyle(
-                                              fontSize: 12,
+                                        Row(
+                                          children: [
+                                            Text(
+                                              "$authorName | $timeText | ",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.remove_red_eye_outlined,
+                                              size: 14,
                                               color: Colors.grey,
                                             ),
-                                          ),
-                                          const Icon(
-                                            Icons.remove_red_eye_outlined,
-                                            size: 14,
-                                            color: Colors.grey,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            "$views | ",
-                                            style: const TextStyle(
-                                              fontSize: 12,
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              "$views | ",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.comment_outlined,
+                                              size: 14,
                                               color: Colors.grey,
                                             ),
-                                          ),
-                                          const Icon(
-                                            Icons.comment_outlined,
-                                            size: 14,
-                                            color: Colors.grey,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            "$comments",
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              "$comments",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               }).toList(),

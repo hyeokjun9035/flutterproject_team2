@@ -22,6 +22,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'Event.dart';
 import 'Chatter.dart';
 import 'Fashion.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
+import 'place_geo_utils.dart' as geo;
 
 class Communityadd extends StatefulWidget {
   const Communityadd({super.key});
@@ -146,7 +149,6 @@ class _MiniQuillToolbar extends StatelessWidget {
           _toggleAttr(icon: Icons.format_bold, attr: Attribute.bold),
           _toggleAttr(icon: Icons.format_italic, attr: Attribute.italic),
           _toggleAttr(icon: Icons.format_underline, attr: Attribute.underline),
-
 
           _toggleList(icon: Icons.format_list_bulleted, listType: Attribute.ul),
 
@@ -308,7 +310,11 @@ class LocalVideoEmbedBuilder extends EmbedBuilder {
                       color: Colors.black.withOpacity(0.35),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+                    child: const Icon(
+                      Icons.play_arrow,
+                      color: Colors.white,
+                      size: 34,
+                    ),
                   ),
                 ],
               ),
@@ -336,7 +342,9 @@ class LocalVideoEmbedBuilder extends EmbedBuilder {
       children: [
         const Icon(Icons.movie_outlined),
         const SizedBox(width: 8),
-        Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(
+          child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
       ],
     ),
   );
@@ -370,7 +378,194 @@ class _GoogleMapPreview extends StatelessWidget {
   }
 }
 
+class _AdjustableMap extends StatefulWidget {
+  final PlaceResult place;
+  final Future<void> Function(LatLng latLng, String? newAddr, String? newName)
+  onChanged;
+
+  const _AdjustableMap({required this.place, required this.onChanged});
+
+  @override
+  State<_AdjustableMap> createState() => _AdjustableMapState();
+}
+
+class _AdjustableMapState extends State<_AdjustableMap> {
+  GoogleMapController? _ctrl;
+  late LatLng _pos;
+
+  @override
+  void initState() {
+    super.initState();
+    _pos = LatLng(widget.place.lat, widget.place.lng);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdjustableMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // place가 바뀌면 지도 위치도 갱신
+    final next = LatLng(widget.place.lat, widget.place.lng);
+    if (next.latitude != _pos.latitude || next.longitude != _pos.longitude) {
+      _pos = next;
+      _ctrl?.animateCamera(CameraUpdate.newLatLng(_pos));
+      setState(() {});
+    }
+  }
+
+  String? _bestDisplayNameFromPlacemark(Placemark pm) {
+    String clean(String? s) =>
+        (s ?? '').trim().replaceFirst(RegExp(r'^KR\s+'), '');
+
+    final subLocality = clean(pm.subLocality); // 동/읍/면 (있으면 최고)
+    final subAdmin = clean(pm.subAdministrativeArea); // 구/군
+    final locality = clean(pm.locality); // 시
+    final admin = clean(pm.administrativeArea); // 도/광역시
+
+    // 1) 공식 필드에 동/읍/면이 있으면 그걸 사용
+    if (subLocality.isNotEmpty) return subLocality;
+
+    // 2) candidates를 "토큰"으로 쪼개서 동/읍/면만 먼저 탐색
+    final candidates = <String>[
+      clean(pm.name),
+      clean(pm.thoroughfare),
+      clean(pm.subAdministrativeArea),
+      clean(pm.locality),
+      clean(pm.administrativeArea),
+    ].where((e) => e.isNotEmpty).toList();
+
+    final tokens = <String>{};
+    for (final c in candidates) {
+      for (final t in c.split(RegExp(r'\s+'))) {
+        final tt = t.trim();
+        if (tt.isNotEmpty) tokens.add(tt);
+      }
+    }
+
+    // 동/읍/면 우선
+    for (final t in tokens) {
+      if (RegExp(r'(동|읍|면)$').hasMatch(t)) return t;
+    }
+
+    // 3) 없으면 구/군
+    if (subAdmin.isNotEmpty) return subAdmin;
+    for (final t in tokens) {
+      if (RegExp(r'(구|군)$').hasMatch(t)) return t;
+    }
+
+    // 4) 시 -> 도/광역시
+    if (locality.isNotEmpty) return locality;
+    if (admin.isNotEmpty) {
+      final cleaned = admin
+          .replaceAll('특별자치시', '')
+          .replaceAll('특별자치도', '')
+          .replaceAll('특별시', '')
+          .replaceAll('광역시', '')
+          .replaceAll('자치시', '')
+          .replaceAll('자치도', '')
+          .replaceAll('도', '')
+          .trim();
+      return cleaned.isNotEmpty ? cleaned : admin;
+    }
+
+    return null;
+  }
+
+  String? _buildAddressFromPlacemark(Placemark pm) {
+    String clean(String? s) {
+      var v = (s ?? '').trim();
+      v = v.replaceFirst(RegExp(r'^KR\s+'), '');
+      return v;
+    }
+
+    final parts = <String>[
+      clean(pm.administrativeArea),
+      clean(pm.locality),
+      clean(pm.subAdministrativeArea),
+      clean(pm.subLocality),
+      clean(pm.thoroughfare),
+    ].where((e) => e.isNotEmpty).toList();
+
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
+  }
+
+  int _rankLabel(String? label) {
+    if (label == null || label.trim().isEmpty) return 0;
+    final v = label.trim();
+    if (RegExp(r'(동|읍|면)$').hasMatch(v)) return 3;
+    if (RegExp(r'(구|군)$').hasMatch(v)) return 2;
+    return 1; // 시/도 등
+  }
+
+  Future<Map<String, String?>?> _reverseGeocodeFull(LatLng p) async {
+    try {
+      final pms = await placemarkFromCoordinates(p.latitude, p.longitude);
+      if (pms.isEmpty) return null;
+
+      Placemark? bestPm;
+      String? bestName;
+      int bestRank = -1;
+
+      for (final pm in pms) {
+        final name = _bestDisplayNameFromPlacemark(pm);
+        final r = _rankLabel(name);
+        if (r > bestRank) {
+          bestRank = r;
+          bestName = name;
+          bestPm = pm;
+          if (bestRank == 3) break; // 동/읍/면 찾으면 끝
+        }
+      }
+
+      final address = _buildAddressFromPlacemark(bestPm ?? pms.first);
+
+      return {'address': address, 'name': bestName};
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _applyNewPos(LatLng p) async {
+    setState(() => _pos = p);
+
+    final info = await _reverseGeocodeFull(p);
+    final addr = info?['address'];
+    final name = info?['name'];
+
+    await widget.onChanged(p, addr, name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(target: _pos, zoom: 15),
+      onMapCreated: (c) => _ctrl = c,
+
+      liteModeEnabled: false,
+      myLocationButtonEnabled: false,
+
+      // ✅ Edit처럼 기본 줌 버튼 켜기
+      zoomControlsEnabled: true,
+
+      onTap: (p) => _applyNewPos(p),
+
+      markers: {
+        Marker(
+          markerId: const MarkerId('selected'),
+          position: _pos,
+          draggable: true,
+          onDragEnd: (p) => _applyNewPos(p),
+        ),
+      },
+      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+      },
+    );
+  }
+}
+
 class _CommunityaddState extends State<Communityadd> {
+  bool _lockScroll = false; // ✅ 추가 (지도 터치할 때 스크롤 잠금)
+  LatLng? _finalPickedLatLng; // ✅ 저장용 최종 좌표
   int _lastValidOffset = 0;
   late final DashboardService _service;
   late final QuillController _editorController;
@@ -379,8 +574,10 @@ class _CommunityaddState extends State<Communityadd> {
   String selectedCategory = "사건/이슈";
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _title = TextEditingController();
-  final Map<String, int> _imageIndexByLocalPath = {}; // localPath -> images index
-  final Map<String, int> _videoIndexByLocalPath = {}; // localPath -> videos index
+  final Map<String, int> _imageIndexByLocalPath =
+      {}; // localPath -> images index
+  final Map<String, int> _videoIndexByLocalPath =
+      {}; // localPath -> videos index
 
   void _insertImageIntoEditor(String imagePath) {
     final sel = _editorController.selection;
@@ -516,7 +713,7 @@ class _CommunityaddState extends State<Communityadd> {
               thumbUrl = await _uploadFileToStorage(
                 file: thumbFile,
                 storagePath:
-                'community/$docId/video_thumbs/${p.basenameWithoutExtension(safeName)}.jpg',
+                    'community/$docId/video_thumbs/${p.basenameWithoutExtension(safeName)}.jpg',
                 contentType: 'image/jpeg',
               );
             }
@@ -577,7 +774,10 @@ class _CommunityaddState extends State<Communityadd> {
               children: [
                 // 상단바
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   child: Row(
                     children: [
                       Expanded(
@@ -614,7 +814,10 @@ class _CommunityaddState extends State<Communityadd> {
     vp.dispose();
   }
 
-  void _insertVideoIntoEditor({required String videoPath, required String originalName}) {
+  void _insertVideoIntoEditor({
+    required String videoPath,
+    required String originalName,
+  }) {
     final sel = _editorController.selection;
     final index = sel.baseOffset >= 0 ? sel.baseOffset : _lastValidOffset;
     final length = (sel.baseOffset >= 0 && sel.extentOffset >= 0)
@@ -666,7 +869,9 @@ class _CommunityaddState extends State<Communityadd> {
       return;
     }
     final uid = user.uid;
-    debugPrint('[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
+    debugPrint(
+      '[DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}',
+    );
 
     final categoryAtSubmit = selectedCategory;
     final title = _title.text.trim();
@@ -681,10 +886,14 @@ class _CommunityaddState extends State<Communityadd> {
     final userDoc = await fs.collection('users').doc(user.uid).get();
     final String nickname = userDoc.data()?['nickname'] ?? "익명 제보자";
 
-// users/{uid} 에서 프로필 가져오기
+    // users/{uid} 에서 프로필 가져오기
     final userSnap = await fs.collection('users').doc(uid).get();
-    debugPrint('[WB] users/$uid exists=${userSnap.exists} data=${userSnap.data()}');
-    debugPrint('[BLOCK CHECK] uid=$uid writeBlockedUntil=${userSnap.data()?['writeBlockedUntil']} now=${DateTime.now()}');
+    debugPrint(
+      '[WB] users/$uid exists=${userSnap.exists} data=${userSnap.data()}',
+    );
+    debugPrint(
+      '[BLOCK CHECK] uid=$uid writeBlockedUntil=${userSnap.data()?['writeBlockedUntil']} now=${DateTime.now()}',
+    );
     final data = userSnap.data() ?? {};
     final blockedUntil = data['writeBlockedUntil'];
 
@@ -713,8 +922,9 @@ class _CommunityaddState extends State<Communityadd> {
     }
     final userData = userSnap.data() ?? {};
 
-    final String myNickName = (userData['nickName'] ?? userData['nickname'] ?? '익명').toString();
-// 네 users 문서에 nickname/name 이 있으니 그걸 우선 사용
+    final String myNickName =
+        (userData['nickName'] ?? userData['nickname'] ?? '익명').toString();
+    // 네 users 문서에 nickname/name 이 있으니 그걸 우선 사용
     final author = {
       'uid': uid,
 
@@ -725,7 +935,7 @@ class _CommunityaddState extends State<Communityadd> {
     };
 
     // ✅ delta를 읽어서 “저장용 blocks + images + videos” 생성(업로드 포함)
-    final built  = await _buildBlocksAndUpload(docId: docId);
+    final built = await _buildBlocksAndUpload(docId: docId);
     final blocks = built['blocks'] as List<dynamic>;
     final imageUrls = built['images'] as List<String>;
     final videoUrls = built['videos'] as List<String>;
@@ -733,12 +943,17 @@ class _CommunityaddState extends State<Communityadd> {
     final plainForSearch = (built['plain'] as String?) ?? '';
 
     final authUid = FirebaseAuth.instance.currentUser?.uid;
-    debugPrint('[CREATE CHECK] createdBy=$uid authUid=$authUid same=${uid == authUid}');
+    debugPrint(
+      '[CREATE CHECK] createdBy=$uid authUid=$authUid same=${uid == authUid}',
+    );
+    final pos = _finalPickedLatLng;
 
     try {
       print('[WRITE DATA] $data');
       print('[AUTH UID] ${FirebaseAuth.instance.currentUser?.uid}');
-      debugPrint('[COMMUNITY CHECK] createdBy(uid)=$uid authUid=${FirebaseAuth.instance.currentUser?.uid}');
+      debugPrint(
+        '[COMMUNITY CHECK] createdBy(uid)=$uid authUid=${FirebaseAuth.instance.currentUser?.uid}',
+      );
       print('[FINAL WRITE MAP] $data'); // data = Firestore에 넘기는 Map
 
       // ✅ Firestore 저장
@@ -760,15 +975,15 @@ class _CommunityaddState extends State<Communityadd> {
         // (선택) 검색/리스트 요약용
         'plain': plainForSearch,
 
-        'place': selectedPlace == null
+        'place': (selectedPlace == null || pos == null)
             ? null
             : {
-          'name': selectedPlace!.name,
-          'address': selectedPlace!.address,
-          'lat': selectedPlace!.lat,
-          'lng': selectedPlace!.lng,
-          'distanceM': selectedPlace!.distanceM,
-        },
+                'name': selectedPlace!.name,
+                'address': selectedPlace!.address,
+                'lat': pos.latitude,
+                'lng': pos.longitude,
+                'distanceM': selectedPlace!.distanceM,
+              },
 
         'weather': {
           'temp': _temp,
@@ -789,28 +1004,27 @@ class _CommunityaddState extends State<Communityadd> {
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
       });
-    }on FirebaseException catch (e) {
+    } on FirebaseException catch (e) {
       if (!mounted) return;
 
       if (e.code == 'permission-denied') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('글쓰기가 제한된 계정입니다.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('글쓰기가 제한된 계정입니다.')));
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('저장 실패: ${e.message ?? e.code}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('저장 실패: ${e.message ?? e.code}')));
       return;
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('저장 실패: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
       return;
     }
-
 
     // 초기화
     _title.clear();
@@ -848,7 +1062,6 @@ class _CommunityaddState extends State<Communityadd> {
         target = const Event();
     }
 
-
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => target),
@@ -870,7 +1083,6 @@ class _CommunityaddState extends State<Communityadd> {
       }
     } catch (_) {}
   }
-
 
   Future<void> _pickFromCameraAndInsert() async {
     try {
@@ -923,44 +1135,40 @@ class _CommunityaddState extends State<Communityadd> {
     });
   }
 
-
   String _regionLabelFromPlace(PlaceResult p) {
-    // 1) address가 있으면 그걸로 대충 시/구만 뽑기 (가장 간단)
-    final addr = p.address.trim();
+    String clean(String s) => s.trim().replaceFirst(RegExp(r'^KR\s+'), '');
 
-    // 예: "대구 중구 동성로..." -> "대구"
-    // 예: "부산광역시 해운대구 ..." -> "부산"
+    final name = clean(p.name);
+    final addr = clean(p.address);
+
+    // 0) name이 이미 "OO동/OO읍/OO면/OO구" 형태면 그걸 최우선으로
+    if (RegExp(r'(동|읍|면|구)$').hasMatch(name)) return name;
+
+    // 1) 주소에서 "OO동/OO읍/OO면" 뽑기
+    final mDong = RegExp(r'([가-힣0-9·\-\s]+?(동|읍|면))').firstMatch(addr);
+    if (mDong != null) return mDong.group(1)!.trim();
+
+    // 2) 없으면 "OO구/OO군" 뽑기
+    final mGu = RegExp(r'([가-힣0-9·\-\s]+?(구|군))').firstMatch(addr);
+    if (mGu != null) return mGu.group(1)!.trim();
+
+    // 3) 그래도 없으면 시/도(첫 토큰) fallback
     if (addr.isNotEmpty) {
-      final first = addr.split(' ').first; // 첫 토큰(대구/부산광역시/서울특별시 등)
-
-      // "OO광역시/특별시/자치시/도" 같은 꼬리를 정리
-      var cleaned = first
+      final first = addr.split(' ').first;
+      final cleaned = first
+          .replaceAll('특별자치시', '')
+          .replaceAll('특별자치도', '')
           .replaceAll('특별시', '')
           .replaceAll('광역시', '')
           .replaceAll('자치시', '')
-          .replaceAll('특별자치시', '')
-          .replaceAll('특별자치도', '')
           .replaceAll('자치도', '')
-          .replaceAll('도', '');
-
-      // 그래도 비면 원본 첫 토큰
-      if (cleaned.isEmpty) cleaned = first;
-
-      return cleaned;
-    }
-
-    // 2) address가 비면 장소명에서 뽑기(대구역/부평역 -> 대구/부평)
-    final name = p.name.trim();
-    if (name.isNotEmpty) {
-      // "대구역" -> "대구", "부평역" -> "부평"
-      return name
-          .replaceAll('역', '')
-          .replaceAll('시청', '')
-          .replaceAll('터미널', '')
+          .replaceAll('도', '')
           .trim();
+      return cleaned.isNotEmpty ? cleaned : first;
     }
 
-    return "현재";
+    // 마지막 fallback
+    return name.isNotEmpty ? name : "현재";
   }
 
   String _t(String? s) => (s ?? '').trim().replaceFirst(RegExp(r'^KR\s+'), '');
@@ -1210,6 +1418,9 @@ class _CommunityaddState extends State<Communityadd> {
         appBar: AppBar(title: const Text("새 게시물")),
         body: SingleChildScrollView(
           controller: _scrollController,
+          physics: _lockScroll
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1286,9 +1497,10 @@ class _CommunityaddState extends State<Communityadd> {
                         placeholder: '내용을 입력하세요...',
                         embedBuilders: [
                           _LocalImageEmbedBuilder(),
-                      LocalVideoEmbedBuilder(
-                        onPlay: (path, name) => _openVideoPlayerSheet(path: path, title: name),
-                      ),
+                          LocalVideoEmbedBuilder(
+                            onPlay: (path, name) =>
+                                _openVideoPlayerSheet(path: path, title: name),
+                          ),
                         ],
                       ),
                     ),
@@ -1354,13 +1566,56 @@ class _CommunityaddState extends State<Communityadd> {
 
                           const SizedBox(height: 8),
                           SizedBox(
-                            height: 160,
+                            height: 400,
                             width: double.infinity,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: _GoogleMapPreview(
-                                place: selectedPlace!,
-                              ), // ✅ 이게 맞음
+                              child: Listener(
+                                onPointerDown: (_) =>
+                                    setState(() => _lockScroll = true),
+                                onPointerUp: (_) =>
+                                    setState(() => _lockScroll = false),
+                                onPointerCancel: (_) =>
+                                    setState(() => _lockScroll = false),
+                                child: _AdjustableMap(
+                                  place: selectedPlace!,
+                                  onChanged: (latLng, newAddr, newName) async {
+                                    setState(() {
+                                      _finalPickedLatLng = latLng;
+
+                                      selectedPlace = PlaceResult(
+                                        name: (newName?.isNotEmpty ?? false)
+                                            ? newName!
+                                            : (() {
+                                                final a = (newAddr ?? '')
+                                                    .trim();
+                                                final m = RegExp(
+                                                  r'([가-힣0-9·\-\s]+?(동|읍|면))',
+                                                ).firstMatch(a);
+                                                if (m != null)
+                                                  return m.group(1)!.trim();
+
+                                                final g = RegExp(
+                                                  r'([가-힣0-9·\-\s]+?(구|군))',
+                                                ).firstMatch(a);
+                                                if (g != null)
+                                                  return g.group(1)!.trim();
+
+                                                return selectedPlace!.name;
+                                              })(),
+                                        address:
+                                            newAddr ?? selectedPlace!.address,
+                                        lat: latLng.latitude,
+                                        lng: latLng.longitude,
+                                        distanceM: selectedPlace!.distanceM,
+                                      );
+                                    });
+
+                                    _fetchWeatherForPlace(selectedPlace!);
+                                    _fetchAirFromTeamDashboard(selectedPlace!);
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1379,7 +1634,7 @@ class _CommunityaddState extends State<Communityadd> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    "${_regionLabelFromPlace(selectedPlace!)} 현재 날씨",
+                                    "${geo.regionLabelFromNameAddress(name: selectedPlace!.name, address: selectedPlace!.address)} 현재 날씨",
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -1441,18 +1696,37 @@ class _CommunityaddState extends State<Communityadd> {
                         );
 
                         if (result != null) {
-                          setState(() => selectedPlace = result);
-                          await _fetchWeatherForPlace(result);
-                          await _fetchAirFromTeamDashboard(result);
-                          await Future.delayed(
-                            const Duration(milliseconds: 200),
+                          setState(() {
+                            selectedPlace = result;
+                            _finalPickedLatLng = LatLng(result.lat, result.lng);
+                          });
+
+                          // ✅ 추가: 검색 결과도 Edit처럼 좌표 기반으로 동/주소 보정
+                          final info = await geo.reverseGeocodeFull(
+                            _finalPickedLatLng!,
                           );
                           if (!mounted) return;
-                          _scrollController.animateTo(
-                            _scrollController.position.maxScrollExtent,
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeOut,
-                          );
+
+                          setState(() {
+                            selectedPlace = PlaceResult(
+                              name:
+                                  (info?.name != null &&
+                                      info!.name!.trim().isNotEmpty)
+                                  ? info.name!.trim()
+                                  : result.name,
+                              address:
+                                  (info?.address != null &&
+                                      info!.address!.trim().isNotEmpty)
+                                  ? info.address!.trim()
+                                  : result.address,
+                              lat: result.lat,
+                              lng: result.lng,
+                              distanceM: result.distanceM,
+                            );
+                          });
+
+                          await _fetchWeatherForPlace(selectedPlace!);
+                          await _fetchAirFromTeamDashboard(selectedPlace!);
                         }
                       },
                     ),
