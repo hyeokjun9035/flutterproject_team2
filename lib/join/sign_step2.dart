@@ -31,14 +31,10 @@ class MyApp extends StatelessWidget {
 }
 class JoinPage2 extends StatefulWidget {
   final String email;
-  //authcation 과 동일한 uid 사용을 위해서 끌어옴
-  final String uid;
 
   const JoinPage2({
     super.key,
     required this.email,
-    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-    required this.uid,
   });
 
   @override
@@ -178,18 +174,16 @@ class _JoinPage2State extends State<JoinPage2>{
 
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_)=> JoinPage3(
-                    email: widget.email,
-                    name: _name.text,
-                    profile_image_url: imageUrl,
-                    nickName: _nickName.text,
-                    intro: _intro.text,
-                    //authcation 과 동일한 uid 사용을 위해서 끌어옴
-                    uid: widget.uid,
-                  )
-                  )
+                  MaterialPageRoute(
+                    builder: (_) => JoinPage3(
+                      email: widget.email,
+                      name: _name.text,
+                      profile_image_url: imageUrl,
+                      nickName: _nickName.text,
+                      intro: _intro.text,
+                    ),
+                  ),
                 );
-
               },
               child: const Text("다음"),
             ),

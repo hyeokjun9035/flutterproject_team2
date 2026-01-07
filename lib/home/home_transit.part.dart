@@ -20,6 +20,28 @@ class _TransitCard extends StatefulWidget {
   State<_TransitCard> createState() => _TransitCardState();
 }
 
+// TransitCardState 교체용 (필요 import: dart:async, dart:convert, material, shared_preferences)
+
+class TransitCardLegUiStep {
+  const TransitCardLegUiStep(this.icon, this.label);
+  final IconData icon;
+  final String label;
+}
+
+class TransitCardBusLegInfo {
+  const TransitCardBusLegInfo({
+    required this.routeNo,
+    required this.lat,
+    required this.lon,
+    required this.rawRoute,
+  });
+
+  final String routeNo;
+  final double lat;
+  final double lon;
+  final String rawRoute;
+}
+
 class _TransitCardState extends State<_TransitCard> {
   TransitVariant _selected = TransitVariant.fastest;
 
@@ -36,9 +58,8 @@ class _TransitCardState extends State<_TransitCard> {
   final Map<String, DateTime> _stopCacheAt = {};
 
   // ----------------------------
-  // RAW legs helpers
+  // RAW helpers
   // ----------------------------
-
   List<Map<String, dynamic>> _legsForVariant(TransitVariant v) {
     final raw = widget.data.raw;
     if (raw.isEmpty) return const [];
@@ -57,24 +78,26 @@ class _TransitCardState extends State<_TransitCard> {
     return legs.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  String _prettyJson(Object? v) {
+    try {
+      return const JsonEncoder.withIndent('  ').convert(v);
+    } catch (_) {
+      return v.toString();
+    }
+  }
+
+  void _debugDumpItineraryLegs(TransitVariant v) {
+    final legs = _legsForVariant(v);
+    debugPrint('[TMAP] v=$v legs=${legs.length}');
+    debugPrint(_prettyJson(legs));
+  }
+
   String _rawRouteStringFromLeg(Map<String, dynamic> leg) {
     return (leg['route'] ?? leg['routeName'] ?? leg['lineName'] ?? '').toString();
   }
 
   double? _toDouble(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v');
 
-  String? extractRouteToken(String s) {
-    final cleaned = s.replaceAll(RegExp(r'\s+'), '').replaceAll('번', '');
-
-    // 1) "간선:402", "마을:종로09" 처럼 콜론 뒤
-    final m1 = RegExp(r'[:：]([0-9A-Za-z가-힣-]+)').firstMatch(cleaned);
-    final t1 = m1?.group(1);
-    if (t1 != null && RegExp(r'\d').hasMatch(t1)) return t1;
-
-    // 2) 숫자 포함 토큰
-    final m2 = RegExp(r'([0-9A-Za-z가-힣-]*\d[0-9A-Za-z가-힣-]*)').firstMatch(cleaned);
-    return m2?.group(1);
-  }
 
   String _normRouteNo(String s) => s
       .replaceAll(RegExp(r'\s+'), '')
@@ -82,23 +105,42 @@ class _TransitCardState extends State<_TransitCard> {
       .toUpperCase()
       .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
+  String? extractRouteToken(String s) {
+    final cleaned = s.replaceAll(RegExp(r'\s+'), '').replaceAll('번', '');
+
+    // "간선:402", "마을:종로09"
+    final m1 = RegExp(r'[:：]([0-9A-Za-z가-힣-]+)').firstMatch(cleaned);
+    final t1 = m1?.group(1);
+    if (t1 != null && RegExp(r'\d').hasMatch(t1)) return t1;
+
+    // "M6450", "1400-1", "종로09", "간선402"(콜론이 없는 경우도 방어)
+    final m2 = RegExp(r'([0-9A-Za-z가-힣-]*\d[0-9A-Za-z가-힣-]*)').firstMatch(cleaned);
+    return m2?.group(1);
+  }
+
   bool _isVillageBusRoute(String rawRoute, String routeNo) {
-    if (rawRoute.contains('마을')) return true;
+    final r = rawRoute.replaceAll(RegExp(r'\s+'), '');
+
+    // ✅ raw에 "마을"이 있으면 무조건 마을버스
+    if (r.contains('마을')) return true;
+
+    // ✅ raw에 "간선/지선/광역/급행/순환/직행/좌석/공항" 같은 타입이 있으면 마을버스 아님
+    if (RegExp(r'(간선|지선|광역|급행|순환|직행|좌석|공항)').hasMatch(r)) return false;
+
+    // ✅ 타입이 명시되지 않은데 노선번호에 한글이 섞이면(종로09 등) 마을버스 취급
     if (RegExp(r'[가-힣]').hasMatch(routeNo)) return true;
+
     return false;
   }
 
   bool _hasBusLeg(TransitVariant v) {
     final legs = _legsForVariant(v);
-    for (final leg in legs) {
-      final mode = (leg['mode'] ?? '').toString().toUpperCase();
-      if (mode == 'BUS') return true;
-    }
-    return false;
+    return legs.any((leg) => (leg['mode'] ?? '').toString().toUpperCase() == 'BUS');
   }
 
   bool _hasVillageBusLeg(TransitVariant v) {
     final legs = _legsForVariant(v);
+
     for (final leg in legs) {
       final mode = (leg['mode'] ?? '').toString().toUpperCase();
       if (mode != 'BUS') continue;
@@ -114,7 +156,6 @@ class _TransitCardState extends State<_TransitCard> {
 
   bool _shouldPollBus(TransitVariant v) {
     if (!_hasBusLeg(v)) return false;
-    // ✅ 마을버스가 섞인 루트면 폴링 자체를 안 함(요구사항)
     if (_hasVillageBusLeg(v)) return false;
     return true;
   }
@@ -133,24 +174,27 @@ class _TransitCardState extends State<_TransitCard> {
       final routeNo = _normRouteNo(token);
       if (routeNo.isEmpty) continue;
 
+      // ✅ 마을버스면 폴링 대상 제외
       if (_isVillageBusRoute(rawRoute, routeNo)) continue;
 
-      final start = (leg['start'] is Map) ? Map<String, dynamic>.from(leg['start'] as Map) : <String, dynamic>{};
+      final start = (leg['start'] is Map)
+          ? Map<String, dynamic>.from(leg['start'] as Map)
+          : <String, dynamic>{};
 
       final lat = _toDouble(start['lat'] ?? start['startY'] ?? start['y']);
       final lon = _toDouble(start['lon'] ?? start['lng'] ?? start['startX'] ?? start['x']);
+
       if (lat == null || lon == null) continue;
 
-      return _BusLegInfo(routeNo: routeNo, lat: lat, lon: lon);
+      return _BusLegInfo(routeNo: routeNo, lat: lat, lon: lon, rawRoute: rawRoute);
     }
 
     return null;
   }
 
   // ----------------------------
-  // Variant persistence
+  // prefs
   // ----------------------------
-
   Future<void> _loadVariant() async {
     final favId = widget.favoriteId;
     if (favId == null || favId.isEmpty) return;
@@ -175,16 +219,9 @@ class _TransitCardState extends State<_TransitCard> {
     await prefs.setString(_variantKey(favId), v.name);
   }
 
-  void _debugDumpItineraryLegs(TransitVariant v) {
-    final legs = _legsForVariant(v);
-    debugPrint('[TMAP] v=$v legs=${legs.length}');
-    debugPrint(const JsonEncoder.withIndent('  ').convert(legs));
-  }
-
   // ----------------------------
-  // Realtime bus polling
+  // Bus stop cache + arrival
   // ----------------------------
-
   String _stopKey(double lat, double lon, String routeNo) =>
       '${_normRouteNo(routeNo)}@${lat.toStringAsFixed(5)},${lon.toStringAsFixed(5)}';
 
@@ -207,8 +244,17 @@ class _TransitCardState extends State<_TransitCard> {
       return cached;
     }
 
-    final stops = await widget.busArrivalService.findNearbyStops(lat: lat, lon: lon, maxStops: 8);
+    final stops = await widget.busArrivalService.findNearbyStops(
+        lat: lat,
+        lon: lon,
+        maxStops: 20,
+    );
 
+    debugPrint('[BUS] candidates=${stops.length} route=$routeNo '
+        'near=(${lat.toStringAsFixed(6)},${lon.toStringAsFixed(6)}) '
+        '=> ${stops.map((s) => "${s.name}/${s.cityCode}/${s.nodeId}").join(" | ")}');
+
+    // ✅ "routeNo가 실제로 뜨는 정류장"을 찾는다 (최대 8개)
     for (final st in stops) {
       final t = await widget.busArrivalService.fetchNextArrivalText(
         cityCode: st.cityCode,
@@ -228,14 +274,31 @@ class _TransitCardState extends State<_TransitCard> {
     if (!_shouldPollBus(v)) return null;
 
     final info = _firstPollableBusLegInfoFromRaw(v);
-    if (info == null) return null;
 
-    final lat = info.lat;
-    final lon = info.lon;
-    final routeNo = info.routeNo;
+    final lat = info?.lat ?? widget.startLat;
+    final lon = info?.lon ?? widget.startLon;
+
+    debugPrint('[BUS] fetch v=$v info=${info != null} rawRoute=${info?.rawRoute} '
+        'lat=${lat.toStringAsFixed(6)} lon=${lon.toStringAsFixed(6)}');
+
+    if (lat == 0.0 || lon == 0.0) return null;
+
+    // ✅ routeNo: raw에서 우선, 없으면 summary 텍스트에서 extractRouteToken으로 뽑기
+    final s = widget.data.summaryOf(v);
+    final fallbackToken =
+        extractRouteToken(s.firstArrivalText) ?? extractRouteToken(s.secondArrivalText);
+
+    final routeNo = info?.routeNo ?? _normRouteNo(fallbackToken ?? '');
+
+    debugPrint('[BUS] routeNo=$routeNo fallbackToken=$fallbackToken');
+
+    if (routeNo.isEmpty) return null;
 
     final stop = await _ensureStopForRoute(lat: lat, lon: lon, routeNo: routeNo);
-    if (stop == null) return null;
+    if (stop == null) {
+      debugPrint('[BUS] stop not found for route=$routeNo');
+      return null;
+    }
 
     return widget.busArrivalService.fetchNextArrivalText(
       cityCode: stop.cityCode,
@@ -244,11 +307,49 @@ class _TransitCardState extends State<_TransitCard> {
     );
   }
 
+  void _refreshRealtimeNow() {
+    final hasBus = _hasBusLeg(_selected);
+    final hasVillage = _hasVillageBusLeg(_selected);
+    final shouldPoll = _shouldPollBus(_selected);
+
+    debugPrint('[BUS] refresh v=$_selected hasBus=$hasBus hasVillage=$hasVillage shouldPoll=$shouldPoll');
+
+    if (!shouldPoll) {
+      if (mounted) {
+        setState(() {
+          _busFuture = Future.value(null);
+        });
+      }
+      return;
+    }
+
+    if (_liveInFlight) return;
+    _liveInFlight = true;
+
+    final busFut = _fetchBusArrivalForVariant(_selected).catchError((_) => null);
+
+    if (mounted) {
+      setState(() {
+        _busFuture = busFut;
+      });
+    }
+
+    busFut.then((_) {
+      _liveUpdatedAt = DateTime.now();
+    }).whenComplete(() {
+      _liveInFlight = false;
+      if (mounted) setState(() {});
+    });
+  }
+
   void _startLivePolling() {
     _liveTimer?.cancel();
 
     if (!_shouldPollBus(_selected)) {
-      setState(() => _busFuture = Future.value(null));
+      setState(() {
+        _busFuture = null;
+        _liveUpdatedAt = null;
+      });
       return;
     }
 
@@ -261,147 +362,9 @@ class _TransitCardState extends State<_TransitCard> {
     _startLivePolling();
   }
 
-  void _refreshRealtimeNow() {
-    if (!_shouldPollBus(_selected)) {
-      if (mounted) setState(() => _busFuture = Future.value(null));
-      return;
-    }
-
-    if (_liveInFlight) return;
-    _liveInFlight = true;
-
-    final busFut = _fetchBusArrivalForVariant(_selected).catchError((_) => null);
-
-    if (mounted) setState(() => _busFuture = busFut);
-
-    busFut.then((_) => _liveUpdatedAt = DateTime.now()).whenComplete(() {
-      _liveInFlight = false;
-      if (mounted) setState(() {});
-    });
-  }
-
   // ----------------------------
-  // UI building: steps from RAW legs
+  // lifecycle
   // ----------------------------
-
-  String _cleanLabel(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
-
-  String _firstNonEmpty(List<dynamic> xs) {
-    for (final x in xs) {
-      final s = (x ?? '').toString().trim();
-      if (s.isNotEmpty) return s;
-    }
-    return '';
-  }
-
-  String _legMinutesText(Map<String, dynamic> leg) {
-    final st = leg['sectionTime'];
-    if (st is num) {
-      final min = (st.toDouble() / 60.0).ceil();
-      return '${min}분';
-    }
-
-    final v = leg['duration'] ?? leg['time'];
-    if (v is num) {
-      final n = v.toDouble();
-      final min = (n >= 120) ? (n / 60.0).ceil() : n.ceil();
-      return '${min}분';
-    }
-
-    return '';
-  }
-
-  IconData _iconFromMode(String modeUp) {
-    if (modeUp == 'BUS') return Icons.directions_bus;
-    if (modeUp == 'SUBWAY' || modeUp == 'METRO') return Icons.subway;
-    if (modeUp == 'WALK') return Icons.directions_walk;
-    if (modeUp == 'TRANSFER') return Icons.swap_horiz;
-    if (modeUp == 'TRAIN') return Icons.train;
-    return Icons.more_horiz;
-  }
-
-  String _labelFromLeg(Map<String, dynamic> leg) {
-    final modeUp = (leg['mode'] ?? '').toString().toUpperCase();
-    final start = (leg['start'] is Map) ? Map<String, dynamic>.from(leg['start'] as Map) : const {};
-    final end = (leg['end'] is Map) ? Map<String, dynamic>.from(leg['end'] as Map) : const {};
-
-    final startName = _cleanLabel((start['name'] ?? '').toString());
-    final endName = _cleanLabel((end['name'] ?? '').toString());
-
-    if (modeUp == 'BUS') {
-      final rawRoute = _rawRouteStringFromLeg(leg);
-      final token = extractRouteToken(rawRoute) ?? _cleanLabel(rawRoute);
-      final routeNo = _normRouteNo(token);
-      final isVillage = _isVillageBusRoute(rawRoute, routeNo);
-
-      final head = isVillage ? '마을버스' : '버스';
-      final core = token.isEmpty ? head : '$head $token';
-
-      if (startName.isNotEmpty && endName.isNotEmpty) {
-        return _cleanLabel('$core · $startName→$endName');
-      }
-      return core;
-    }
-
-    if (modeUp == 'SUBWAY' || modeUp == 'METRO') {
-      final line = _firstNonEmpty([leg['route'], leg['lineName'], leg['routeName']]);
-      final core = line.isNotEmpty ? line : '지하철';
-      if (startName.isNotEmpty && endName.isNotEmpty) {
-        return _cleanLabel('$core · $startName→$endName');
-      }
-      return _cleanLabel(core);
-    }
-
-    if (modeUp == 'WALK') {
-      final m = _legMinutesText(leg);
-      return m.isEmpty ? '도보' : '도보 $m';
-    }
-
-    if (modeUp == 'TRAIN') {
-      final name = _firstNonEmpty([leg['routeName'], leg['lineName'], leg['route']]);
-      final core = name.isNotEmpty ? name : '열차';
-      if (startName.isNotEmpty && endName.isNotEmpty) {
-        return _cleanLabel('$core · $startName→$endName');
-      }
-      return core;
-    }
-
-    if (modeUp == 'TRANSFER') return '환승';
-
-    return modeUp.isEmpty ? '이동' : modeUp;
-  }
-
-  List<_LegUiStep> _buildLegSteps(TransitVariant v) {
-    final legs = _legsForVariant(v);
-
-    final out = <_LegUiStep>[];
-    out.add(_LegUiStep(Icons.my_location, '출발'));
-
-    for (final leg in legs) {
-      final modeUp = (leg['mode'] ?? '').toString().toUpperCase();
-      if (modeUp.isEmpty) continue;
-
-      out.add(_LegUiStep(
-        _iconFromMode(modeUp),
-        _labelFromLeg(leg),
-      ));
-    }
-
-    out.add(_LegUiStep(Icons.flag, '도착'));
-    return out;
-  }
-
-  String _hhmmss(DateTime dt) {
-    final h = dt.hour.toString().padLeft(2, '0');
-    final m = dt.minute.toString().padLeft(2, '0');
-    final s = dt.second.toString().padLeft(2, '0');
-    return '$h:$m:$s';
-  }
-
-  // ----------------------------
-  // Flutter lifecycle
-  // ----------------------------
-
   @override
   void initState() {
     super.initState();
@@ -442,32 +405,185 @@ class _TransitCardState extends State<_TransitCard> {
   }
 
   // ----------------------------
-  // Build
+  // UI helpers (leg flow)
   // ----------------------------
+  String _hhmmss(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  List<TransitCardLegUiStep> _buildLegSteps(TransitVariant v) {
+    final legs = _legsForVariant(v);
+
+    IconData iconFromMode(String modeUp) {
+      switch (modeUp) {
+        case 'BUS':
+          return Icons.directions_bus;
+        case 'SUBWAY':
+        case 'METRO':
+          return Icons.subway;
+        case 'TRAIN':
+          return Icons.train;
+        case 'WALK':
+          return Icons.directions_walk;
+        case 'TRANSFER':
+          return Icons.swap_horiz;
+        default:
+          return Icons.more_horiz;
+      }
+    }
+
+    String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    String? _legMinutes(Map<String, dynamic> leg) {
+      // ✅ TMAP sectionTime은 "초"로 내려오는 케이스가 많음
+      final st = leg['sectionTime'];
+      final sec = (st is num) ? st.toDouble() : double.tryParse('$st');
+      if (sec != null) {
+        final min = (sec / 60.0).floor(); // 55초면 0분 (너 routeview 표시랑 유사)
+        return '${min}분';
+      }
+
+      // fallback (혼재 가능)
+      final v = leg['duration'] ?? leg['time'];
+      final n = (v is num) ? v.toDouble() : double.tryParse('$v');
+      if (n != null) {
+        final min = (n >= 120) ? (n / 60.0).floor() : n.floor();
+        return '${min}분';
+      }
+      return null;
+    }
+
+    String _busTypeLabel(String rawRoute, String routeNo) {
+      if (_isVillageBusRoute(rawRoute, routeNo)) return '마을버스';
+
+      final cleaned = rawRoute.replaceAll(RegExp(r'\s+'), '');
+      if (cleaned.contains('간선')) return '간선버스';
+      if (cleaned.contains('지선')) return '지선버스';
+      if (cleaned.contains('광역')) return '광역버스';
+      if (cleaned.contains('순환')) return '순환버스';
+      if (cleaned.contains('급행')) return '급행버스';
+      return '버스';
+    }
+
+    String _firstNonEmpty(List<dynamic> xs) {
+      for (final x in xs) {
+        final s = (x ?? '').toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      return '';
+    }
+
+    String labelFromLeg(Map<String, dynamic> leg) {
+      final modeUp = (leg['mode'] ?? '').toString().toUpperCase();
+      final start = (leg['start'] is Map) ? Map<String, dynamic>.from(leg['start'] as Map) : const {};
+      final end = (leg['end'] is Map) ? Map<String, dynamic>.from(leg['end'] as Map) : const {};
+
+      final startName = _clean((start['name'] ?? '').toString());
+      final endName = _clean((end['name'] ?? '').toString());
+
+      if (modeUp == 'BUS') {
+        final rawRoute = _rawRouteStringFromLeg(leg);
+        final token = extractRouteToken(rawRoute) ?? _clean(rawRoute);
+        final routeNo = _normRouteNo(token);
+
+        final head = _busTypeLabel(rawRoute, routeNo);
+        final core = token.isEmpty ? head : '$head $token';
+
+        if (startName.isNotEmpty && endName.isNotEmpty) {
+          return _clean('$core · $startName→$endName');
+        }
+        return core;
+      }
+
+      if (modeUp == 'SUBWAY' || modeUp == 'METRO') {
+        String line = _firstNonEmpty([leg['route'], leg['lineName'], leg['routeName']]);
+
+        // Lane에 더 자세한 route가 있으면 그걸 우선
+        final lane = (leg['Lane'] is List && (leg['Lane'] as List).isNotEmpty)
+            ? Map<String, dynamic>.from((leg['Lane'] as List).first as Map)
+            : null;
+        final laneRoute = lane?['route']?.toString().trim() ?? '';
+        if (laneRoute.isNotEmpty) line = laneRoute;
+
+        final core = line.isNotEmpty ? line : '지하철';
+        if (startName.isNotEmpty && endName.isNotEmpty) {
+          return _clean('$core · $startName→$endName');
+        }
+        return _clean(core);
+      }
+
+      if (modeUp == 'TRAIN') {
+        String line = _firstNonEmpty([leg['route'], leg['lineName'], leg['routeName']]);
+        final lane = (leg['Lane'] is List && (leg['Lane'] as List).isNotEmpty)
+            ? Map<String, dynamic>.from((leg['Lane'] as List).first as Map)
+            : null;
+        final laneRoute = lane?['route']?.toString().trim() ?? '';
+        if (laneRoute.isNotEmpty) line = laneRoute;
+
+        final core = line.isNotEmpty ? line : '열차';
+        if (startName.isNotEmpty && endName.isNotEmpty) {
+          return _clean('$core · $startName→$endName');
+        }
+        return _clean(core);
+      }
+
+      if (modeUp == 'WALK') {
+        final m = _legMinutes(leg);
+        return m == null ? '도보' : '도보 $m';
+      }
+
+      if (modeUp == 'TRANSFER') return '환승';
+      return modeUp.isEmpty ? '이동' : modeUp;
+    }
+
+    final out = <TransitCardLegUiStep>[];
+    out.add(const TransitCardLegUiStep(Icons.my_location, '출발'));
+
+    for (final leg in legs) {
+      final modeUp = (leg['mode'] ?? '').toString().toUpperCase();
+      if (modeUp.isEmpty) continue;
+
+      out.add(TransitCardLegUiStep(
+        iconFromMode(modeUp),
+        labelFromLeg(leg),
+      ));
+    }
+
+    out.add(const TransitCardLegUiStep(Icons.flag, '도착'));
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
-    Widget _buildFlowRow(List<_LegUiStep> steps, TextTheme textTheme) {
+    final textTheme = Theme.of(context).textTheme;
+
+    Widget _buildFlowRow(List<TransitCardLegUiStep> steps) {
       if (steps.isEmpty) return const SizedBox.shrink();
 
-      Widget node(_LegUiStep s) {
+      Widget node(TransitCardLegUiStep s) {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(s.icon, size: 18, color: Colors.white),
             const SizedBox(height: 4),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(
-                s.label,
-                textAlign: TextAlign.center,
-                softWrap: true,
-                maxLines: null,
-                overflow: TextOverflow.visible,
-                style: textTheme.labelSmall?.copyWith(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Tooltip(
+                message: s.label, // ✅ 혹시라도 화면에서 보기 불편하면 길게 눌러 풀네임
+                child: Text(
+                  s.label,
+                  textAlign: TextAlign.center,
+                  softWrap: true,
+                  maxLines: null,
+                  overflow: TextOverflow.visible,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                  ),
                 ),
               ),
             ),
@@ -492,8 +608,6 @@ class _TransitCardState extends State<_TransitCard> {
       );
     }
 
-    final textTheme = Theme.of(context).textTheme;
-
     final s = widget.data.summaryOf(_selected);
     final flowSteps = _buildLegSteps(_selected);
     final arrivalText = [s.firstArrivalText, s.secondArrivalText].where((e) => e.isNotEmpty).join(' / ');
@@ -505,7 +619,10 @@ class _TransitCardState extends State<_TransitCard> {
         onSelected: (_) async {
           setState(() => _selected = v);
           await _saveVariant(v);
-          _debugDumpItineraryLegs(v);
+
+          // ✅ raw legs 샘플 보고 싶으면 이거 유지
+          // _debugDumpItineraryLegs(v);
+
           _resetLivePolling();
         },
       );
@@ -526,7 +643,7 @@ class _TransitCardState extends State<_TransitCard> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildFlowRow(flowSteps, textTheme),
+          _buildFlowRow(flowSteps),
           const SizedBox(height: 12),
           Text(
             s.summary,
@@ -543,30 +660,22 @@ class _TransitCardState extends State<_TransitCard> {
             future: _busFuture,
             builder: (context, snap) {
               final hasBus = _hasBusLeg(_selected);
+              final hasVillage = _hasVillageBusLeg(_selected);
+
               if (!hasBus) return const SizedBox.shrink();
 
-              // ✅ 마을버스 포함이면: 폴링 금지 + 고정 멘트
-              if (_hasVillageBusLeg(_selected)) {
+              // ✅ 마을버스 포함이면 고정 멘트
+              if (hasVillage) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    '마을버스 실시간 도착정보는 지원하지 않습니다',
+                    '마을버스 정보는 지원하지 않습니다',
                     style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w700),
                   ),
                 );
               }
 
-              if (_busFuture == null) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    '버스 도착정보 준비 중…',
-                    style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600),
-                  ),
-                );
-              }
-
-              if (snap.connectionState == ConnectionState.waiting) {
+              if (_busFuture == null || snap.connectionState == ConnectionState.waiting) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -607,6 +716,7 @@ class _TransitCardState extends State<_TransitCard> {
             ),
 
           const SizedBox(height: 10),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -704,17 +814,25 @@ class _WalkFallbackCard extends StatelessWidget {
 }
 
 class _BusLegInfo {
-  const _BusLegInfo({required this.routeNo, required this.lat, required this.lon});
   final String routeNo;
   final double lat;
   final double lon;
+  final String rawRoute;
+  const _BusLegInfo({
+    required this.routeNo,
+    required this.lat,
+    required this.lon,
+    required this.rawRoute,
+  });
 }
 
-class _LegUiStep {
-  _LegUiStep(this.icon, this.label);
-  final IconData icon;
-  final String label;
-}
+double? _toDouble(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v');
+
+String _normRouteNo(String s) => s
+    .replaceAll(RegExp(r'\s+'), '')
+    .replaceAll('번', '')
+    .toUpperCase()
+    .replaceAll(RegExp(r'[^0-9A-Z가-힣-]'), '');
 
 class TransitTooShort implements Exception {
   TransitTooShort(this.distanceMeters, this.walkMinutes);

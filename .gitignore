@@ -44,8 +44,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-android/app/src/main/res/values/strings.xml
-android/app/google-services.json
+
 # Flutter generated platform files
 linux/flutter/
 windows/flutter/
@@ -56,7 +55,6 @@ android/.gradle/
 android/local.properties
 **/GeneratedPluginRegistrant.java
 
-
-# 최상위 .gitignore에 추가 중복이라 제거 260106 전경환
-#android/.gradle/
-#android/local.properties
+# Firebase config (DO NOT COMMIT)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
