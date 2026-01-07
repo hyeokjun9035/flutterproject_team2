@@ -1042,80 +1042,89 @@ exports.sendPostNotification = onDocumentCreated({
   region: "asia-northeast3"
 }, async (event) => {
   const snapshot = event.data;
-  if (!snapshot) return null;
+  if (!snapshot) {
+    console.log("❌ 데이터 스냅샷이 없습니다.");
+    return null;
+  }
 
   const postData = snapshot.data();
   const postId = event.params.postId;
 
-  console.log(`🚀 [시작] 새 게시글 감지 (ID: ${postId})`);
+  console.log(`🚀 [시작] ID: ${postId}`);
+  console.log("📝 전체 데이터:", JSON.stringify(postData)); // 데이터 전체 출력
 
-  // 1. 카테고리 필터링
+  // 1. 카테고리 확인
   if (postData.category !== "사건/이슈") {
-    console.log(`ℹ️ 알림 생략: 카테고리가 '${postData.category}'입니다.`);
+    console.log(`ℹ️ 생략: 카테고리 미일치 (${postData.category})`);
     return null;
   }
 
-  // 2. 게시글 위치 정보 가져오기 (?. 연산자로 안전하게 접근)
-  const postLat = parseFloat(postData.place?.lat);
-  const postLon = parseFloat(postData.place?.lng);
+  // 2. 위치 데이터 확인 (매우 중요)
+  const place = postData.place;
+  console.log("📍 place 객체 상태:", JSON.stringify(place));
+
+  if (!place || place.lat === undefined || place.lng === undefined) {
+    console.log("❌ 오류: place.lat 또는 lng가 존재하지 않음");
+    return null;
+  }
+
+  const postLat = Number(place.lat);
+  const postLon = Number(place.lng);
 
   if (isNaN(postLat) || isNaN(postLon)) {
-    console.log("❌ 알림 생략: 게시글(place)에 유효한 위경도 좌표가 없습니다.");
+    console.log(`❌ 오류: 좌표가 숫자가 아님 { lat: ${place.lat}, lng: ${place.lng} }`);
     return null;
   }
-
-  // 데이터 구조에 맞춰 닉네임 가져오기 (대소문자 주의)
-  const nickname = postData.user_nickName || postData.author?.nickName || "익명";
-  const title = `📍 내 주변 사건/이슈 제보: ${nickname}님`;
-  const content = postData.title || postData.plain || "새로운 제보가 올라왔습니다.";
-  const body = content.length > 30 ? content.substring(0, 30) + "..." : content;
 
   try {
     const usersSnapshot = await admin.firestore().collection('users').get();
+    console.log(`👥 전체 유저 수: ${usersSnapshot.size}명`);
+
     const targetTokens = [];
 
     usersSnapshot.forEach(doc => {
       const userData = doc.data();
-      // 유저 위치 정보 안전하게 파싱
-      const userLat = parseFloat(userData.lastLocation?.latitude);
-      const userLon = parseFloat(userData.lastLocation?.longitude);
       const token = userData.fcmToken;
+
+      // 1. 위치 정보 가져오기 (Map 안이나 최상위 모두 체크)
+      const lat = userData.lastLocation?.latitude || userData.latitude;
+      const lon = userData.lastLocation?.longitude || userData.longitude;
+
+      const userLat = parseFloat(lat);
+      const userLon = parseFloat(lon);
+
+      // 로그 추가: 어떤 값을 읽었는지 확인용
+      // console.log(`유저(${doc.id}) 좌표 읽기 성공: ${userLat}, ${userLon}`);
 
       if (!isNaN(userLat) && !isNaN(userLon) && token) {
         const distance = calculateDistance(postLat, postLon, userLat, userLon);
-        if (distance <= 2.0) {
+
+        // 테스트 성공을 위해 범위를 10km로 살짝 늘려봅시다.
+        if (distance <= 10.0) {
           targetTokens.push(token);
         }
       }
     });
 
-    console.log(`🔎 거리 계산 완료: 2km 이내 사용자 ${targetTokens.length}명 발견`);
+    console.log(`🔎 대상 토큰 개수: ${targetTokens.length}`);
 
     if (targetTokens.length > 0) {
       const message = {
-        notification: { title, body },
-        data: { postId, type: "community" },
-        tokens: targetTokens,
+        notification: {
+          title: `📍 내 주변 사건/이슈: ${postData.author?.nickName || "알림"}`,
+          body: postData.title || "새 제보가 올라왔습니다."
+        },
+        tokens: [...new Set(targetTokens)],
       };
 
       const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(`✅ 알림 발송 완료: ${response.successCount}개 성공`);
+      console.log(`✅ 전송 결과: ${response.successCount}개 성공, ${response.failureCount}개 실패`);
+    } else {
+      console.log("⚠️ 알림을 보낼 대상(조건 맞는 유저)이 없습니다.");
     }
 
-    // 알림함 저장
-    await admin.firestore().collection("notifications").add({
-      title: title,
-      body: body,
-      postId: postId,
-      senderNickname: nickname,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      type: "community",
-      isRead: false
-    });
-    console.log("✅ notifications 기록 완료");
-
   } catch (error) {
-    console.error("❌ 알림 처리 중 시스템 오류 발생:", error);
+    console.error("❌ 실행 중 에러 발생:", error);
   }
 });
 

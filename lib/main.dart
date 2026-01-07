@@ -17,9 +17,70 @@ import 'package:flutter_project/notifications/notions.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+Future<void> updateUserData() async {
+  User? user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  try {
+    // Position 앞에 geo. 추가
+    geo.Position position = await _determinePosition();
+    String? token = await FirebaseMessaging.instance.getToken();
+
+    if (token != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'fcmToken': token,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'lastLocation': {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ [자동 업데이트 성공]');
+    }
+  } catch (e) {
+    debugPrint('❌ [자동 업데이트 실패] 원인: $e');
+  }
+}
+
+//  _determinePosition 함수 수정
+Future<geo.Position> _determinePosition() async {
+  bool serviceEnabled;
+  geo.LocationPermission permission;
+
+  // 1. 위치 서비스 활성화 여부 확인
+  serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    return Future.error('위치 서비스가 비활성화되어 있습니다.');
+  }
+
+  // 2. 현재 권한 상태 확인
+  permission = await geo.Geolocator.checkPermission();
+
+  // 3. 권한이 거부된 경우 요청
+  if (permission == geo.LocationPermission.denied) {
+    permission = await geo.Geolocator.requestPermission();
+    if (permission == geo.LocationPermission.denied) {
+      return Future.error('위치 권한이 거부되었습니다.');
+    }
+  }
+
+  // 4. 영구적으로 거부된 경우
+  if (permission == geo.LocationPermission.deniedForever) {
+    return Future.error('위치 권한이 영구적으로 거부되어 설정에서 허용해야 합니다.');
+  }
+
+  // 5. 모든 관문을 통과하면 현재 위치 반환
+  return await geo.Geolocator.getCurrentPosition();
+}
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -30,6 +91,15 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  try {
+    String? fcmToken = await FirebaseMessaging.instance.getToken();
+    debugPrint('************************************************');
+    debugPrint('🔥 [FCM TOKEN] : $fcmToken');
+    debugPrint('************************************************');
+  } catch (e) {
+    debugPrint('❌ [FCM TOKEN ERROR] : $e');
+  }
 
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.debug,
@@ -141,7 +211,11 @@ Future<void> main() async {
   }
 
   runApp(const MyApp());
-
+  FirebaseAuth.instance.authStateChanges().listen((User? user) {
+    if (user != null) {
+      updateUserData();
+    }
+  });
 
 }
 
