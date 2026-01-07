@@ -17,6 +17,12 @@ class UserMypage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
+    if (user == null) {
+      // 로그인 안 된 상태면 로그인 화면으로 보내거나 안내
+      return const Scaffold(
+        body: Center(child: Text("로그인이 필요합니다.")),
+      );
+    }
 
     return PutterScaffold(
       currentIndex: 2,
@@ -118,9 +124,9 @@ class UserMypage extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                     children: [
-                      _buildMenuButton(context, Icons.description_outlined, "내가 작성한 게시글"),
-                      _buildMenuButton(context, Icons.location_on_outlined, "위치 설정"),
-                      _buildMenuButton(context, Icons.settings_outlined, "커뮤니티 설정"),
+                      _buildMenuButton(context, Icons.description_outlined, "내가 작성한 게시글",userData),
+                      _buildMenuButton(context, Icons.location_on_outlined, "위치 설정",userData),
+                      _buildMenuButton(context, Icons.settings_outlined, "커뮤니티 설정",userData),
                       TextButton(
                         onPressed: () async {
                           await FirebaseAuth.instance.signOut();
@@ -146,7 +152,7 @@ class UserMypage extends StatelessWidget {
   }
 
   // 메뉴 버튼 헬퍼
-  Widget _buildMenuButton(BuildContext context, IconData icon, String title) {
+  Widget _buildMenuButton(BuildContext context, IconData icon, String title, Map<String, dynamic> userData) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -168,7 +174,7 @@ class UserMypage extends StatelessWidget {
           } else if (title == "위치 설정") {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const LocationSettings()));
           } else if (title == "커뮤니티 설정") {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const CommunitySettings()));
+            Navigator.push(context, MaterialPageRoute(builder: (context) => CommunitySettings(user: userData)));
           }
         },
       ),

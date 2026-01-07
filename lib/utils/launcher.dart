@@ -51,3 +51,39 @@ Uri airKoreaRealSearchByTm({required int tmX, required int tmY}) => Uri.https(
 );
 
 Uri airKoreaHomeUrl() => Uri.https('www.airkorea.or.kr', '/');
+
+/// ✅ 구글맵 도보 길찾기(앱 없으면 웹으로도 열림)
+Uri buildGoogleWalkDirectionsUrl({
+  required double startLat,
+  required double startLon,
+  required double endLat,
+  required double endLon,
+}) {
+  return Uri.https(
+    'www.google.com',
+    '/maps/dir/',
+    {
+      'api': '1',
+      'origin': '$startLat,$startLon',
+      'destination': '$endLat,$endLon',
+      'travelmode': 'walking', // ⭐ 핵심
+      // 'dir_action': 'navigate', // (선택) 이걸 켜면 "내비게이션"으로 가는데,
+      // 지역/상황에 따라 도보 내비게이션이 애매하면 그냥 빼는 걸 추천
+    },
+  );
+}
+
+Future<void> openWalkDirections({
+  required double startLat,
+  required double startLon,
+  required double endLat,
+  required double endLon,
+}) async {
+  final uri = buildGoogleWalkDirectionsUrl(
+    startLat: startLat,
+    startLon: startLon,
+    endLat: endLat,
+    endLon: endLon,
+  );
+  await openExternal(uri);
+}

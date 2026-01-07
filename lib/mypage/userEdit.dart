@@ -107,54 +107,252 @@ class _UserEditState extends State<UserEdit> {
 
   // 3. 회원 탈퇴: 실제 DB의 'nickName' 문서를 삭제하도록 보강
   Future<void> _deleteAccount() async {
-    bool confirm = await showDialog(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: const Text("회원 탈퇴", style: TextStyle(fontWeight: FontWeight.bold)),
         content: const Text("정말로 탈퇴하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("취소", style: TextStyle(color: Colors.grey))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("탈퇴", style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("취소", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("탈퇴", style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
 
     if (confirm != true) return;
 
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("로그인 상태가 아닙니다.")));
+      return;
+    }
+
+    // 1) 비밀번호 확인
+    final password = await _askPasswordForDelete();
+    if (password == null || password.isEmpty) return;
+
     setState(() => _isLoading = true);
+
     try {
-      final uid = user!.uid;
+      // 2) 재인증
+      await _reauthenticateWithPassword(password);
 
-      // 입력창 값이 아닌 DB의 현재 닉네임 정보를 가져옴
-      var userSnap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      String? currentNickname = userSnap.data()?['nickName'];
+      final uid = currentUser.uid;
 
-      if (currentNickname != null && currentNickname.isNotEmpty) {
-        await FirebaseFirestore.instance.collection('usernames').doc(currentNickname).delete();
-      }
+// ✅ (추가) users/{uid} 아래 서브컬렉션 먼저 삭제
+      await _cleanupUserSubcollections(uid);
 
-      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+// 3) Firestore + Storage + usernames + users 문서 삭제(네가 만든 함수)
+      await _cleanupUserData(uid: uid);
 
-      if (_profileImageUrl != null) {
-        try {
-          await FirebaseStorage.instance.ref().child('profiles/$uid.jpg').delete();
-        } catch (_) {}
-      }
+// 4) Auth 삭제 (마지막)
+      await currentUser.delete();
 
-      await user!.delete();
+      if (!mounted) return;
 
-      if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-      }
+// ✅ 먼저 화면 스택을 다 날리고 로그인으로 이동 (기존 화면 dispose 유도)
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login',
+            (route) => false,
+        arguments: const {'deleted': true},
+      );
+
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("보안을 위해 다시 로그인한 후 탈퇴를 진행해 주세요.")));
+      // 비밀번호 틀림/재인증 실패
+      if (e.code == 'wrong-password') {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("비밀번호가 올바르지 않습니다.")));
+      } else if (e.code == 'requires-recent-login') {
+        // 이 코드는 재인증을 했는데도 뜨는 드문 케이스 대비
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("보안을 위해 다시 로그인 후 탈퇴해 주세요.")));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("탈퇴 실패: ${e.message ?? e.code}")));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("탈퇴 중 에러 발생: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // 비밀번호 입력 다이얼로그 + 재인증
+  Future<String?> _askPasswordForDelete() async {
+    final controller = TextEditingController();
+    bool obscure = true;
+
+    return showDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: const Text("비밀번호 확인", style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("탈퇴를 진행하려면 비밀번호를 입력해 주세요."),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    obscureText: obscure,
+                    decoration: InputDecoration(
+                      hintText: "비밀번호",
+                      suffixIcon: IconButton(
+                        icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscure = !obscure),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text("취소", style: TextStyle(color: Colors.grey)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, controller.text.trim()),
+                  child: const Text("확인", style: TextStyle(color: Colors.redAccent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _reauthenticateWithPassword(String password) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) throw Exception("로그인 정보가 없습니다.");
+    final email = currentUser.email;
+    if (email == null || email.isEmpty) {
+      throw Exception("이메일 계정이 아닙니다. (구글/애플 로그인이라면 재인증 방식이 달라요)");
+    }
+
+    final credential = EmailAuthProvider.credential(email: email, password: password);
+    await currentUser.reauthenticateWithCredential(credential);
+  }
+
+  // Firestore + Storage 정리 (3개 삭제)
+  Future<void> _cleanupUserData({required String uid}) async {
+    await _anonymizeCommunityPosts(uid);
+    final fs = FirebaseFirestore.instance;
+    final st = FirebaseStorage.instance;
+
+    final userRef = fs.collection('users').doc(uid);
+    final userSnap = await userRef.get();
+
+    final currentNickname = (userSnap.data()?['nickName'] as String?)?.trim();
+
+    // Storage: 프로필 이미지 삭제 (없거나 실패해도 진행)
+    try {
+      await st.ref().child('profiles/$uid.jpg').delete();
+    } catch (_) {}
+
+    // Firestore: users + usernames 정리
+    final batch = fs.batch();
+
+    if (currentNickname != null && currentNickname.isNotEmpty) {
+      final nickRef = fs.collection('usernames').doc(currentNickname);
+      final nickSnap = await nickRef.get();
+
+      // 내 uid가 맞는 경우에만 삭제 (안전장치)
+      if (nickSnap.exists && nickSnap.data()?['uid'] == uid) {
+        batch.delete(nickRef);
+      }
+    }
+
+    if (userSnap.exists) {
+      batch.delete(userRef);
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> _deleteSubcollection({
+    required DocumentReference parent,
+    required String sub,
+  }) async {
+    final fs = FirebaseFirestore.instance;
+
+    // 한번에 너무 많이 가져오면 위험 -> limit로 반복
+    while (true) {
+      final snap = await parent.collection(sub).limit(200).get();
+      if (snap.docs.isEmpty) break;
+
+      WriteBatch batch = fs.batch();
+      for (final d in snap.docs) {
+        batch.delete(d.reference);
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _cleanupUserSubcollections(String uid) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+    // ✅ 여기에 네가 가진 서브컬렉션들을 나열
+    await _deleteSubcollection(parent: userRef, sub: 'favorites');
+    await _deleteSubcollection(parent: userRef, sub: 'location_history');
+  }
+
+  Future<void> _anonymizeCommunityPosts(String uid) async {
+    final fs = FirebaseFirestore.instance;
+
+    // ✅ 두 방식 모두 검색
+    final q1 = await fs.collection('community')
+        .where('createdBy', isEqualTo: uid)
+        .get();
+
+    final q2 = await fs.collection('community')
+        .where('author.uid', isEqualTo: uid)
+        .get();
+
+    // ✅ 두 결과 합치기 (중복 제거)
+    final seen = <String>{};
+    final allDocs = <QueryDocumentSnapshot>{};
+
+    for (final d in q1.docs) {
+      if (seen.add(d.id)) allDocs.add(d);
+    }
+    for (final d in q2.docs) {
+      if (seen.add(d.id)) allDocs.add(d);
+    }
+
+    WriteBatch batch = fs.batch();
+    int count = 0;
+
+    for (final doc in allDocs) {
+      batch.update(doc.reference, {
+        'authorDeleted': true,
+        'author': {
+          'uid': uid,
+          'nickName': '탈퇴한 사용자',
+          'name': '탈퇴한 사용자',
+          'profile_image_url': '',
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      count++;
+      if (count == 450) {
+        await batch.commit();
+        batch = fs.batch();
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
     }
   }
 
@@ -234,7 +432,7 @@ class _UserEditState extends State<UserEdit> {
             ),
             const SizedBox(height: 40),
             TextButton(
-              onPressed: _deleteAccount,
+              onPressed: _isLoading ? null : _deleteAccount,
               child: const Text("회원 탈퇴", style: TextStyle(color: Colors.redAccent, decoration: TextDecoration.underline, fontSize: 14)),
             ),
             const SizedBox(height: 40),

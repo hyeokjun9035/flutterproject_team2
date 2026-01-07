@@ -1,8 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_project/community/CommunityView.dart'
-    hide Communityview;
+import 'package:flutter_project/community/CommunityView.dart' hide Communityview;
 import 'CommunityAdd.dart';
 import '../headandputter/putter.dart';
 import 'CommunityEdit.dart';
@@ -12,9 +11,6 @@ import 'package:video_player/video_player.dart';
 
 class Notice extends StatefulWidget {
   const Notice({super.key});
-
-  // ✅ 일단 하드코딩 데이터
-  static const List<Map<String, dynamic>> posts = [];
 
   @override
   State<Notice> createState() => _NoticeState();
@@ -30,20 +26,67 @@ class _NoticeState extends State<Notice> {
     if (diff.inHours < 24) return "${diff.inHours}시간 전";
     if (diff.inDays < 7) return "${diff.inDays}일 전";
 
-    // 일주일 넘으면 날짜로
     return "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
   }
 
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
     final v = data[key];
-
-    // serverTimestamp -> Timestamp
     if (v is Timestamp) return v.toDate();
-
-    // client epoch (millis)
     if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
-
     return null;
+  }
+
+  // ✅ 관리자 판별 (필요하면 여기만 네 방식으로 바꿔)
+  Future<bool> _isAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    try {
+      final snap =
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = snap.data() ?? {};
+      return (data['isAdmin'] == true) || (data['role'] == 'admin');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Widget buildProfileAvatar(String url, double radius) {
+    final safeUrl = url.trim();
+    final bool hasUrl = safeUrl.isNotEmpty && safeUrl.toLowerCase() != 'null';
+
+    final double size = radius * 2;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: ClipOval(
+        child: hasUrl
+            ? Image.network(
+          safeUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: Colors.black12,
+            alignment: Alignment.center,
+            child: Icon(Icons.person, size: radius * 1.7, color: Colors.black54),
+          ),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: Colors.black12,
+              alignment: Alignment.center,
+              child: Icon(Icons.person, size: radius, color: Colors.black54),
+            );
+          },
+        )
+            : Container(
+          color: Colors.black12,
+          alignment: Alignment.center,
+          child: Icon(Icons.person, size: radius, color: Colors.black54),
+        ),
+      ),
+    );
   }
 
   @override
@@ -64,14 +107,21 @@ class _NoticeState extends State<Notice> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           actions: [
-            IconButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => Communityadd()),
+            FutureBuilder<bool>(
+              future: _isAdmin(),
+              builder: (context, snap) {
+                final isAdmin = snap.data == true;
+                if (!isAdmin) return const SizedBox.shrink();
+                return IconButton(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => Communityadd()),
+                    );
+                  },
+                  icon: const Icon(Icons.add),
                 );
               },
-              icon: const Icon(Icons.add),
             ),
           ],
         ),
@@ -101,6 +151,7 @@ class _NoticeState extends State<Notice> {
                   final data = doc.data() as Map<String, dynamic>;
 
                   final title = (data["title"] ?? "").toString();
+
                   final images = ((data["images"] as List?) ?? [])
                       .map((e) => e.toString())
                       .toList();
@@ -113,8 +164,8 @@ class _NoticeState extends State<Notice> {
 
                   // ✅ 사진/영상 섞어서 캐러셀용 아이템 만들기
                   final mediaItems = <Map<String, String>>[];
-
                   final blocks = (data["blocks"] as List?) ?? [];
+
                   if (blocks.isNotEmpty) {
                     for (final raw in blocks) {
                       if (raw is! Map) continue;
@@ -129,9 +180,7 @@ class _NoticeState extends State<Notice> {
                       } else if (t == 'video') {
                         final idx = (b['v'] as num?)?.toInt() ?? -1;
                         if (idx >= 0 && idx < videos.length) {
-                          final thumb = (idx < videoThumbs.length)
-                              ? videoThumbs[idx]
-                              : '';
+                          final thumb = (idx < videoThumbs.length) ? videoThumbs[idx] : '';
                           mediaItems.add({
                             'type': 'video',
                             'url': videos[idx],
@@ -153,57 +202,10 @@ class _NoticeState extends State<Notice> {
                     }
                   }
 
-                  // author는 Map으로 저장했으니 문자열로 바로 못 씀
-                  final authorMap =
-                      (data["author"] as Map<String, dynamic>?) ?? {};
+                  final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
                   final authorName =
-                  (authorMap["nickName"] ?? authorMap["name"] ?? "익명")
-                      .toString();
-                  final authorProfile = (authorMap['profile_image_url'] ?? '')
-                      .toString();
-
-                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
-                  final authorUid = (authorMap["uid"] ?? "").toString();
-                  final bool isMine =
-                      currentUid != null && currentUid == authorUid;
-
-                  final placeMap =
-                      (data["place"] as Map<String, dynamic>?) ?? {};
-                  final placeName = (placeMap["name"] ?? "").toString().trim();
-                  final placeAddress = (placeMap["address"] ?? "")
-                      .toString()
-                      .trim();
-
-                  final weatherMap =
-                      (data["weather"] as Map<String, dynamic>?) ?? {};
-                  final temp =
-                  weatherMap["temp"]; // _addCommunity에서 'weather': {'temp': _temp ...}
-
-                  String weatherLabel = "";
-                  if (temp != null) {
-                    // temp가 int/double 섞일 수 있어서 num 처리
-                    final num t = (temp as num);
-                    weatherLabel = "온도 ${t.toStringAsFixed(0)}°";
-                  }
-
-                  // 지역명(시/도 + 구/시/군) 간단 파싱
-                  String regionLabel = "";
-                  if (placeAddress.isNotEmpty) {
-                    final parts = placeAddress.split(' ');
-                    if (parts.length >= 2) {
-                      regionLabel = "${parts[0]} ${parts[1]}"; // 예: "서울특별시 강남구"
-                    } else {
-                      regionLabel = parts[0];
-                    }
-                  }
-
-                  // 화면에 보여줄 최종 라벨: placeName 우선, 없으면 regionLabel
-                  final locationLabel = placeName.isNotEmpty
-                      ? placeName
-                      : regionLabel;
-
-                  final bool hasMetaInfo =
-                      locationLabel.isNotEmpty || weatherLabel.isNotEmpty;
+                  (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
+                  final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
 
                   final createdAt =
                       _readFirestoreTime(data, "createdAt") ??
@@ -212,192 +214,157 @@ class _NoticeState extends State<Notice> {
                       _readFirestoreTime(data, "updatedAt") ??
                           _readFirestoreTime(data, "updatedAtClient");
 
-                  // 표시 기준: updatedAt 있으면 updatedAt, 없으면 createdAt
                   final displayDt = updatedAt ?? createdAt;
-
-                  // 수정 여부 판단(둘 다 있을 때만 확실)
-                  final bool edited =
-                  (createdAt != null &&
+                  final bool edited = (createdAt != null &&
                       updatedAt != null &&
                       updatedAt.isAfter(createdAt));
 
-                  final timeLabel = displayDt == null
-                      ? ""
-                      : _timeAgoFromTs(displayDt);
+                  final timeLabel = displayDt == null ? "" : _timeAgoFromTs(displayDt);
 
                   final views = (data["viewCount"] ?? 0);
                   final comments = (data["commentCount"] ?? 0);
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start, // 위로 붙게
-                          children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: Colors.black12,
-                              backgroundImage: authorProfile.isNotEmpty
-                                  ? NetworkImage(authorProfile)
-                                  : null,
-                              child: authorProfile.isEmpty
-                                  ? const Icon(
-                                Icons.person,
-                                size: 16,
-                                color: Colors.black54,
-                              )
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
+                  return FutureBuilder<bool>(
+                    future: _isAdmin(),
+                    builder: (context, adminSnap) {
+                      final isAdmin = adminSnap.data == true;
 
-                            // ✅ 닉네임 + 위치를 Column으로 묶기
-                            Expanded(
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center, // ✅ 항상 동일
+                              children: [
+                                buildProfileAvatar(authorProfile, 16), // ✅ 항상 동일 크기
+
+                                const SizedBox(width: 10),
+
+                                Expanded(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        authorName,
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // ✅ 공지사항은 관리자만 메뉴 노출 (수정/삭제)
+                                if (isAdmin)
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert),
+                                    padding: EdgeInsets.zero,
+                                    onSelected: (value) async {
+                                      if (value == 'edit') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => CommunityEdit(docId: doc.id),
+                                          ),
+                                        );
+                                      } else if (value == 'delete') {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text("삭제"),
+                                            content: const Text("정말 삭제하시겠습니까?"),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () async {
+                                                  await FirebaseFirestore.instance
+                                                      .collection("community")
+                                                      .doc(doc.id)
+                                                      .delete();
+                                                  if (context.mounted) Navigator.of(context).pop();
+                                                },
+                                                child: const Text("삭제"),
+                                              ),
+                                              TextButton(
+                                                onPressed: () => Navigator.of(context).pop(),
+                                                child: const Text("취소"),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'edit', child: Text('수정')),
+                                      PopupMenuItem(value: 'delete', child: Text('삭제')),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+
+                            InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => Communityview(docId: doc.id),
+                                  ),
+                                );
+                              },
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: hasMetaInfo
-                                    ? MainAxisAlignment.start
-                                    : MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    authorName,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-
-                                  if (hasMetaInfo)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (locationLabel.isNotEmpty) ...[
-                                            const Icon(
-                                              Icons.location_on_outlined,
-                                              size: 16,
-                                            ),
-                                            Flexible(
-                                              child: Text(
-                                                locationLabel,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-
-                                          if (locationLabel.isNotEmpty &&
-                                              weatherLabel.isNotEmpty)
-                                            const SizedBox(width: 6),
-
-                                          if (weatherLabel.isNotEmpty) ...[
-                                            const Icon(
-                                              Icons.thermostat,
-                                              size: 16,
-                                            ),
-                                            Text(
-                                              weatherLabel,
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
+                                  Text(title, style: const TextStyle(fontSize: 14)),
+                                  const SizedBox(height: 10),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
 
-                        InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => Communityview(docId: doc.id),
+                            if (mediaItems.isNotEmpty) ...[
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => Communityview(docId: doc.id),
+                                    ),
+                                  );
+                                },
+                                child: _MediaCarousel(items: mediaItems),
                               ),
-                            );
-                          },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(title, style: const TextStyle(fontSize: 14)),
                               const SizedBox(height: 10),
                             ],
-                          ),
-                        ),
 
-                        if (mediaItems.isNotEmpty) ...[
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => Communityview(docId: doc.id),
+                            Row(
+                              children: [
+                                Text(
+                                  edited ? "$timeLabel · 수정됨" : timeLabel,
+                                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                                 ),
-                              );
-                            },
-                            child: _MediaCarousel(items: mediaItems),
-                          ),
-                        ],
-
-                        const SizedBox(height: 10),
-
-                        Row(
-                          children: [
-                            // createdAt을 time(“3분전”)으로 만들려면 따로 변환 로직 필요
-                            Text(
-                              edited ? "$timeLabel · 수정됨" : timeLabel,
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const Spacer(),
-                            Icon(
-                              Icons.remove_red_eye_outlined,
-                              size: 16,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              "$views",
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Icon(
-                              Icons.comment_outlined,
-                              size: 16,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              "$comments",
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
+                                const Spacer(),
+                                Icon(Icons.remove_red_eye_outlined,
+                                    size: 16, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Text("$views",
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                const SizedBox(width: 10),
+                                Icon(Icons.comment_outlined,
+                                    size: 16, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Text("$comments",
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
               ),
@@ -439,9 +406,9 @@ class _MediaCarouselState extends State<_MediaCarousel> {
     } catch (e) {
       await _disposePlayer();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('영상 로드 실패: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('영상 로드 실패: $e')),
+      );
       return;
     }
 
@@ -487,7 +454,6 @@ class _MediaCarouselState extends State<_MediaCarousel> {
               itemCount: total,
               onPageChanged: (i) async {
                 setState(() => _index = i);
-                // ✅ 페이지 넘기면 재생 중이면 꺼버리기 (인스타 느낌)
                 if (_playingIndex != null && _playingIndex != i) {
                   await _disposePlayer();
                   if (mounted) setState(() {});
@@ -500,7 +466,6 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                 if (type == 'video') {
                   final thumb = (it['thumb'] ?? '').trim();
                   final videoUrl = (it['url'] ?? '').trim();
-
                   final isPlaying = _playingIndex == i && _chewie != null;
 
                   return isPlaying
@@ -512,10 +477,7 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                         top: 8,
                         right: 8,
                         child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                          ),
+                          icon: const Icon(Icons.close, color: Colors.white),
                           onPressed: () async {
                             await _disposePlayer();
                             if (mounted) setState(() {});
@@ -568,16 +530,12 @@ class _MediaCarouselState extends State<_MediaCarousel> {
             ),
           ),
 
-          // 오른쪽 상단 1/8 표시
           if (total > 1)
             Positioned(
               top: 8,
               right: 8,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.45),
                   borderRadius: BorderRadius.circular(14),
@@ -593,7 +551,6 @@ class _MediaCarouselState extends State<_MediaCarousel> {
               ),
             ),
 
-          // 아래 점 인디케이터
           if (total > 1)
             Positioned(
               bottom: 8,
@@ -609,9 +566,7 @@ class _MediaCarouselState extends State<_MediaCarousel> {
                     width: active ? 10 : 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: active
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.5),
+                      color: active ? Colors.white : Colors.white.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   );

@@ -13,6 +13,9 @@ import 'package:video_player/video_player.dart';
 class Chatter extends StatefulWidget {
   const Chatter({super.key});
 
+  // ✅ 일단 하드코딩 데이터
+  static const List<Map<String, dynamic>> posts = [];
+
   @override
   State<Chatter> createState() => _ChatterState();
 }
@@ -29,6 +32,52 @@ class _ChatterState extends State<Chatter> {
 
     // 일주일 넘으면 날짜로
     return "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
+  }
+
+  Widget buildProfileAvatar(String url, double radius) {
+    final safeUrl = url.trim();
+    final bool hasUrl = safeUrl.isNotEmpty && safeUrl.toLowerCase() != 'null';
+
+    final double size = radius * 2;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      child: ClipOval(
+        child: hasUrl
+            ? Image.network(
+          safeUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: Colors.black12,
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.person,
+              size: radius * 1.7,
+              color: Colors.black54,
+            ),
+          ),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: Colors.black12,
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.person,
+                size: radius,
+                color: Colors.black54,
+              ),
+            );
+          },
+        )
+            : Container(
+          color: Colors.black12,
+          alignment: Alignment.center,
+          child: Icon(Icons.person, size: radius, color: Colors.black54),
+        ),
+      ),
+    );
   }
 
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
@@ -99,8 +148,8 @@ class _ChatterState extends State<Chatter> {
 
     final category = (data['category'] ?? '').toString();
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final postAuthorUid =
-    (data['createdBy'] ?? authorMap['uid'] ?? '').toString();
+    final postAuthorUid = (data['createdBy'] ?? authorMap['uid'] ?? '')
+        .toString();
 
     final title = (data['title'] ?? '').toString();
     final plain = (data['plain'] ?? data['content'] ?? '').toString();
@@ -108,7 +157,9 @@ class _ChatterState extends State<Chatter> {
     try {
       await FirebaseFirestore.instance.collection('reports').doc(reportId).set({
         'postId': postId,
-        'postRef': FirebaseFirestore.instance.collection('community').doc(postId),
+        'postRef': FirebaseFirestore.instance
+            .collection('community')
+            .doc(postId),
         'category': category,
 
         'postAuthorUid': postAuthorUid,
@@ -127,14 +178,14 @@ class _ChatterState extends State<Chatter> {
       }, SetOptions(merge: false));
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('신고가 접수되었습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('신고 저장 실패: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('신고 저장 실패: $e')));
     }
   }
 
@@ -246,13 +297,17 @@ class _ChatterState extends State<Chatter> {
                   }
 
                   // author는 Map으로 저장했으니 문자열로 바로 못 씀
-                  final authorMap =
-                      (data["author"] as Map<String, dynamic>?) ?? {};
-                  final authorName =
-                  (authorMap["nickName"] ?? authorMap["name"] ?? "익명")
-                      .toString();
-                  final authorProfile = (authorMap['profile_image_url'] ?? '')
-                      .toString();
+                  final authorMap = (data["author"] as Map<String, dynamic>?) ?? {};
+                  final bool authorDeleted =
+                      (data["authorDeleted"] == true) || (authorMap["deleted"] == true);
+
+                  final authorName = authorDeleted
+                      ? "탈퇴한 사용자"
+                      : (authorMap["nickName"] ?? authorMap["name"] ?? "익명").toString();
+
+                  final authorProfile = authorDeleted
+                      ? ""
+                      : (authorMap['profile_image_url'] ?? '').toString();
 
                   final currentUid = FirebaseAuth.instance.currentUser?.uid;
                   final authorUid = (authorMap["uid"] ?? "").toString();
@@ -294,9 +349,6 @@ class _ChatterState extends State<Chatter> {
                       ? placeName
                       : regionLabel;
 
-                  final bool hasMetaInfo =
-                      locationLabel.isNotEmpty || weatherLabel.isNotEmpty;
-
                   final createdAt =
                       _readFirestoreTime(data, "createdAt") ??
                           _readFirestoreTime(data, "createdAtClient");
@@ -319,6 +371,10 @@ class _ChatterState extends State<Chatter> {
 
                   final views = (data["viewCount"] ?? 0);
                   final comments = (data["commentCount"] ?? 0);
+                  final bool hasLocation = locationLabel.isNotEmpty;
+                  final bool hasWeather = weatherLabel.isNotEmpty;
+                  final bool hasMetaInfo = hasLocation || hasWeather;
+                  const double avatarRadius = 20;
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(
@@ -329,87 +385,75 @@ class _ChatterState extends State<Chatter> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start, // 위로 붙게
+                          crossAxisAlignment:
+                          CrossAxisAlignment.center, // ✅ 항상 가운데
                           children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: Colors.black12,
-                              backgroundImage: authorProfile.isNotEmpty
-                                  ? NetworkImage(authorProfile)
-                                  : null,
-                              child: authorProfile.isEmpty
-                                  ? const Icon(
-                                Icons.person,
-                                size: 16,
-                                color: Colors.black54,
-                              )
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
+                            buildProfileAvatar(authorProfile, avatarRadius),
 
-                            // ✅ 닉네임 + 위치를 Column으로 묶기
+                            const SizedBox(width: 10),
+
                             Expanded(
                               child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: hasMetaInfo
-                                    ? MainAxisAlignment.start
-                                    : MainAxisAlignment.center,
                                 children: [
+                                  // ✅ 닉네임은 항상 "세로 가운데"에 오게 됨 (Row가 center라서)
                                   Text(
                                     authorName,
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w600,
+                                      height: 1.1,
                                     ),
                                   ),
 
-                                  if (hasMetaInfo)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (locationLabel.isNotEmpty) ...[
-                                            const Icon(
-                                              Icons.location_on_outlined,
-                                              size: 16,
-                                            ),
-                                            Flexible(
-                                              child: Text(
-                                                locationLabel,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-
-                                          if (locationLabel.isNotEmpty &&
-                                              weatherLabel.isNotEmpty)
-                                            const SizedBox(width: 6),
-
-                                          if (weatherLabel.isNotEmpty) ...[
-                                            const Icon(
-                                              Icons.thermostat,
-                                              size: 16,
-                                            ),
-                                            Text(
-                                              weatherLabel,
+                                  // ✅ 메타 있을 때만 아래 줄
+                                  if (hasMetaInfo) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (hasLocation) ...[
+                                          const Icon(
+                                            Icons.location_on_outlined,
+                                            size: 16,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Flexible(
+                                            child: Text(
+                                              locationLabel,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
                                                 fontSize: 14,
+                                                height: 1.1,
                                               ),
                                             ),
-                                          ],
+                                          ),
                                         ],
-                                      ),
+                                        if (hasLocation && hasWeather)
+                                          const SizedBox(width: 8),
+                                        if (hasWeather) ...[
+                                          const Icon(
+                                            Icons.thermostat,
+                                            size: 16,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            weatherLabel,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              height: 1.1,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
+                                  ],
                                 ],
                               ),
                             ),
-
-                            // ✅ 오른쪽 메뉴는 그대로
+                            // ✅ 오른쪽 메뉴
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert),
                               padding: EdgeInsets.zero,
@@ -418,9 +462,8 @@ class _ChatterState extends State<Chatter> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => CommunityEdit(
-                                        docId: doc.id,
-                                      ), // ✅ docId 유지
+                                      builder: (_) =>
+                                          CommunityEdit(docId: doc.id),
                                     ),
                                   );
                                 } else if (value == 'delete') {
@@ -452,7 +495,6 @@ class _ChatterState extends State<Chatter> {
                                   await _reportPost(doc: doc, data: data);
                                 }
                               },
-
                               itemBuilder: (_) {
                                 if (isMine) {
                                   return const [

@@ -5,8 +5,6 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'CommunityEdit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'dart:math';
 
 class Communityview extends StatefulWidget {
   final String docId;
@@ -50,149 +48,81 @@ class _CommunityviewState extends State<Communityview> {
       debugPrint('viewCount update failed: $e');
     }
   }
-
-  Future<void> _toggleLike() async {
+  //좋아요 기능 수정
+  Future<void> _toggleLike(Map<String, dynamic> postData) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
+    final fs = FirebaseFirestore.instance;
+    final postRef = fs.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
 
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final likeSnap = await tx.get(likeRef);
+    try {
+      await fs.runTransaction((tx) async {
+        final likeSnap = await tx.get(likeRef);
 
-      if (likeSnap.exists) {
-        tx.delete(likeRef);
-        tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
-      } else {
-        tx.set(likeRef, {
-          'uid': user.uid,
+        if (likeSnap.exists) {
+          // 1. 좋아요 취소
+          tx.delete(likeRef);
+          tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
+        } else {
+          // 2. 좋아요 추가
+          tx.set(likeRef, {
+            'uid': user.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+
+          // ✅ 알림 로직 추가 (트랜잭션 밖에서 실행해도 되지만, 여기서 데이터 생성 가능)
+          _sendNotification(postData, user, 'like');
+        }
+      });
+    } catch (e) {
+      debugPrint("좋아요 처리 에러: $e");
+    }
+  }
+
+  // 좋아요 알림을 위한 별도 함수
+  Future<void> _sendNotification(Map<String, dynamic> postData, User currentUser, String type) async {
+    // 작성자 UID 추출
+    final String postAuthorUid = postData['createdBy']?.toString() ?? '';
+
+    debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
+
+    // 본인이 아닐 때만 실행 (테스트 중이라면 if (postAuthorUid.isNotEmpty) 만 사용)
+    // 실제 사용용 (자기 댓글 알림 x)
+    // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid) {
+    if (postAuthorUid.isNotEmpty) {
+      try {
+        // 내 닉네임 가져오기
+        final senderSnap = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+        final senderNickName = senderSnap.data()?['nickName'] ?? '누군가';
+
+        // 알림 문서 생성
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'receiverUid': postAuthorUid,
+          'senderUid': currentUser.uid,
+          'senderNickName': senderNickName,
+          'type': type,                      // 👈 전달받은 'like' 또는 'comment'가 들어감
+          'postId': widget.docId,
+          'postTitle': postData['title'] ?? '게시글',
+          'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+
+        debugPrint("$type 알림 생성 성공 (수신자: $postAuthorUid)");
+      } catch (e) {
+        debugPrint("알림 생성 중 에러 발생: $e");
       }
-    });
-  }
-
-  Widget _placeMapWidget(Map<String, dynamic>? place) {
-    if (place == null) return const SizedBox.shrink();
-
-    final lat = (place['lat'] as num?)?.toDouble();
-    final lng = (place['lng'] as num?)?.toDouble();
-    if (lat == null || lng == null) return const SizedBox.shrink();
-
-    final name = (place['name'] ?? '위치').toString();
-    final address = (place['address'] ?? '').toString();
-    final pos = LatLng(lat, lng);
-
-    LatLngBounds _boundsFromCenter(LatLng c, double radiusMeters) {
-      // 위도 1도 ≈ 111km
-      final latDelta = radiusMeters / 111000.0;
-      // 경도는 위도에 따라 달라짐
-      final lngDelta = radiusMeters / (111000.0 * (cos(c.latitude * pi / 180)));
-
-      return LatLngBounds(
-        southwest: LatLng(c.latitude - latDelta, c.longitude - lngDelta),
-        northeast: LatLng(c.latitude + latDelta, c.longitude + lngDelta),
-      );
+    } else {
+      debugPrint("알림 전송 안함: 본인 글이거나 작성자 ID가 없음");
     }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.black12),
-          color: Colors.white,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 상단 텍스트
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined, size: 18),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (address.trim().isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                address,
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // 지도 (핀만)
-              SizedBox(
-                height: 220,
-                width: double.infinity,
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(target: pos, zoom: 17), // 임시값
-                  onMapCreated: (c) async {
-                    // ✅ 여기 숫자만 조절하면 "처음부터 얼마나 가까이"가 결정됨
-                    // 200~400m 정도가 사고 위치 표시엔 보통 좋음
-                    final bounds = _boundsFromCenter(pos, 100); // 반경 250m
-
-                    // bounds 적용 (약간의 padding)
-                    await c.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
-                  },
-                  markers: {
-                    Marker(
-                      markerId: const MarkerId('place'),
-                      position: pos,
-                      infoWindow: InfoWindow(title: name),
-                    ),
-                  },
-                  liteModeEnabled: true,
-                  zoomControlsEnabled: false,
-                  myLocationButtonEnabled: false,
-                  mapToolbarEnabled: false,
-                  rotateGesturesEnabled: false,
-                  scrollGesturesEnabled: false,
-                  tiltGesturesEnabled: false,
-                  zoomGesturesEnabled: false,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
-  Widget _likeButton(String postId, int likeCount) {
+  Widget _likeButton(String postId, int likeCount, Map<String, dynamic> postData) {
+    // 현재 유저의 좋아요 여부를 실시간으로 추적하는 스트림
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // 로그인 안 했으면 숫자만 보여주거나 숨겨도 됨
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.favorite_border, size: 18),
-          const SizedBox(width: 4),
-          Text('$likeCount', style: const TextStyle(fontSize: 12)),
-        ],
-      );
-    }
+    if (user == null) return const SizedBox.shrink();
 
     final likeDocStream = FirebaseFirestore.instance
         .collection('community')
@@ -204,12 +134,26 @@ class _CommunityviewState extends State<Communityview> {
     return StreamBuilder<DocumentSnapshot>(
       stream: likeDocStream,
       builder: (context, snap) {
-        final liked = snap.data?.exists ?? false;
+        // 1. 데이터 로딩 중일 때 처리 (Null 에러 방지 핵심)
+        if (snap.connectionState == ConnectionState.waiting) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.favorite_border, size: 18, color: Colors.black54),
+              const SizedBox(width: 4),
+              Text('$likeCount', style: const TextStyle(fontSize: 12)),
+            ],
+          );
+        }
+
+        // 2. 안전하게 좋아요 여부 확인
+        final bool liked = snap.data?.exists ?? false;
 
         return InkWell(
-          onTap: _toggleLike,
+          // 3. postData(게시글 데이터)를 넘겨주어야 알림 함수가 정상 작동함
+          onTap: () => _toggleLike(postData),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min, // 👈 레이아웃 오버플로 방지 핵심
             children: [
               Icon(
                 liked ? Icons.favorite : Icons.favorite_border,
@@ -224,7 +168,6 @@ class _CommunityviewState extends State<Communityview> {
       },
     );
   }
-
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
     final v = data[key];
     if (v is Timestamp) return v.toDate();
@@ -281,8 +224,9 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAt': FieldValue.serverTimestamp(),
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
-      });
 
+      });
+      _sendNotification(postData, user, 'comment');
       _commentCtrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -336,6 +280,7 @@ class _CommunityviewState extends State<Communityview> {
   Future<void> _addReply({
     required String postId,
     required String commentId,
+    required Map<String, dynamic> postData,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -383,7 +328,7 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
       });
-
+      _sendNotification(postData, user, 'comment');
       ctrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -655,9 +600,8 @@ class _CommunityviewState extends State<Communityview> {
     final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
-        .toString();
-    final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+    final String authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
+    final String authorProfile = (authorMap['profile_image_url'] ?? '').toString();
 
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final authorUid = (authorMap['uid'] ?? '').toString();
@@ -665,23 +609,21 @@ class _CommunityviewState extends State<Communityview> {
 
     final createdAt =
         _readFirestoreTime(data, "createdAt") ??
-        _readFirestoreTime(data, "createdAtClient");
+            _readFirestoreTime(data, "createdAtClient");
 
     final updatedAt =
         _readFirestoreTime(data, "updatedAt") ??
-        _readFirestoreTime(data, "updatedAtClient");
+            _readFirestoreTime(data, "updatedAtClient");
 
     final displayDt = updatedAt ?? createdAt;
     final bool edited =
-        (createdAt != null &&
+    (createdAt != null &&
         updatedAt != null &&
         updatedAt.isAfter(createdAt));
     final timeLabel = displayDt == null ? "" : _timeAgoFromTs(displayDt);
 
     final likeCount = (data['likeCount'] as num?)?.toInt() ?? 0;
     final viewCount = (data['viewCount'] as num?)?.toInt() ?? 0;
-
-    final place = (data['place'] as Map?)?.cast<String, dynamic>();
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -705,6 +647,7 @@ class _CommunityviewState extends State<Communityview> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       authorName,
@@ -713,6 +656,7 @@ class _CommunityviewState extends State<Communityview> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+
                     if (timeLabel.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
@@ -737,7 +681,9 @@ class _CommunityviewState extends State<Communityview> {
                       const SizedBox(width: 4),
                       Text('$viewCount', style: const TextStyle(fontSize: 12)),
                       const SizedBox(width: 12),
-                      _likeButton(doc.id, likeCount),
+                      Flexible(
+                        child: _likeButton(doc.id, likeCount,data),
+                      ),
                     ],
                   ),
                 ),
@@ -814,7 +760,6 @@ class _CommunityviewState extends State<Communityview> {
               ),
             ),
           ),
-        if (!isNotice)_placeMapWidget(place),
 
         // 본문 렌더링
         if (blocks.isNotEmpty)
@@ -829,7 +774,7 @@ class _CommunityviewState extends State<Communityview> {
           if (images.isNotEmpty) ...images.map((url) => _imageWidget(url)),
           if (videos.isNotEmpty)
             ...videos.asMap().entries.map(
-              (e) => _videoItemWidget(e.key, e.value, videoThumbs),
+                  (e) => _videoItemWidget(e.key, e.value, videoThumbs),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -1058,6 +1003,7 @@ class _CommunityviewState extends State<Communityview> {
                                               onPressed: () => _addReply(
                                                 postId: doc.id,
                                                 commentId: c.id,
+                                                postData: data,
                                               ),
                                               icon: const Icon(Icons.send, size: 18),
                                               padding: EdgeInsets.zero,
@@ -1286,43 +1232,43 @@ class _CommunityviewState extends State<Communityview> {
           aspectRatio: 16 / 9,
           child: isPlaying
               ? Stack(
-                  children: [
-                    Chewie(controller: _chewie!),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: _disposePlayer,
-                      ),
-                    ),
-                  ],
-                )
+            children: [
+              Chewie(controller: _chewie!),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: _disposePlayer,
+                ),
+              ),
+            ],
+          )
               : InkWell(
-                  onTap: () => _playVideoAt(idx, videoUrl),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      if (thumb.isNotEmpty)
-                        Image.network(thumb, fit: BoxFit.cover)
-                      else
-                        Container(color: Colors.black12),
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.35),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow,
-                          color: Colors.white,
-                          size: 34,
-                        ),
-                      ),
-                    ],
+            onTap: () => _playVideoAt(idx, videoUrl),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (thumb.isNotEmpty)
+                  Image.network(thumb, fit: BoxFit.cover)
+                else
+                  Container(color: Colors.black12),
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 34,
                   ),
                 ),
+              ],
+            ),
+          ),
         ),
       ),
     );
