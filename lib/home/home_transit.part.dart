@@ -761,6 +761,10 @@ class _WalkFallbackCard extends StatelessWidget {
     required this.subtitle,
     required this.distanceMeters,
     required this.walkMinutes,
+    required this.startLat, // ✅ 추가
+    required this.startLon, // ✅ 추가
+    required this.endLat,   // ✅ 추가
+    required this.endLon,   // ✅ 추가
     this.onFavoritePressed,
   });
 
@@ -768,18 +772,31 @@ class _WalkFallbackCard extends StatelessWidget {
   final String subtitle;
   final double distanceMeters;
   final int walkMinutes;
+
+  // ✅ 도보 길찾기용 좌표
+  final double startLat;
+  final double startLon;
+  final double endLat;
+  final double endLon;
+
   final VoidCallback? onFavoritePressed;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('가까운 거리라 도보를 추천해요',
-              style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w900)),
+          Text(
+            '가까운 거리라 도보를 추천해요',
+            style: t.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(height: 6),
           Text(
             '$title · 약 ${distanceMeters.toStringAsFixed(0)}m · 도보 ${walkMinutes}분',
@@ -790,18 +807,31 @@ class _WalkFallbackCard extends StatelessWidget {
             Text(subtitle, style: t.bodySmall?.copyWith(color: Colors.white54)),
           ],
           const SizedBox(height: 12),
+
+          // ✅ 버튼 UI 통일
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.directions_walk, size: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.directions_walk, size: 15),
                 label: const Text('도보로 이동'),
-                onPressed: () {
-                  // TODO: 너 launcher 유틸에 맞춰 지도/길찾기 연결(원하면 내가 붙여줄게)
+                onPressed: () async {
+                  if (startLat == 0.0 || startLon == 0.0 || endLat == 0.0 || endLon == 0.0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('길찾기 좌표가 없습니다.')),
+                    );
+                    return;
+                  }
+                  await openWalkDirections(
+                    startLat: startLat,
+                    startLon: startLon,
+                    endLat: endLat,
+                    endLon: endLon,
+                  );
                 },
               ),
-              const SizedBox(width: 10),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.bookmark_border, size: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.bookmark_border, size: 15),
                 label: const Text('즐겨찾기'),
                 onPressed: onFavoritePressed,
               ),
