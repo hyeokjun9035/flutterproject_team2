@@ -49,16 +49,16 @@ class JoinPage4 extends StatefulWidget {
 }
 class _JoinPage4State extends State<JoinPage4>{
   final FirebaseFirestore fs = FirebaseFirestore.instance;
- bool isLocationChecked = false;
- bool isCameraChecked = false;
- bool isAlramChecked = false;
+  bool isLocationChecked = false;
+  bool isCameraChecked = false;
+  bool isAlramChecked = false;
 
-void _showMessage(String msg) {
-  if (!mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg))
-  );
-}
+  void _showMessage(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg))
+    );
+  }
   @override
   Widget build(BuildContext context){
     return Scaffold(
@@ -81,18 +81,18 @@ void _showMessage(String msg) {
               child:Image.asset("assets/joinIcon/cloud.png", width: 50,),
             ),
             Padding(
-                padding:const EdgeInsetsGeometry.fromLTRB(0, 0, 0, 20),
+              padding:const EdgeInsetsGeometry.fromLTRB(0, 0, 0, 20),
               child: Text("기타 및 관련 서비스에 동의해주세요"),
             ),
 
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Padding(padding: const EdgeInsets.fromLTRB(0, 0, 0, 0), ),
-                Icon(Icons.location_on, size: 50,),
-                Icon(Icons.camera_alt, size: 50,),
-                Icon(Icons.edit_notifications, size: 50,),
-              ]
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Padding(padding: const EdgeInsets.fromLTRB(0, 0, 0, 0), ),
+                  Icon(Icons.location_on, size: 50,),
+                  Icon(Icons.camera_alt, size: 50,),
+                  Icon(Icons.edit_notifications, size: 50,),
+                ]
             ),
 
             CheckboxListTile(
@@ -159,5 +159,3 @@ void _showMessage(String msg) {
 
 
 ///
-
-

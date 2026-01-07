@@ -2,6 +2,8 @@ part of 'home_page.dart';
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    super.key,
+    required this.onOpenMenu,
     required this.locationName,
     required this.updatedAt,
     required this.isRefreshing,
@@ -11,6 +13,7 @@ class _TopBar extends StatelessWidget {
     required this.onOpenOrderSheet,
   });
 
+  final VoidCallback onOpenMenu;
   final String locationName;
   final DateTime updatedAt;
   final bool isRefreshing;
@@ -31,6 +34,19 @@ class _TopBar extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ✅ 메뉴(드로어) 버튼 추가
+          Transform.translate(
+            offset: const Offset(-6, 0), // -4 ~ -12 조절
+            child: IconButton(
+              tooltip: '메뉴',
+              onPressed: onOpenMenu,
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              icon: const Icon(Icons.menu, color: Colors.white),
+            ),
+          ),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,7 +70,6 @@ class _TopBar extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
 
-                // ✅ 업데이트 라인에 아이콘 추가
                 Row(
                   children: [
                     const Icon(Icons.schedule, color: Colors.white70, size: 16),
@@ -72,10 +87,9 @@ class _TopBar extends StatelessWidget {
             ),
           ),
 
-          // ✅ 우측 버튼들
           IconButton(
             tooltip: '카드 순서 편집',
-            onPressed: onOpenOrderSheet, // ✅ B안: 누르면 바로 시트 뜸
+            onPressed: onOpenOrderSheet,
             icon: const Icon(Icons.swap_vert, color: Colors.white),
           ),
 
