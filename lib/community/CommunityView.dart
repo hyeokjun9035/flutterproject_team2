@@ -5,8 +5,6 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'CommunityEdit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'dart:math';
 
 class Communityview extends StatefulWidget {
   final String docId;
@@ -50,8 +48,8 @@ class _CommunityviewState extends State<Communityview> {
       debugPrint('viewCount update failed: $e');
     }
   }
-
-  Future<void> _toggleLike() async {
+  //좋아요 기능 수정
+  Future<void> _toggleLike(Map<String, dynamic> postData) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -68,19 +66,58 @@ class _CommunityviewState extends State<Communityview> {
     final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
 
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final likeSnap = await tx.get(likeRef);
+      try {
+        await fs.runTransaction((tx) async {
+          final likeSnap = await tx.get(likeRef);
 
-      if (likeSnap.exists) {
-        tx.delete(likeRef);
-        tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
-      } else {
-        tx.set(likeRef, {
-          'uid': user.uid,
+          if (likeSnap.exists) {
+            // 1. 좋아요 취소
+            tx.delete(likeRef);
+            tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
+          } else {
+            // 2. 좋아요 추가
+            tx.set(likeRef, {
+              'uid': user.uid,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+
+            // ✅ 알림 로직 추가 (트랜잭션 밖에서 실행해도 되지만, 여기서 데이터 생성 가능)
+            _sendNotification(postData, user, 'like');
+          }
+        });
+      } catch (e) {
+        debugPrint("좋아요 처리 에러: $e");
+      }
+    }
+
+  // 좋아요 알림을 위한 별도 함수
+  Future<void> _sendNotification(Map<String, dynamic> postData, User currentUser, String type) async {
+    // 작성자 UID 추출
+    final String postAuthorUid = postData['createdBy']?.toString() ?? '';
+
+    debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
+
+    // 본인이 아닐 때만 실행 (테스트 중이라면 if (postAuthorUid.isNotEmpty) 만 사용)
+    // 실제 사용용 (자기 댓글 알림 x)
+    // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid) {
+    if (postAuthorUid.isNotEmpty) {
+      try {
+        // 내 닉네임 가져오기
+        final senderSnap = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+        final senderNickName = senderSnap.data()?['nickName'] ?? '누군가';
+
+        // 알림 문서 생성
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'receiverUid': postAuthorUid,
+          'senderUid': currentUser.uid,
+          'senderNickName': senderNickName,
+          'type': type,                      // 👈 전달받은 'like' 또는 'comment'가 들어감
+          'postId': widget.docId,
+          'postTitle': postData['title'] ?? '게시글',
+          'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        tx.update(postRef, {'likeCount': FieldValue.increment(1)});
-      }
     });
   }
 
@@ -161,70 +198,19 @@ class _CommunityviewState extends State<Communityview> {
                 ),
               ),
 
-              // 지도 (핀만)
-              SizedBox(
-                height: 220,
-                width: double.infinity,
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(target: pos, zoom: 17), // 임시값
-                  onMapCreated: (c) async {
-                    // ✅ 여기 숫자만 조절하면 "처음부터 얼마나 가까이"가 결정됨
-                    // 200~400m 정도가 사고 위치 표시엔 보통 좋음
-                    final bounds = _boundsFromCenter(pos, 100); // 반경 250m
-
-                    // bounds 적용 (약간의 padding)
-                    await c.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
-                  },
-                  markers: {
-                    Marker(
-                      markerId: const MarkerId('place'),
-                      position: pos,
-                      infoWindow: InfoWindow(title: name),
-                    ),
-                  },
-                  liteModeEnabled: true,
-                  zoomControlsEnabled: false,
-                  myLocationButtonEnabled: false,
-                  mapToolbarEnabled: false,
-                  rotateGesturesEnabled: false,
-                  scrollGesturesEnabled: false,
-                  tiltGesturesEnabled: false,
-                  zoomGesturesEnabled: false,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+        debugPrint("$type 알림 생성 성공 (수신자: $postAuthorUid)");
+      } catch (e) {
+        debugPrint("알림 생성 중 에러 발생: $e");
+      }
+    } else {
+      debugPrint("알림 전송 안함: 본인 글이거나 작성자 ID가 없음");
+    }
   }
 
-  Widget _likeButton(String postId, int likeCount, {required bool authorDeleted}) {
+  Widget _likeButton(String postId, int likeCount, Map<String, dynamic> postData) {
+    // 현재 유저의 좋아요 여부를 실시간으로 추적하는 스트림
     final user = FirebaseAuth.instance.currentUser;
-
-    // ✅ (A) 로그인 안했거나, 탈퇴글이면: 아이콘은 보여주되 비활성 + 카운트 표시
-    if (user == null || authorDeleted) {
-      return InkWell(
-        onTap: authorDeleted
-            ? () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('탈퇴한 사용자의 글에는 좋아요를 누를 수 없습니다.')),
-          );
-        }
-            : null, // 로그인 유도하고 싶으면 여기에 스낵바 추가 가능
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.favorite_border, size: 18, color: Colors.black26),
-            const SizedBox(width: 4),
-            Text(
-              '$likeCount',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ],
-        ),
-      );
-    }
+    if (user == null) return const SizedBox.shrink();
 
     // ✅ (B) 정상글 + 로그인 상태면: 기존처럼 실시간 liked 반영
     final likeDocStream = FirebaseFirestore.instance
@@ -237,12 +223,26 @@ class _CommunityviewState extends State<Communityview> {
     return StreamBuilder<DocumentSnapshot>(
       stream: likeDocStream,
       builder: (context, snap) {
-        final liked = snap.data?.exists ?? false;
+        // 1. 데이터 로딩 중일 때 처리 (Null 에러 방지 핵심)
+        if (snap.connectionState == ConnectionState.waiting) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.favorite_border, size: 18, color: Colors.black54),
+              const SizedBox(width: 4),
+              Text('$likeCount', style: const TextStyle(fontSize: 12)),
+            ],
+          );
+        }
+
+        // 2. 안전하게 좋아요 여부 확인
+        final bool liked = snap.data?.exists ?? false;
 
         return InkWell(
-          onTap: _toggleLike, // _toggleLike 안에서 authorDeleted 방어 이미 해둠(굿)
+          // 3. postData(게시글 데이터)를 넘겨주어야 알림 함수가 정상 작동함
+          onTap: () => _toggleLike(postData),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min, // 👈 레이아웃 오버플로 방지 핵심
             children: [
               Icon(
                 liked ? Icons.favorite : Icons.favorite_border,
@@ -257,7 +257,6 @@ class _CommunityviewState extends State<Communityview> {
       },
     );
   }
-
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
     final v = data[key];
     if (v is Timestamp) return v.toDate();
@@ -322,8 +321,9 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAt': FieldValue.serverTimestamp(),
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
-      });
 
+      });
+      _sendNotification(postData, user, 'comment');
       _commentCtrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -377,6 +377,7 @@ class _CommunityviewState extends State<Communityview> {
   Future<void> _addReply({
     required String postId,
     required String commentId,
+    required Map<String, dynamic> postData,
   }) async {
 
     final postSnap = await FirebaseFirestore.instance
@@ -442,7 +443,7 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
       });
-
+      _sendNotification(postData, user, 'comment');
       ctrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -777,6 +778,7 @@ class _CommunityviewState extends State<Communityview> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       authorName,
@@ -785,6 +787,7 @@ class _CommunityviewState extends State<Communityview> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+
                     if (timeLabel.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
@@ -810,7 +813,9 @@ class _CommunityviewState extends State<Communityview> {
                       Text('$viewCount', style: const TextStyle(fontSize: 12)),
 
                       const SizedBox(width: 12),
-                      _likeButton(doc.id, likeCount, authorDeleted: authorDeleted),
+                      Flexible(
+                        child: _likeButton(doc.id, likeCount,data),
+                      ),
                     ],
                   ),
                 ),
@@ -1147,6 +1152,7 @@ class _CommunityviewState extends State<Communityview> {
                                               onPressed: () => _addReply(
                                                 postId: doc.id,
                                                 commentId: c.id,
+                                                postData: data,
                                               ),
                                               icon: const Icon(Icons.send, size: 18),
                                               padding: EdgeInsets.zero,

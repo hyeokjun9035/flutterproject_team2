@@ -1010,62 +1010,127 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
   }
 });
 
+
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
 
-// Firestore의 community 컬렉션에 새 문서가 생성될 때 실행 (v2 방식)
-exports.sendPostNotification = onDocumentCreated({
-  document: "community/{postId}",
-  region: "asia-northeast3"
+
+
+
+
+
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+//  좋아요/댓글 알림 (notifications 컬렉션 감시)
+exports.sendPushNotification = onDocumentCreated({
+    document: "notifications/{notificationId}",
+    region: "asia-northeast3"
 }, async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) return;
+    const data = event.data.data();
+    if (!data) return;
 
-  const postData = snapshot.data();
+    const receiverUid = data.receiverUid;
+    const senderNickName = data.senderNickName || "누군가";
+    const type = data.type || "like";
+    const postTitle = data.postTitle || "게시글";
 
+    if (!receiverUid || typeof receiverUid !== 'string') {
+        console.error("❌ 에러: receiverUid 누락", data);
+        return;
+    }
 
-  if (postData.category !== "사건/이슈") {
-    console.log(`알림 생략: 카테고리가 '${postData.category}'입니다.`);
-    return null;
-  }
-  // -------------------------------------------------------
+    const bodyText = type === "like"
+        ? `${senderNickName}님이 '${postTitle}' 글에 좋아요를 눌렀습니다.`
+        : `${senderNickName}님이 '${postTitle}' 글에 댓글을 남겼습니다.`;
 
-  const nickname = postData.user_nickname || "익명";
-  // 게시글 본문(content)이 없으면 title이나 plain을 사용하도록 보완
-  const content = postData.title || postData.plain || "새로운 제보가 올라왔습니다.";
-  const postId = event.params.postId;
+    try {
+        const userDoc = await admin.firestore().collection("users").doc(receiverUid).get();
+        const fcmToken = userDoc.data()?.fcmToken;
 
-  const title = `⚠️ 새로운 사건/이슈 제보: ${nickname}님`;
-  const body = content.length > 30 ? content.substring(0, 30) + "..." : content;
+        if (!fcmToken) {
+            console.log(`⚠️ 토큰 없음: ${receiverUid}`);
+            return;
+        }
 
-  const message = {
-    notification: { title, body },
-    data: { postId, type: "community" },
-    // ... 나머지 FCM 설정은 동일 ...
-    topic: "community_topic",
-  };
+        await getMessaging().send({
+            notification: { title: "새로운 알림", body: bodyText },
+            token: fcmToken,
+            data: { postId: data.postId || "", type: type },
+        });
+        console.log(`✅ 푸시 성공: ${receiverUid}`);
+    } catch (error) {
+        console.error("❌ 전송 에러:", error);
+    }
+});
 
-  try {
-    await admin.messaging().send(message);
+//  새 게시글 위치 기반 알림 (community 컬렉션 감시)
+exports.sendPostNotification = onDocumentCreated({ // 이름을 'sendPostNotification'으로 수정!
+    document: "community/{postId}", // 감시 대상도 'community'로 수정!
+    region: "asia-northeast3"
+}, async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return null;
 
-    // DB 알림함 저장 (이미 앱에서 생성하고 있다면 이 부분은 중복일 수 있으니 확인 필요)
-    await admin.firestore().collection("notifications").add({
-      title: title,
-      body: body,
-      postId: postId,
-      senderNickname: nickname,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      type: "community",
-      isRead: false
-    });
-    console.log(`✅ 사건/이슈 알림 전송 및 저장 완료: ${postId}`);
-  } catch (error) {
-    console.error("❌ 알림 처리 중 오류 발생:", error);
-  }
+    const postData = snapshot.data();
+    if (postData.category !== "사건/이슈") return null;
+
+    const place = postData.place;
+    if (!place || place.lat === undefined || place.lng === undefined) return null;
+
+    const postLat = Number(place.lat);
+    const postLon = Number(place.lng);
+
+    try {
+        const usersSnapshot = await admin.firestore().collection('users').get();
+        const targetTokens = new Set();
+
+        usersSnapshot.forEach(doc => {
+            const userData = doc.data();
+            const token = userData.fcmToken;
+            if (!token) return;
+
+            const uLat = userData.lastLocation?.latitude || userData.latitude;
+            const uLon = userData.lastLocation?.longitude || userData.longitude;
+
+            const userLat = parseFloat(uLat);
+            const userLon = parseFloat(uLon);
+
+            if (!isNaN(userLat) && !isNaN(userLon)) {
+                const distance = calculateDistance(postLat, postLon, userLat, userLon);
+                if (distance <= 10.0) { // 10km 이내
+                    targetTokens.add(token);
+                }
+            }
+        });
+
+        if (targetTokens.size > 0) {
+            await getMessaging().sendEachForMulticast({
+                notification: {
+                    title: `주변 사건/이슈 제보`,
+                    body: `'${postData.title}' 글이 근처에서 등록되었습니다.`
+                },
+                tokens: Array.from(targetTokens),
+            });
+            console.log(`📍 위치 알림 전송: ${targetTokens.size}개 성공`);
+        }
+    } catch (error) {
+        console.error("❌ 위치 알림 에러:", error);
+    }
 });
 
 
@@ -1117,4 +1182,6 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
     throw new HttpsError("internal", `발송 실패: ${e.message}`);
   }
 });
+
+
 
