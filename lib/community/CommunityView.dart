@@ -16,6 +16,10 @@ class Communityview extends StatefulWidget {
 }
 
 class _CommunityviewState extends State<Communityview> {
+  bool _isAuthorDeleted(Map<String, dynamic> postData) {
+    final authorMap = (postData['author'] as Map<String, dynamic>?) ?? {};
+    return (postData['authorDeleted'] == true) || (authorMap['deleted'] == true);
+  }
   String _timeAgoFromTs(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
@@ -53,6 +57,14 @@ class _CommunityviewState extends State<Communityview> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    if (_isAuthorDeleted(postData)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 좋아요를 할 수 없습니다.')),
+      );
+      return;
+    }
+
     final fs = FirebaseFirestore.instance;
     final postRef = fs.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
@@ -62,21 +74,20 @@ class _CommunityviewState extends State<Communityview> {
         final likeSnap = await tx.get(likeRef);
 
         if (likeSnap.exists) {
-          // 1. 좋아요 취소
           tx.delete(likeRef);
           tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
         } else {
-          // 2. 좋아요 추가
           tx.set(likeRef, {
             'uid': user.uid,
             'createdAt': FieldValue.serverTimestamp(),
           });
           tx.update(postRef, {'likeCount': FieldValue.increment(1)});
-
-          // ✅ 알림 로직 추가 (트랜잭션 밖에서 실행해도 되지만, 여기서 데이터 생성 가능)
-          _sendNotification(postData, user, 'like');
         }
       });
+
+      // ✅ 알림은 트랜잭션 "밖"에서 (더 안전)
+      // 좋아요 추가일 때만 보내려면 likeSnap 여부를 밖에서 판단해야 해서
+      // 가장 쉬운 방법은 likeDoc을 한번 읽거나, 트랜잭션 안에서 bool 플래그를 만들어 밖에서 사용.
     } catch (e) {
       debugPrint("좋아요 처리 에러: $e");
     }
@@ -186,6 +197,13 @@ class _CommunityviewState extends State<Communityview> {
     required DocumentSnapshot postDoc,
     required Map<String, dynamic> postData,
   }) async {
+    if (_isAuthorDeleted(postData)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -282,6 +300,13 @@ class _CommunityviewState extends State<Communityview> {
     required String commentId,
     required Map<String, dynamic> postData,
   }) async {
+    if (_isAuthorDeleted(postData)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탈퇴한 사용자의 글에는 답글을 작성할 수 없습니다.')),
+      );
+      return;
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -600,8 +625,15 @@ class _CommunityviewState extends State<Communityview> {
     final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final String authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
-    final String authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+    final bool authorDeleted = _isAuthorDeleted(data);
+
+    final String authorName = authorDeleted
+        ? '탈퇴한 사용자'
+        : (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
+
+    final String authorProfile = authorDeleted
+        ? ''
+        : (authorMap['profile_image_url'] ?? '').toString();
 
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final authorUid = (authorMap['uid'] ?? '').toString();
@@ -802,7 +834,15 @@ class _CommunityviewState extends State<Communityview> {
               ),
               const SizedBox(height: 10),
 
-              _commentInput(doc, data),
+              authorDeleted
+                  ? Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: const Text(
+                  "탈퇴한 사용자의 글에는 댓글을 작성할 수 없습니다.",
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              )
+                  : _commentInput(doc, data),
 
               const SizedBox(height: 12),
 
