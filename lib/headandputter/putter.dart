@@ -5,11 +5,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 class PutterScaffold extends StatefulWidget {
   final Widget body;
   final int currentIndex;
+  final GlobalKey<ScaffoldState>? scaffoldKey;
+  final Widget? drawer;
 
   const PutterScaffold({
     super.key,
     required this.body,
     required this.currentIndex,
+    this.scaffoldKey, // 추가
+    this.drawer,      //추가
   });
 
   @override
@@ -46,6 +50,8 @@ class _PutterScaffoldState extends State<PutterScaffold> {
     final String? uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       body: widget.body,
+      key: widget.scaffoldKey,
+      drawer: widget.drawer,
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: widget.currentIndex,
