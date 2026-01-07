@@ -74,7 +74,7 @@ class _CommunityviewState extends State<Communityview> {
     });
   }
 
-  Widget _placeMapWidget(Map<String, dynamic>? place) {
+  Widget _placeMapWidget(Map<String, dynamic>? place, String weatherLabel) {
     if (place == null) return const SizedBox.shrink();
 
     final lat = (place['lat'] as num?)?.toDouble();
@@ -138,6 +138,15 @@ class _CommunityviewState extends State<Communityview> {
                         ],
                       ),
                     ),
+                    if (weatherLabel.trim().isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      const Icon(Icons.thermostat, size: 18, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text(
+                        weatherLabel,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -683,6 +692,12 @@ class _CommunityviewState extends State<Communityview> {
 
     final place = (data['place'] as Map?)?.cast<String, dynamic>();
 
+    final weather = (data['weather'] as Map?)?.cast<String, dynamic>();
+    final temp = (weather?['temp'] as num?)?.toDouble();
+
+    final String weatherLabel =
+    (temp == null) ? '' : '온도 ${temp.round()}°';
+
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -814,7 +829,7 @@ class _CommunityviewState extends State<Communityview> {
               ),
             ),
           ),
-        if (!isNotice)_placeMapWidget(place),
+        if (!isNotice) _placeMapWidget(place, weatherLabel),
 
         // 본문 렌더링
         if (blocks.isNotEmpty)
