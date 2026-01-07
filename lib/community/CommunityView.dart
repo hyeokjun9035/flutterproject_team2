@@ -74,7 +74,7 @@ class _CommunityviewState extends State<Communityview> {
             tx.update(postRef, {'likeCount': FieldValue.increment(1)});
 
             // ✅ 알림 로직 추가 (트랜잭션 밖에서 실행해도 되지만, 여기서 데이터 생성 가능)
-            _sendLikeNotification(postData, user);
+            _sendNotification(postData, user, 'like');
           }
         });
       } catch (e) {
@@ -83,35 +83,32 @@ class _CommunityviewState extends State<Communityview> {
     }
 
   // 좋아요 알림을 위한 별도 함수
-  Future<void> _sendLikeNotification(Map<String, dynamic> postData, User currentUser) async {
-    //  작성자 UID 추출 (가장 확실한 'createdBy' 필드 사용)
-    // 데이터 구조상 String이므로 바로 가져오면 됩니다.
+  Future<void> _sendNotification(Map<String, dynamic> postData, User currentUser, String type) async {
+    // 작성자 UID 추출
     final String postAuthorUid = postData['createdBy']?.toString() ?? '';
 
     debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
 
-    //  ID가 비어있지 않고, 본인 글이 아닐 때만 실행
-    // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid)
-    if (postAuthorUid.isNotEmpty)
-    {
+    // 본인이 아닐 때만 실행 (테스트 중이라면 if (postAuthorUid.isNotEmpty) 만 사용)
+    if (postAuthorUid.isNotEmpty) {
       try {
-        // 알림을 보내는 내 정보 가져오기
+        // 내 닉네임 가져오기
         final senderSnap = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
         final senderNickName = senderSnap.data()?['nickName'] ?? '누군가';
 
-        //  알림 문서 생성
+        // 알림 문서 생성
         await FirebaseFirestore.instance.collection('notifications').add({
-          'receiverUid': postAuthorUid,      // 수신자: 게시글 작성자
-          'senderUid': currentUser.uid,      // 발신자: 좋아요 누른 사람
+          'receiverUid': postAuthorUid,
+          'senderUid': currentUser.uid,
           'senderNickName': senderNickName,
-          'type': 'like',
-          'postId': widget.docId,            // 게시글 ID
+          'type': type,                      // 👈 전달받은 'like' 또는 'comment'가 들어감
+          'postId': widget.docId,
           'postTitle': postData['title'] ?? '게시글',
           'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
-        debugPrint("좋아요 알림 생성 성공 (수신자: $postAuthorUid)");
+        debugPrint("$type 알림 생성 성공 (수신자: $postAuthorUid)");
       } catch (e) {
         debugPrint("알림 생성 중 에러 발생: $e");
       }
@@ -225,8 +222,9 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAt': FieldValue.serverTimestamp(),
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
-      });
 
+      });
+      _sendNotification(postData, user, 'comment');
       _commentCtrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -280,6 +278,7 @@ class _CommunityviewState extends State<Communityview> {
   Future<void> _addReply({
     required String postId,
     required String commentId,
+    required Map<String, dynamic> postData,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -327,7 +326,7 @@ class _CommunityviewState extends State<Communityview> {
           'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
         });
       });
-
+      _sendNotification(postData, user, 'comment');
       ctrl.clear();
       FocusScope.of(context).unfocus();
     } catch (e) {
@@ -1002,6 +1001,7 @@ class _CommunityviewState extends State<Communityview> {
                                               onPressed: () => _addReply(
                                                 postId: doc.id,
                                                 commentId: c.id,
+                                                postData: data,
                                               ),
                                               icon: const Icon(Icons.send, size: 18),
                                               padding: EdgeInsets.zero,
