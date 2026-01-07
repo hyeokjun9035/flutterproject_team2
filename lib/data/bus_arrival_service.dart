@@ -104,46 +104,52 @@ class BusArrivalService {
     required double lon,
     int maxStops = 8,
   }) async {
-    final uri = Uri.https(
-      'apis.data.go.kr',
-      '/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList',
-      {
-        'serviceKey': serviceKey,
-        '_type': 'json',
-        'gpsLati': lat.toString(),
-        'gpsLong': lon.toString(),
-        'numOfRows': '50',
-        'pageNo': '1',
-      },
-    );
+    try {
+      final uri = Uri.https(
+        'apis.data.go.kr',
+        '/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList',
+        {
+          'serviceKey': serviceKey,
+          '_type': 'json',
+          'gpsLati': lat.toString(),
+          'gpsLong': lon.toString(),
+          'numOfRows': '50',
+          'pageNo': '1',
+        },
+      );
 
-    final res = await _client.get(uri).timeout(const Duration(seconds: 3));
-    final decoded = jsonDecode(res.body);
+      final res = await _client.get(uri).timeout(const Duration(seconds: 5)); // 3→5도 추천
+      final decoded = jsonDecode(res.body);
 
-    final items = decoded?['response']?['body']?['items']?['item'];
-    if (items == null) return [];
+      final items = decoded?['response']?['body']?['items']?['item'];
+      if (items == null) return [];
 
-    final list = (items is List) ? items : [items];
+      final list = (items is List) ? items : [items];
 
-    final stops = <TagoStop>[];
-    for (final it in list) {
-      final city = '${it['citycode'] ?? ''}';
-      final node = '${it['nodeid'] ?? ''}';
-      final name = '${it['nodenm'] ?? ''}';
-      final sLat = double.tryParse('${it['gpslati'] ?? ''}');
-      final sLon = double.tryParse('${it['gpslong'] ?? ''}');
-      if (city.isEmpty || node.isEmpty || sLat == null || sLon == null) continue;
+      final stops = <TagoStop>[];
+      for (final it in list) {
+        final city = '${it['citycode'] ?? ''}';
+        final node = '${it['nodeid'] ?? ''}';
+        final name = '${it['nodenm'] ?? ''}';
+        final sLat = double.tryParse('${it['gpslati'] ?? ''}');
+        final sLon = double.tryParse('${it['gpslong'] ?? ''}');
+        if (city.isEmpty || node.isEmpty || sLat == null || sLon == null) continue;
 
-      stops.add(TagoStop(cityCode: city, nodeId: node, name: name, lat: sLat, lon: sLon));
+        stops.add(TagoStop(cityCode: city, nodeId: node, name: name, lat: sLat, lon: sLon));
+      }
+
+      stops.sort((a, b) {
+        final da = (lat - a.lat) * (lat - a.lat) + (lon - a.lon) * (lon - a.lon);
+        final db = (lat - b.lat) * (lat - b.lat) + (lon - b.lon) * (lon - b.lon);
+        return da.compareTo(db);
+      });
+
+      return stops.take(maxStops).toList();
+    } on TimeoutException {
+      return [];
+    } catch (_) {
+      return [];
     }
-
-    stops.sort((a, b) {
-      final da = (lat - a.lat) * (lat - a.lat) + (lon - a.lon) * (lon - a.lon);
-      final db = (lat - b.lat) * (lat - b.lat) + (lon - b.lon) * (lon - b.lon);
-      return da.compareTo(db);
-    });
-
-    return stops.take(maxStops).toList();
   }
 
   Future<String?> fetchNextArrivalText({

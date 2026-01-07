@@ -57,6 +57,45 @@ class _TransitCardState extends State<_TransitCard> {
   final Map<String, TagoStop> _stopCache = {};
   final Map<String, DateTime> _stopCacheAt = {};
 
+  // ✅ TAGO 미지원(또는 매칭 실패) 캐시
+  final Map<String, int> _busFailCount = {};
+  final Map<String, DateTime> _busUnsupportedUntil = {};
+  final Map<String, String> _busUnsupportedMsg = {};
+
+  String _busSupportKey(_BusLegInfo info) =>
+      '${info.routeNo}@${info.lat.toStringAsFixed(5)},${info.lon.toStringAsFixed(5)}';
+
+  bool _isUnsupportedKeyNow(String key) {
+    final until = _busUnsupportedUntil[key];
+    if (until == null) return false;
+    return DateTime.now().isBefore(until);
+  }
+
+  String? _unsupportedMsgForKey(String key) => _busUnsupportedMsg[key];
+
+  void _markUnsupported(
+      _BusLegInfo info, {
+        String? message,
+        Duration coolDown = const Duration(minutes: 30),
+      }) {
+    final key = _busSupportKey(info);
+    final msg = message ?? '버스 ${info.routeNo} 실시간 도착정보는 지원하지 않습니다';
+
+    _busUnsupportedUntil[key] = DateTime.now().add(coolDown);
+    _busUnsupportedMsg[key] = msg;
+
+    // ✅ 더 이상 폴링하지 않도록 타이머 중단
+    _liveTimer?.cancel();
+
+    if (mounted) {
+      setState(() {
+        // ✅ null 말고 메시지를 넣어야 UI가 "지원하지 않습니다"로 표시됨
+        _busFuture = Future.value(msg);
+        _liveUpdatedAt = null;
+      });
+    }
+  }
+
   // ----------------------------
   // RAW helpers
   // ----------------------------
@@ -154,9 +193,38 @@ class _TransitCardState extends State<_TransitCard> {
     return false;
   }
 
+  bool _isBusUnsupportedNow(TransitVariant v) {
+    final info = _firstPollableBusLegInfoFromRaw(v);
+    if (info == null) return false;
+
+    final key = _busSupportKey(info);
+    final until = _busUnsupportedUntil[key];
+    if (until == null) return false;
+
+    return DateTime.now().isBefore(until);
+  }
+
+  String? _unsupportedMsgNow(TransitVariant v) {
+    final info = _firstPollableBusLegInfoFromRaw(v);
+    if (info == null) return null;
+
+    final key = _busSupportKey(info);
+    final until = _busUnsupportedUntil[key];
+    if (until == null) return null;
+
+    if (DateTime.now().isBefore(until)) {
+      return _busUnsupportedMsg[key] ?? '버스 ${info.routeNo} 실시간 도착정보는 지원하지 않습니다';
+    }
+    return null;
+  }
+
   bool _shouldPollBus(TransitVariant v) {
     if (!_hasBusLeg(v)) return false;
     if (_hasVillageBusLeg(v)) return false;
+
+    // ✅ 쿨다운 동안은 폴링 금지
+    if (_isBusUnsupportedNow(v)) return false;
+
     return true;
   }
 
@@ -235,12 +303,14 @@ class _TransitCardState extends State<_TransitCard> {
     required double lon,
     required String routeNo,
   }) async {
+    debugPrint('[BUS] ensureStop ENTER route=$routeNo lat=$lat lon=$lon');
     final key = _stopKey(lat, lon, routeNo);
     final now = DateTime.now();
 
     final cached = _stopCache[key];
     final cachedAt = _stopCacheAt[key];
     if (cached != null && cachedAt != null && now.difference(cachedAt).inMinutes < 10) {
+      debugPrint('[BUS] ensureStop CACHE HIT route=$routeNo stop=${cached.name}/${cached.nodeId}');
       return cached;
     }
 
@@ -283,28 +353,72 @@ class _TransitCardState extends State<_TransitCard> {
 
     if (lat == 0.0 || lon == 0.0) return null;
 
-    // ✅ routeNo: raw에서 우선, 없으면 summary 텍스트에서 extractRouteToken으로 뽑기
+    // routeNo: raw 우선, 없으면 summary에서 토큰 추출
     final s = widget.data.summaryOf(v);
     final fallbackToken =
         extractRouteToken(s.firstArrivalText) ?? extractRouteToken(s.secondArrivalText);
 
     final routeNo = info?.routeNo ?? _normRouteNo(fallbackToken ?? '');
-
     debugPrint('[BUS] routeNo=$routeNo fallbackToken=$fallbackToken');
-
     if (routeNo.isEmpty) return null;
 
+    // ✅ key를 만들 info가 없으면 임시로 만들어서 key 생성
+    final infoKeyBase = info ?? _BusLegInfo(routeNo: routeNo, lat: lat, lon: lon, rawRoute: '');
+    final key = _busSupportKey(infoKeyBase);
+
+    // (선택) 이미 "미지원" 상태면 바로 메시지 반환 (폴링 중단은 _markUnsupported에서)
+    final until = _busUnsupportedUntil[key];
+    if (until != null && DateTime.now().isBefore(until)) {
+      return _busUnsupportedMsg[key] ?? '버스 실시간 도착정보는 현재 지원하지 않습니다';
+    }
+
+    // ✅ 1) 정류장 찾기 먼저
     final stop = await _ensureStopForRoute(lat: lat, lon: lon, routeNo: routeNo);
     if (stop == null) {
-      debugPrint('[BUS] stop not found for route=$routeNo');
+      final n = (_busFailCount[key] ?? 0) + 1;
+      _busFailCount[key] = n;
+
+      debugPrint('[BUS] stop not found for route=$routeNo failCount=$n');
+
+      if (n >= 2) {
+        _markUnsupported(
+          infoKeyBase,
+          message: '버스 $routeNo 실시간 도착정보는 현재 지원하지 않습니다',
+        );
+        return _busUnsupportedMsg[key] ?? '버스 $routeNo 실시간 도착정보는 현재 지원하지 않습니다';
+      }
       return null;
     }
 
-    return widget.busArrivalService.fetchNextArrivalText(
+    // ✅ 2) 도착정보 조회 (여기서 1번만 호출!)
+    final live = await widget.busArrivalService.fetchNextArrivalText(
       cityCode: stop.cityCode,
       nodeId: stop.nodeId,
       routeNo: routeNo,
     );
+
+    // ✅ 3) 성공/실패 판정(연속 실패 기준)
+    if (live == null || live.trim().isEmpty) {
+      final n = (_busFailCount[key] ?? 0) + 1;
+      _busFailCount[key] = n;
+
+      debugPrint('[BUS] live empty route=$routeNo failCount=$n');
+
+      if (n >= 2) {
+        _markUnsupported(
+          infoKeyBase,
+          message: '버스 $routeNo 실시간 도착정보는 현재 지원하지 않습니다',
+        );
+        return _busUnsupportedMsg[key] ?? '버스 $routeNo 실시간 도착정보는 현재 지원하지 않습니다';
+      }
+      return null;
+    } else {
+      // ✅ 성공이면 실패 카운트 리셋 + 미지원 해제
+      _busFailCount[key] = 0;
+      _busUnsupportedUntil.remove(key);
+      _busUnsupportedMsg.remove(key);
+      return live;
+    }
   }
 
   void _refreshRealtimeNow() {
@@ -344,6 +458,16 @@ class _TransitCardState extends State<_TransitCard> {
 
   void _startLivePolling() {
     _liveTimer?.cancel();
+
+    // ✅ 미지원이면: 메시지 보여주고 타이머 안 돌림
+    final unsupported = _unsupportedMsgNow(_selected);
+    if (unsupported != null) {
+      setState(() {
+        _busFuture = Future.value(unsupported);
+        _liveUpdatedAt = null;
+      });
+      return;
+    }
 
     if (!_shouldPollBus(_selected)) {
       setState(() {
@@ -610,7 +734,22 @@ class _TransitCardState extends State<_TransitCard> {
 
     final s = widget.data.summaryOf(_selected);
     final flowSteps = _buildLegSteps(_selected);
-    final arrivalText = [s.firstArrivalText, s.secondArrivalText].where((e) => e.isNotEmpty).join(' / ');
+    String _stripModePrefix(String s) {
+      var x = s.trim();
+
+      // 맨 앞에 붙는 모드 토큰 제거
+      x = x.replaceFirst(RegExp(r'^(SUBWAY|METRO|TRAIN)\s*', caseSensitive: false), '');
+
+      // 혹시 ":" 형태로 붙는 경우도 방어 (예: "SUBWAY: 수도권1호선")
+      x = x.replaceFirst(RegExp(r'^(SUBWAY|METRO|TRAIN)\s*[:：]\s*', caseSensitive: false), '');
+
+      return x.trim();
+    }
+
+    final arrivalText = [s.firstArrivalText, s.secondArrivalText]
+        .map(_stripModePrefix)
+        .where((e) => e.isNotEmpty)
+        .join(' / ');
 
     ChoiceChip chip(String label, TransitVariant v) {
       return ChoiceChip(
@@ -663,6 +802,23 @@ class _TransitCardState extends State<_TransitCard> {
               final hasVillage = _hasVillageBusLeg(_selected);
 
               if (!hasBus) return const SizedBox.shrink();
+
+              final info = _firstPollableBusLegInfoFromRaw(_selected);
+              final key = (info == null) ? null : _busSupportKey(info);
+              final unsupported = (key != null) && _isUnsupportedKeyNow(key!);
+
+              if (unsupported) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    _unsupportedMsgForKey(key!) ?? '실시간 도착정보는 지원하지 않습니다',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+              }
 
               // ✅ 마을버스 포함이면 고정 멘트
               if (hasVillage) {
