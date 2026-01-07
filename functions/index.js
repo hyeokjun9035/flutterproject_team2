@@ -1025,107 +1025,134 @@ if (admin.apps.length === 0) {
 
 
 
-// Firestore의 community 컬렉션에 새 문서가 생성될 때 실행 (v2 방식)
+// Firestore의 community 컬렉션에 새 문서가 생성될 때 실행  알림
+// [2] 거리 계산 함수
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+    const R = 6371; // 지구 반지름 (km)
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
 }
 
-exports.sendPostNotification = onDocumentCreated({
-  document: "community/{postId}",
-  region: "asia-northeast3"
+
+// 좋아요/댓글 실시간 푸시 알림 (notifications 컬렉션 감시)
+const { getMessaging } = require("firebase-admin/messaging");
+exports.sendPushNotification = onDocumentCreated({
+    document: "notifications/{notificationId}",
+    region: "asia-northeast3"
 }, async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) {
-    console.log("❌ 데이터 스냅샷이 없습니다.");
-    return null;
-  }
+    const data = event.data.data();
+    if (!data) return;
 
-  const postData = snapshot.data();
-  const postId = event.params.postId;
+    // 1. 데이터 존재 여부 확인 (중요!)
+    const receiverUid = data.receiverUid;
+    const senderNickName = data.senderNickName || "누군가";
+    const type = data.type || "like";
+    const postTitle = data.postTitle || "게시글";
 
-  console.log(`🚀 [시작] ID: ${postId}`);
-  console.log("📝 전체 데이터:", JSON.stringify(postData)); // 데이터 전체 출력
-
-  // 1. 카테고리 확인
-  if (postData.category !== "사건/이슈") {
-    console.log(`ℹ️ 생략: 카테고리 미일치 (${postData.category})`);
-    return null;
-  }
-
-  // 2. 위치 데이터 확인 (매우 중요)
-  const place = postData.place;
-  console.log("📍 place 객체 상태:", JSON.stringify(place));
-
-  if (!place || place.lat === undefined || place.lng === undefined) {
-    console.log("❌ 오류: place.lat 또는 lng가 존재하지 않음");
-    return null;
-  }
-
-  const postLat = Number(place.lat);
-  const postLon = Number(place.lng);
-
-  if (isNaN(postLat) || isNaN(postLon)) {
-    console.log(`❌ 오류: 좌표가 숫자가 아님 { lat: ${place.lat}, lng: ${place.lng} }`);
-    return null;
-  }
-
-  try {
-    const usersSnapshot = await admin.firestore().collection('users').get();
-    console.log(`👥 전체 유저 수: ${usersSnapshot.size}명`);
-
-    const targetTokens = [];
-
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      const token = userData.fcmToken;
-
-      // 1. 위치 정보 가져오기 (Map 안이나 최상위 모두 체크)
-      const lat = userData.lastLocation?.latitude || userData.latitude;
-      const lon = userData.lastLocation?.longitude || userData.longitude;
-
-      const userLat = parseFloat(lat);
-      const userLon = parseFloat(lon);
-
-      // 로그 추가: 어떤 값을 읽었는지 확인용
-      // console.log(`유저(${doc.id}) 좌표 읽기 성공: ${userLat}, ${userLon}`);
-
-      if (!isNaN(userLat) && !isNaN(userLon) && token) {
-        const distance = calculateDistance(postLat, postLon, userLat, userLon);
-
-        // 테스트 성공을 위해 범위를 10km로 살짝 늘려봅시다.
-        if (distance <= 10.0) {
-          targetTokens.push(token);
-        }
-      }
-    });
-
-    console.log(`🔎 대상 토큰 개수: ${targetTokens.length}`);
-
-    if (targetTokens.length > 0) {
-      const message = {
-        notification: {
-          title: `📍 내 주변 사건/이슈: ${postData.author?.nickName || "알림"}`,
-          body: postData.title || "새 제보가 올라왔습니다."
-        },
-        tokens: [...new Set(targetTokens)],
-      };
-
-      const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(`✅ 전송 결과: ${response.successCount}개 성공, ${response.failureCount}개 실패`);
-    } else {
-      console.log("⚠️ 알림을 보낼 대상(조건 맞는 유저)이 없습니다.");
+    // receiverUid가 없으면 실행 중단
+    if (!receiverUid || typeof receiverUid !== 'string' || receiverUid.trim() === "") {
+        console.error(" 에러: receiverUid가 누락되었거나 유효하지 않습니다.", data);
+        return;
     }
 
-  } catch (error) {
-    console.error("❌ 실행 중 에러 발생:", error);
-  }
+    let bodyText = type === "like"
+        ? `${senderNickName}님이 '${postTitle}' 글에 좋아요를 눌렀습니다.`
+        : `${senderNickName}님이 '${postTitle}' 글에 댓글을 남겼습니다.`;
+
+    try {
+        const userDoc = await admin.firestore().collection("users").doc(receiverUid).get();
+
+        if (!userDoc.exists) {
+            console.log(` 사용자 문서가 존재하지 않음: ${receiverUid}`);
+            return;
+        }
+
+        const fcmToken = userDoc.data()?.fcmToken;
+
+        if (!fcmToken) {
+            console.log(`⚠ 사용자(${receiverUid})의 FCM 토큰이 없습니다.`);
+            return;
+        }
+
+        const message = {
+            notification: { title: "새로운 알림", body: bodyText },
+            token: fcmToken,
+            data: { postId: data.postId || "", type: type },
+        };
+
+        await getMessaging().send(message);
+        console.log(` 푸시 알림 전송 성공: ${receiverUid} 에게 보냄`);
+    } catch (error) {
+        console.error("최종 전송 에러:", error);
+    }
+});
+
+
+// 새 게시글 위치 기반 알림
+
+exports.sendPostNotification = onDocumentCreated({
+    document: "community/{postId}",
+    region: "asia-northeast3"
+}, async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return null;
+
+    const postData = snapshot.data();
+    const postId = event.params.postId;
+
+    // 카테고리 체크
+    if (postData.category !== "사건/이슈") return null;
+
+    // 좌표 체크
+    const place = postData.place;
+    if (!place || place.lat === undefined || place.lng === undefined) return null;
+
+    const postLat = Number(place.lat);
+    const postLon = Number(place.lng);
+
+    try {
+        const usersSnapshot = await admin.firestore().collection('users').get();
+        const targetTokens = [];
+
+        usersSnapshot.forEach(doc => {
+            const userData = doc.data();
+            const token = userData.fcmToken;
+
+            const lat = userData.lastLocation?.latitude || userData.latitude;
+            const lon = userData.lastLocation?.longitude || userData.longitude;
+
+            const userLat = parseFloat(lat);
+            const userLon = parseFloat(lon);
+
+            if (!isNaN(userLat) && !isNaN(userLon) && token) {
+                const distance = calculateDistance(postLat, postLon, userLat, userLon);
+                if (distance <= 10.0) { // 10km 이내 유저
+                    targetTokens.push(token);
+                }
+            }
+        });
+
+        if (targetTokens.length > 0) {
+            const uniqueTokens = [...new Set(targetTokens)];
+            const message = {
+                notification: {
+                    title: `주변 사건/이슈: ${postData.author?.nickName || "알림"}`,
+                    body: postData.title || "새 제보가 올라왔습니다."
+                },
+                tokens: uniqueTokens,
+            };
+
+            const response = await admin.messaging().sendEachForMulticast(message);
+            console.log(`위치 알림 전송 결과: ${response.successCount}개 성공`);
+        }
+    } catch (error) {
+        console.error("위치 알림 실행 에러:", error);
+    }
 });
 
 
@@ -1177,4 +1204,6 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
     throw new HttpsError("internal", `발송 실패: ${e.message}`);
   }
 });
+
+
 

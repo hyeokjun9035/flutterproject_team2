@@ -48,43 +48,82 @@ class _CommunityviewState extends State<Communityview> {
       debugPrint('viewCount update failed: $e');
     }
   }
-
-  Future<void> _toggleLike() async {
+  //좋아요 기능 수정
+  Future<void> _toggleLike(Map<String, dynamic> postData) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final postRef = FirebaseFirestore.instance.collection('community').doc(widget.docId);
+    final fs = FirebaseFirestore.instance;
+    final postRef = fs.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
 
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final likeSnap = await tx.get(likeRef);
+      try {
+        await fs.runTransaction((tx) async {
+          final likeSnap = await tx.get(likeRef);
 
-      if (likeSnap.exists) {
-        tx.delete(likeRef);
-        tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
-      } else {
-        tx.set(likeRef, {
-          'uid': user.uid,
+          if (likeSnap.exists) {
+            // 1. 좋아요 취소
+            tx.delete(likeRef);
+            tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
+          } else {
+            // 2. 좋아요 추가
+            tx.set(likeRef, {
+              'uid': user.uid,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+
+            // ✅ 알림 로직 추가 (트랜잭션 밖에서 실행해도 되지만, 여기서 데이터 생성 가능)
+            _sendLikeNotification(postData, user);
+          }
+        });
+      } catch (e) {
+        debugPrint("좋아요 처리 에러: $e");
+      }
+    }
+
+  // 좋아요 알림을 위한 별도 함수
+  Future<void> _sendLikeNotification(Map<String, dynamic> postData, User currentUser) async {
+    //  작성자 UID 추출 (가장 확실한 'createdBy' 필드 사용)
+    // 데이터 구조상 String이므로 바로 가져오면 됩니다.
+    final String postAuthorUid = postData['createdBy']?.toString() ?? '';
+
+    debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
+
+    //  ID가 비어있지 않고, 본인 글이 아닐 때만 실행
+    // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid)
+    if (postAuthorUid.isNotEmpty)
+    {
+      try {
+        // 알림을 보내는 내 정보 가져오기
+        final senderSnap = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+        final senderNickName = senderSnap.data()?['nickName'] ?? '누군가';
+
+        //  알림 문서 생성
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'receiverUid': postAuthorUid,      // 수신자: 게시글 작성자
+          'senderUid': currentUser.uid,      // 발신자: 좋아요 누른 사람
+          'senderNickName': senderNickName,
+          'type': 'like',
+          'postId': widget.docId,            // 게시글 ID
+          'postTitle': postData['title'] ?? '게시글',
+          'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+
+        debugPrint("좋아요 알림 생성 성공 (수신자: $postAuthorUid)");
+      } catch (e) {
+        debugPrint("알림 생성 중 에러 발생: $e");
       }
-    });
-  }
-//
-  Widget _likeButton(String postId, int likeCount) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // 로그인 안 했으면 숫자만 보여주거나 숨겨도 됨
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.favorite_border, size: 18),
-          const SizedBox(width: 4),
-          Text('$likeCount', style: const TextStyle(fontSize: 12)),
-        ],
-      );
+    } else {
+      debugPrint("알림 전송 안함: 본인 글이거나 작성자 ID가 없음");
     }
+  }
+
+  Widget _likeButton(String postId, int likeCount, Map<String, dynamic> postData) {
+    // 현재 유저의 좋아요 여부를 실시간으로 추적하는 스트림
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
 
     final likeDocStream = FirebaseFirestore.instance
         .collection('community')
@@ -96,12 +135,26 @@ class _CommunityviewState extends State<Communityview> {
     return StreamBuilder<DocumentSnapshot>(
       stream: likeDocStream,
       builder: (context, snap) {
-        final liked = snap.data?.exists ?? false;
+        // 1. 데이터 로딩 중일 때 처리 (Null 에러 방지 핵심)
+        if (snap.connectionState == ConnectionState.waiting) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.favorite_border, size: 18, color: Colors.black54),
+              const SizedBox(width: 4),
+              Text('$likeCount', style: const TextStyle(fontSize: 12)),
+            ],
+          );
+        }
+
+        // 2. 안전하게 좋아요 여부 확인
+        final bool liked = snap.data?.exists ?? false;
 
         return InkWell(
-          onTap: _toggleLike,
+          // 3. postData(게시글 데이터)를 넘겨주어야 알림 함수가 정상 작동함
+          onTap: () => _toggleLike(postData),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min, // 👈 레이아웃 오버플로 방지 핵심
             children: [
               Icon(
                 liked ? Icons.favorite : Icons.favorite_border,
@@ -116,7 +169,6 @@ class _CommunityviewState extends State<Communityview> {
       },
     );
   }
-
   DateTime? _readFirestoreTime(Map<String, dynamic> data, String key) {
     final v = data[key];
     if (v is Timestamp) return v.toDate();
@@ -547,9 +599,8 @@ class _CommunityviewState extends State<Communityview> {
     final bool isNotice = category == '공지사항';
 
     final authorMap = (data['author'] as Map<String, dynamic>?) ?? {};
-    final authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
-        .toString();
-    final authorProfile = (authorMap['profile_image_url'] ?? '').toString();
+    final String authorName = (authorMap['nickName'] ?? authorMap['name'] ?? '익명').toString();
+    final String authorProfile = (authorMap['profile_image_url'] ?? '').toString();
 
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final authorUid = (authorMap['uid'] ?? '').toString();
@@ -595,6 +646,7 @@ class _CommunityviewState extends State<Communityview> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       authorName,
@@ -603,6 +655,7 @@ class _CommunityviewState extends State<Communityview> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+
                     if (timeLabel.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
@@ -627,7 +680,9 @@ class _CommunityviewState extends State<Communityview> {
                       const SizedBox(width: 4),
                       Text('$viewCount', style: const TextStyle(fontSize: 12)),
                       const SizedBox(width: 12),
-                      _likeButton(doc.id, likeCount),
+                      Flexible(
+                        child: _likeButton(doc.id, likeCount,data),
+                      ),
                     ],
                   ),
                 ),
