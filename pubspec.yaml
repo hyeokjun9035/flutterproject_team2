@@ -97,6 +97,7 @@ flutter:
     - assets/
     - assets/icons/cctv.png #251229
     - assets/joinIcon/
+    - assets/joinIcon/logo.png
   # 2025-12-23 jgh251223---E
 
   # To add assets to your application, add an assets section, like this:
