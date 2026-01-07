@@ -10,7 +10,6 @@ import 'package:flutter_project/community/CommunityView.dart';
 import 'package:flutter_project/data/favorite_route.dart';
 import 'package:flutter_project/home/ui_helpers.dart';
 import 'package:flutter_project/utils/launcher.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/dashboard_cache.dart';
 import '../carry/checklist_models.dart';
@@ -34,6 +33,7 @@ import '../tmaprouteview/routeview.dart'; //jgh251224
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
 import '../headandputter/putter.dart';
 import '../ui/nearby_issue_map_page.dart';
+import '../widgets/app_drawer_factory.dart';
 import 'home_card_order.dart'; //jgh251226
 part 'home_widgets.part.dart';
 part 'home_transit.part.dart';
@@ -65,6 +65,8 @@ class _HomePageState extends State<HomePage> {
   late final NearbyIssuesService _nearbyIssuesService;
   Stream<List<NearbyIssuePost>>? _nearbyIssuesStream;
   List<NearbyIssuePost> _nearbyIssuesLatest3 = const [];
+  final GlobalKey<ScaffoldState> _scaffoldkey = GlobalKey<ScaffoldState>();
+  final user = FirebaseAuth.instance.currentUser;
 
   Future<void> _openForecastWeb() async {
     if (_lat == null || _lon == null) return;
@@ -507,6 +509,10 @@ class _HomePageState extends State<HomePage> {
                         distanceMeters: err.distanceMeters,
                         walkMinutes: err.walkMinutes,
                         onFavoritePressed: _openFavoriteActionsSheet,
+                        startLat: fav?.start.lat ?? 0.0,
+                        startLon: fav?.start.lng ?? 0.0,
+                        endLat: fav?.end.lat ?? 0.0,
+                        endLon: fav?.end.lng ?? 0.0,
                       );
                     }
 
@@ -1018,99 +1024,116 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return PutterScaffold(
       currentIndex: 0,
-      body: Scaffold(
-        body: FutureBuilder<DashboardData>(
-          future: _future,
-          initialData: DashboardCache.data,
-          builder: (context, snapshot) {
-            final data = snapshot.data ?? DashboardCache.data;
+      body: FutureBuilder<DashboardData>(
+        future: _future,
+        initialData: DashboardCache.data,
+        builder: (context, snapshot) {
+          final data = snapshot.data ?? DashboardCache.data;
 
-            // 초기 진입만 로딩 처리
-            final isFirstLoading = (data == null);
-            // 새로고침/백그라운드 갱신
-            final isRefreshing = _isRefreshing;
+          final isFirstLoading = (data == null);
+          final isRefreshing = _isRefreshing;
 
-            if (snapshot.hasError && data == null) {
-              final err = snapshot.error;
-              return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, size: 36),
-                      const SizedBox(height: 12),
-                      Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      ElevatedButton(onPressed: _reload, child: const Text('다시시도'))
-                    ],
-                  )
-              );
-            }
+          if (snapshot.hasError && data == null) {
+            final err = snapshot.error;
+            return Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, size: 36),
+                    const SizedBox(height: 12),
+                    Text('데이터 로드 실패\n$err', textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    ElevatedButton(onPressed: _reload, child: const Text('다시시도')),
+                  ],
+                ),
+              ),
+            );
+          }
 
-            final now = data?.now;
-            final safeData = snapshot.data ?? DashboardCache.data;
-            final updatedAt = safeData?.updatedAt ?? DateTime.now();
+          final now = data?.now;
+          final safeData = data;
+          final updatedAt = safeData?.updatedAt ?? DateTime.now();
 
-            return Stack(
+          return Scaffold(
+            key: _scaffoldkey,
+
+            drawer: AppDrawerFactory.buildWithNearbyMap(
+              context: context,
+              userStream: FirebaseFirestore.instance.collection('users').doc(user!.uid).snapshots(),
+              locationLabel: _locationLabel,
+              isHome: true,
+              onGoHome: () {},
+              myLat: _lat!,
+              myLng: _lon!,
+              // ✅ stream -> 1회 가져오기
+              getNearbyTopPosts: () async {
+                final s = _nearbyIssuesStream; // Stream<List<NearbyIssuePost>>
+                if (s == null) return const <NearbyIssuePost>[];
+                return await s.first;
+              },
+
+              // background: const _DaySkyDrawerBackground(), // 필요하면 주입
+            ),
+
+            body: Stack(
               children: [
-                // ✅ 1) 배경 (낮/밤/구름/맑음)
                 WeatherBackground(now: now, lat: _lat, lon: _lon),
-
-                // ✅ 2) 비/눈 효과(PTY 기반)
                 if (now != null) PrecipitationLayer(now: now),
 
-                // ✅ 3) 기존 UI
                 SafeArea(
-                    child: RefreshIndicator(
-                      onRefresh: () async => _reload(),
-                      child: CustomScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
+                  child: RefreshIndicator(
+                    onRefresh: () async => _reload(),
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 8, 16, 12),
+                            child: _TopBar(
+                              onOpenMenu: () => _scaffoldkey.currentState?.openDrawer(),
+                              locationName: _locationLabel,
+                              updatedAt: updatedAt,
+                              onRefresh: _reload,
+                              isRefreshing: isRefreshing,
+                              editMode: _editMode,
+                              onToggleEditMode: _toggleEditMode,
+                              onOpenOrderSheet: _openOrderSheet,
+                            ),
+                          ),
+                        ),
+
+                        if (safeData != null && safeData.alerts.isNotEmpty)
                           SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                              child: _TopBar(
-                                locationName: _locationLabel,
-                                updatedAt: updatedAt,
-                                onRefresh: _reload,
-                                isRefreshing: isRefreshing,
-                                editMode: _editMode,
-                                onToggleEditMode: _toggleEditMode,
-                                onOpenOrderSheet: _openOrderSheet,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: _AlertBanner(alerts: safeData.alerts),
                             ),
                           ),
 
-                          if (safeData != null && safeData.alerts.isNotEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                child: _AlertBanner(alerts: safeData.alerts),
-                              ),
-                            ),
-
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                  final id = _order[index];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: _buildHomeCard(id, data, isFirstLoading),
-                                  );
-                                },
-                                childCount: _order.length,
-                              ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                final id = _order[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _buildHomeCard(id, safeData, isFirstLoading),
+                                );
+                              },
+                              childCount: _order.length,
                             ),
                           ),
-                        ],
-                      ),
-                    )
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
