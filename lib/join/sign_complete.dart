@@ -51,7 +51,6 @@ class _JoinPage5State extends State<JoinPage5> {
     try {
       final user = auth.currentUser;
 
-      // ✅ JoinPage1에서 이미 createUserWithEmailAndPassword가 성공한 상태여야 함
       if (user == null) {
         _showMessage("가입 세션이 만료되었습니다. 처음부터 다시 시도해주세요.");
         return false;
@@ -68,13 +67,11 @@ class _JoinPage5State extends State<JoinPage5> {
           throw Exception("NICKNAME_EXISTS");
         }
 
-        // 닉네임 예약
         tx.set(nickRef, {
           "uid": uid,
           "createdAt": FieldValue.serverTimestamp(),
         });
 
-        // 유저 저장
         final userRef = fs.collection("users").doc(uid);
         tx.set(userRef, {
           "uid": uid,
@@ -95,7 +92,6 @@ class _JoinPage5State extends State<JoinPage5> {
 
       return true;
     } on FirebaseException catch (e) {
-      // Firestore 권한/규칙/네트워크 등
       _showMessage("저장 실패: ${e.message ?? e.code}");
       return false;
     } catch (e) {
@@ -113,38 +109,123 @@ class _JoinPage5State extends State<JoinPage5> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFB2EBF2),
       appBar: AppBar(
-        title: const Text("회원가입"),
+        backgroundColor: const Color(0xFF2F80ED),
+        elevation: 0,
+        foregroundColor: Colors.white,
+        centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(150, 0, 0, 100),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(100, 0, 0, 0),
-              child: Image.asset("assets/joinIcon/colorSun.png", width: 30),
-            ),
-            Text("${widget.nickName}님 환영합니다!"),
-            const SizedBox(height: 16),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF2F80ED),
+              Color(0xFF56CCF2),
+              Color(0xFFB2EBF2),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Transform.translate(
+                offset: const Offset(0, -40),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        blurRadius: 30,
+                        offset: Offset(0, 20),
+                        color: Colors.black26,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE3F2FD),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          size: 48,
+                          color: Color(0xFF2F80ED),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "${widget.nickName}님 환영합니다!",
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black87,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "회원가입이 성공적으로 완료되었습니다.\n이제 날씨 서비스를 이용하실 수 있어요 ☀️",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                            final ok = await _finalizeSignup();
+                            if (!mounted) return;
 
-            ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () async {
-                final ok = await _finalizeSignup();
-                if (!mounted) return;
-
-                if (ok) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => LoginPage()),
-                  );
-                }
-              },
-              child: Text(_isLoading ? "처리중..." : "메인으로"),
+                            if (ok) {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const LoginPage(),
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            backgroundColor: const Color(0xFF2F80ED),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: Text(
+                            _isLoading ? "처리중..." : "로그인 화면으로",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );

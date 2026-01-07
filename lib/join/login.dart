@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_project/admin/admin_home_page.dart';
 import 'sign_step1.dart';
 import 'package:flutter_project/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_project/join/Google_Login.dart';
-import 'kakaoLogin.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,72 +11,41 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _pwdController = TextEditingController();
 
-  //firebase Auth 인스턴스 _login 함수 밖에서 초기화
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-//테스트
-//   @override
-//   void initState() {
-//     super.initState();
-//     //이메일/비밀번호 로그인 폼을 보여주기 전에 인증 상태를 확인
-//     _checkIfAlreadySignedIn();
-//   }
-//
-//   void _checkIfAlreadySignedIn(){
-//     final user = FirebaseAuth.instance.currentUser;
-//     if(user != null){
-//       //이미 로그인된 상태면 즉시 홈 페이지로 이동
-//       WidgetsBinding.instance.addPostFrameCallback((_) {
-//         if(!mounted) return;
-//         Navigator.pushReplacement(
-//             context,
-//             MaterialPageRoute(builder: (_) => const HomePage()));
-//       });
-//     }
-//   }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final pwd = _pwdController.text.trim();
 
-
-    print('$email');
-    print('${pwd.length}');
-    //--------------관리자 로그인---------------
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-          email: email,
-          password: pwd
+        email: email,
+        password: pwd,
       );
 
-      //이 시점에서 관리자는 인증된 상태가 됨
-      final uid = userCredential.user!.uid;    //final = 한 번 할당하면 변경 불가, !uid = uid가 null이 아님
+      final uid = userCredential.user!.uid; // 유지
 
-      if(email == "admin@gmail.com") {
+      if (email == "admin@gmail.com") {
         _showMessage("관리자 로그인 성공!");
-        if(!mounted) return;
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const AdminHomePage()),
         );
       } else {
-        //일반 사용자 로그인
-        // _showMessage("로그인 성공!");
-        if(!mounted) return;
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomePage()),
         );
       }
-
     } on FirebaseAuthException catch (e) {
       String message;
-      if(e.code == 'user-not-found') {
+      if (e.code == 'user-not-found') {
         message = '등록되지 않은 이메일 입니다.';
       } else if (e.code == 'wrong-password') {
         message = '비밀번호가 일치하지 않습니다.';
@@ -90,13 +56,9 @@ class _LoginPageState extends State<LoginPage> {
       }
       _showMessage(message);
     } catch (e) {
-      //기타 오류 처리
       _showMessage("알 수 없는 오류 발생");
     }
   }
-
-
-
 
   void _showMessage(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,113 +76,199 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("로그인")),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16,16,16,150),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.grey,
-              child: Icon(Icons.person, size: 100, color: Colors.white),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: "이메일",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _pwdController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "비밀번호",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: const Color(0xFFB2EBF2),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF2F80ED),
+        elevation: 0,
+        foregroundColor: Colors.white,
+        centerTitle: true,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF2F80ED),
+              Color(0xFF56CCF2),
+              Color(0xFFB2EBF2),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+            child: Column(
               children: [
-                Padding(padding: const EdgeInsets.only(right: 30),
-                  child:
-                  ElevatedButton(
-                    onPressed: _login,
-                    child: const Text("로그인"),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const JoinPage1(
-                        email: "",
-                        pwd: "",
-                        checkPwd: "",
-                      )
+                const SizedBox(height: 40),
 
+                // 🔹 로고 영역 (Stack으로 텍스트를 이미지 위에 띄움)
+                Column(
+                  children: [
+                    // ✅ 로고 위에 텍스트 오버레이
+                    Positioned(
+                      child: Text(
+                        "날씨 어때",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          shadows: [
+                            Shadow(
+                              blurRadius: 10,
+                              color: Colors.black38,
+                              // offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
-                  child: const Text("회원가입"),
+                    ),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset(
+                          "assets/joinIcon/logo.png",
+                          width: 180,
+                          filterQuality: FilterQuality.high,
+                        ),
+
+
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+                    const Text(
+                      "오늘 날씨, 한 번에 확인",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
 
-              ],
+                const SizedBox(height: 24),
 
-            ),
-            // 가로 선 추가
-            const Padding(padding: EdgeInsets.only(top: 20)),
-            const Divider(
-              color: Colors.grey,
-              thickness: 1.0,
-              height: 30, // 여백 포함
-            ),
-
-            // OutlinedButton을 전체 Column의 children으로 바로 배치하여 전체 너비를 사용하게 합니다.
-            OutlinedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GoogleLogin()),
-                );
-              },
-
-              // TextField와 유사한 스타일 적용
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50), // 버튼 높이 지정
-                side: const BorderSide(color: Colors.grey, width: 1.0), // 테두리 색상과 두께
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5.0), // 둥근 모서리
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset("assets/joinIcon/google.png", width: 30,),
-                  const Text(
-                    "구글로 로그인 하기",
-                    style: TextStyle(color: Colors.black),
-
+                // 🔹 로그인 카드
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        blurRadius: 25,
+                        offset: Offset(0, 15),
+                        color: Colors.black26,
+                      ),
+                    ],
                   ),
-                ],
-              )
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: "이메일",
+                          prefixIcon: const Icon(Icons.email_outlined),
+                          filled: true,
+                          fillColor: const Color(0xFFF5F7FB),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _pwdController,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: "비밀번호",
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          filled: true,
+                          fillColor: const Color(0xFFF5F7FB),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _login,
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(48),
+                                backgroundColor: const Color(0xFF2F80ED),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                "로그인",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const JoinPage1(
+                                      email: "",
+                                      pwd: "",
+                                      checkPwd: "",
+                                    ),
+                                  ),
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(48),
+                                side: const BorderSide(
+                                  color: Color(0xFF2F80ED),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                "회원가입",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2F80ED),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
 
+                const SizedBox(height: 30),
 
+                const Text(
+                  "로그인하면 위치 기반 날씨를 제공해요",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-
-
-          ],
-
-
-
+          ),
         ),
       ),
     );
