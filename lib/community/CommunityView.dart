@@ -5,6 +5,8 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'CommunityEdit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:math';
 
 class Communityview extends StatefulWidget {
   final String docId;
@@ -71,7 +73,113 @@ class _CommunityviewState extends State<Communityview> {
       }
     });
   }
-//
+
+  Widget _placeMapWidget(Map<String, dynamic>? place) {
+    if (place == null) return const SizedBox.shrink();
+
+    final lat = (place['lat'] as num?)?.toDouble();
+    final lng = (place['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return const SizedBox.shrink();
+
+    final name = (place['name'] ?? '위치').toString();
+    final address = (place['address'] ?? '').toString();
+    final pos = LatLng(lat, lng);
+
+    LatLngBounds _boundsFromCenter(LatLng c, double radiusMeters) {
+      // 위도 1도 ≈ 111km
+      final latDelta = radiusMeters / 111000.0;
+      // 경도는 위도에 따라 달라짐
+      final lngDelta = radiusMeters / (111000.0 * (cos(c.latitude * pi / 180)));
+
+      return LatLngBounds(
+        southwest: LatLng(c.latitude - latDelta, c.longitude - lngDelta),
+        northeast: LatLng(c.latitude + latDelta, c.longitude + lngDelta),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.black12),
+          color: Colors.white,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 상단 텍스트
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (address.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                address,
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 지도 (핀만)
+              SizedBox(
+                height: 220,
+                width: double.infinity,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(target: pos, zoom: 17), // 임시값
+                  onMapCreated: (c) async {
+                    // ✅ 여기 숫자만 조절하면 "처음부터 얼마나 가까이"가 결정됨
+                    // 200~400m 정도가 사고 위치 표시엔 보통 좋음
+                    final bounds = _boundsFromCenter(pos, 100); // 반경 250m
+
+                    // bounds 적용 (약간의 padding)
+                    await c.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
+                  },
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('place'),
+                      position: pos,
+                      infoWindow: InfoWindow(title: name),
+                    ),
+                  },
+                  liteModeEnabled: true,
+                  zoomControlsEnabled: false,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
+                  rotateGesturesEnabled: false,
+                  scrollGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+                  zoomGesturesEnabled: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _likeButton(String postId, int likeCount) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -573,6 +681,8 @@ class _CommunityviewState extends State<Communityview> {
     final likeCount = (data['likeCount'] as num?)?.toInt() ?? 0;
     final viewCount = (data['viewCount'] as num?)?.toInt() ?? 0;
 
+    final place = (data['place'] as Map?)?.cast<String, dynamic>();
+
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -704,6 +814,7 @@ class _CommunityviewState extends State<Communityview> {
               ),
             ),
           ),
+        if (!isNotice)_placeMapWidget(place),
 
         // 본문 렌더링
         if (blocks.isNotEmpty)

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_project/community/Location.dart';
+import 'Location.dart' as loc;
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:chewie/chewie.dart';
@@ -17,6 +17,10 @@ import 'community_editor_widgets.dart'; // MiniQuillToolbar 같은거 네가 빼
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
+import 'package:geocoding/geocoding.dart';
+import 'place_geo_utils.dart' as geo;
 
 class CommunityEdit extends StatefulWidget {
   final String docId;
@@ -27,6 +31,10 @@ class CommunityEdit extends StatefulWidget {
 }
 
 class _CommunityEditState extends State<CommunityEdit> {
+  GoogleMapController? _mapCtrl;
+  LatLng? _placePos; // 현재 핀 위치
+  double _mapZoom = 17; // 현재 줌 기억
+
   late QuillController _editorController;
   final TextEditingController _title = TextEditingController();
   bool _loading = true;
@@ -98,47 +106,120 @@ class _CommunityEditState extends State<CommunityEdit> {
     _loadExistingPost();
   }
 
-  String _regionLabelFromPlace(PlaceResult p) {
-    // 1) address가 있으면 그걸로 대충 시/구만 뽑기 (가장 간단)
-    final addr = p.address.trim();
+  Future<void> _moveCamera(LatLng target, {double? zoom}) async {
+    final z = zoom ?? _mapZoom;
+    _mapZoom = z;
+    await _mapCtrl?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: target, zoom: z),
+      ),
+    );
+  }
 
-    // 예: "대구 중구 동성로..." -> "대구"
-    // 예: "부산광역시 해운대구 ..." -> "부산"
-    if (addr.isNotEmpty) {
-      final first = addr.split(' ').first; // 첫 토큰(대구/부산광역시/서울특별시 등)
+  String _t(String? s) => (s ?? '').trim().replaceFirst(RegExp(r'^KR\s+'), '');
 
-      // "OO광역시/특별시/자치시/도" 같은 꼬리를 정리
-      var cleaned = first
+  String? _bestDisplayNameFromPlacemark(Placemark pm) {
+    final subLocality = _t(pm.subLocality); // 동/읍/면
+    final subAdmin = _t(pm.subAdministrativeArea); // 구/군
+    final locality = _t(pm.locality); // 시
+    final admin = _t(pm.administrativeArea); // 도/광역시
+
+    if (subLocality.isNotEmpty) return subLocality;
+
+    final candidates = <String>[
+      _t(pm.name),
+      _t(pm.thoroughfare),
+      _t(pm.subAdministrativeArea),
+      _t(pm.locality),
+      _t(pm.administrativeArea),
+    ].where((e) => e.isNotEmpty).toList();
+
+    final tokens = <String>{};
+    for (final c in candidates) {
+      for (final t in c.split(RegExp(r'\s+'))) {
+        final tt = t.trim();
+        if (tt.isNotEmpty) tokens.add(tt);
+      }
+    }
+
+    for (final t in tokens) {
+      if (RegExp(r'(동|읍|면)$').hasMatch(t)) return t;
+    }
+
+    if (subAdmin.isNotEmpty) return subAdmin;
+    for (final t in tokens) {
+      if (RegExp(r'(구|군)$').hasMatch(t)) return t;
+    }
+
+    if (locality.isNotEmpty) return locality;
+
+    if (admin.isNotEmpty) {
+      final cleaned = admin
+          .replaceAll('특별자치시', '')
+          .replaceAll('특별자치도', '')
           .replaceAll('특별시', '')
           .replaceAll('광역시', '')
           .replaceAll('자치시', '')
-          .replaceAll('특별자치시', '')
-          .replaceAll('특별자치도', '')
           .replaceAll('자치도', '')
-          .replaceAll('도', '');
-
-      // 그래도 비면 원본 첫 토큰
-      if (cleaned.isEmpty) cleaned = first;
-
-      return cleaned;
-    }
-
-    // 2) address가 비면 장소명에서 뽑기(대구역/부평역 -> 대구/부평)
-    final name = p.name.trim();
-    if (name.isNotEmpty) {
-      // "대구역" -> "대구", "부평역" -> "부평"
-      return name
-          .replaceAll('역', '')
-          .replaceAll('시청', '')
-          .replaceAll('터미널', '')
+          .replaceAll('도', '')
           .trim();
+      return cleaned.isNotEmpty ? cleaned : admin;
     }
 
-    return "현재";
+    return null;
+  }
+
+  String? _buildAddressFromPlacemark(Placemark pm) {
+    final parts = <String>[
+      _t(pm.administrativeArea),
+      _t(pm.locality),
+      _t(pm.subAdministrativeArea),
+      _t(pm.subLocality),
+      _t(pm.thoroughfare),
+    ].where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
+  }
+
+  int _rankLabel(String? label) {
+    if (label == null || label.trim().isEmpty) return 0;
+    final v = label.trim();
+    if (RegExp(r'(동|읍|면)$').hasMatch(v)) return 3;
+    if (RegExp(r'(구|군)$').hasMatch(v)) return 2;
+    return 1;
+  }
+
+  Future<Map<String, String?>?> _reverseGeocodeFull(LatLng p) async {
+    try {
+      final pms = await placemarkFromCoordinates(p.latitude, p.longitude);
+      if (pms.isEmpty) return null;
+
+      Placemark? bestPm;
+      String? bestName;
+      int bestRank = -1;
+
+      for (final pm in pms) {
+        final name = _bestDisplayNameFromPlacemark(pm);
+        final r = _rankLabel(name);
+        if (r > bestRank) {
+          bestRank = r;
+          bestName = name;
+          bestPm = pm;
+          if (bestRank == 3) break;
+        }
+      }
+
+      final address = _buildAddressFromPlacemark(bestPm ?? pms.first);
+
+      return {'address': address, 'name': bestName};
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   void dispose() {
+    _mapCtrl?.dispose();
     _title.dispose();
     _editorController.dispose();
     _removeDropdown(notify: false);
@@ -253,6 +334,38 @@ class _CommunityEditState extends State<CommunityEdit> {
     );
   }
 
+  Future<void> _updatePlacePosition(LatLng pos) async {
+    if (selectedPlace == null) return;
+
+    // 1) 좌표 반영(핀 먼저 움직이게)
+    setState(() => _placePos = pos);
+
+    // 2) reverse geocode로 새 이름/주소 얻기
+    final info = await geo.reverseGeocodeFull(pos);
+    final newAddr = info?.address;
+    final newName = info?.name;
+
+    // 3) selectedPlace 자체를 교체 (UI의 “부평동” 같은 이름이 여기서 바뀜)
+    setState(() {
+      selectedPlace = PlaceResult(
+        name: (newName != null && newName.trim().isNotEmpty)
+            ? newName.trim()
+            : selectedPlace!.name,
+        address: (newAddr != null && newAddr.trim().isNotEmpty)
+            ? newAddr.trim()
+            : selectedPlace!.address,
+        lat: pos.latitude,
+        lng: pos.longitude,
+        distanceM: selectedPlace!.distanceM,
+      );
+    });
+
+    // 4) 날씨/대기 새 좌표 기준으로 다시 불러오기 (지역 라벨도 바뀜)
+    await _refreshWeatherAndAirForPlace(selectedPlace!);
+
+    _checkDirty();
+  }
+
   void _insertVideoIntoEditor({
     required String source,
     required String name,
@@ -337,12 +450,13 @@ class _CommunityEditState extends State<CommunityEdit> {
   Future<void> _openPlaceSearch() async {
     final result = await Navigator.push<PlaceResult>(
       context,
-      MaterialPageRoute(builder: (_) => const Location()),
+      MaterialPageRoute(builder: (_) => const loc.Location()),
     );
 
     if (result != null) {
       setState(() {
         selectedPlace = result;
+        _placePos = LatLng(result.lat, result.lng);
 
         // ✅ 일단 이전 글 날씨 값은 지워서 "새 위치 선택했는데 옛날 날씨"가 보이지 않게
         _temp = null;
@@ -355,6 +469,7 @@ class _CommunityEditState extends State<CommunityEdit> {
 
       // ✅ 새 위치 기준으로 날씨/대기 다시 가져오기
       await _refreshWeatherAndAirForPlace(result);
+      await _moveCamera(LatLng(result.lat, result.lng), zoom: 17);
 
       _checkDirty();
     }
@@ -561,6 +676,13 @@ class _CommunityEditState extends State<CommunityEdit> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('에러: $e')));
+    }
+
+    if (!mounted) return;
+    if (selectedPlace != null) {
+      setState(() {
+        _placePos = LatLng(selectedPlace!.lat, selectedPlace!.lng);
+      });
     }
   }
 
@@ -1033,6 +1155,7 @@ class _CommunityEditState extends State<CommunityEdit> {
                                   onPressed: () {
                                     setState(() {
                                       selectedPlace = null;
+                                      _placePos = null;
                                       _temp = null;
                                       _wind = null;
                                       _rainChance = null;
@@ -1047,28 +1170,60 @@ class _CommunityEditState extends State<CommunityEdit> {
                             ),
                             const SizedBox(height: 8),
 
-                            SizedBox(
-                              height: 160,
-                              width: double.infinity,
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: GoogleMap(
-                                  initialCameraPosition: CameraPosition(
-                                    target: LatLng(selectedPlace!.lat, selectedPlace!.lng),
-                                    zoom: 15,
-                                  ),
-                                  markers: {
-                                    Marker(
-                                      markerId: const MarkerId("selected"),
-                                      position: LatLng(selectedPlace!.lat, selectedPlace!.lng),
+                            Builder(
+                              builder: (context){
+                                final pos = _placePos ?? LatLng(selectedPlace!.lat, selectedPlace!.lng);
+                                return SizedBox(
+                                  height: 400,
+                                  width: double.infinity,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: GoogleMap(
+                                      initialCameraPosition: CameraPosition(target: pos, zoom: _mapZoom),
+
+                                      onMapCreated: (c) {
+                                        _mapCtrl = c;
+                                        _moveCamera(pos, zoom: _mapZoom); // 처음 위치로 맞춤
+                                      },
+
+                                      // ✅ 사용자가 확대/축소/이동 하면 현재 줌을 저장
+                                      onCameraMove: (cam) {
+                                        _mapZoom = cam.zoom;
+                                      },
+
+                                      // ✅ 지도 탭하면 핀 이동 + 카메라도 그 위치로 이동(줌 유지)
+                                      onTap: (p) async {
+                                        await _updatePlacePosition(p);
+                                        await _moveCamera(p);
+                                      },
+
+                                      markers: {
+                                        Marker(
+                                          markerId: const MarkerId("selected"),
+                                          position: pos,
+                                          draggable: true,
+                                          onDragEnd: (p) async {
+                                            await _updatePlacePosition(p);
+                                            await _moveCamera(p);
+                                          },
+                                        ),
+                                      },
+
+                                      // ✅ 확대/축소 버튼 켜기 (요구사항)
+                                      zoomControlsEnabled: true,
+
+                                      myLocationButtonEnabled: false,
+                                      mapToolbarEnabled: false,
+                                      liteModeEnabled: false,
+
+                                      // ✅ 스크롤뷰 안에서 지도 제스처 먹게
+                                      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                                        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+                                      },
                                     ),
-                                  },
-                                  zoomControlsEnabled: false,
-                                  myLocationButtonEnabled: false,
-                                  mapToolbarEnabled: false,
-                                  liteModeEnabled: true,
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
                             ),
 
                             const SizedBox(height: 8),
@@ -1088,8 +1243,11 @@ class _CommunityEditState extends State<CommunityEdit> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
-                                        "${_regionLabelFromPlace(selectedPlace!)} 현재 날씨",
-                                        style: const TextStyle(
+                                  "${geo.regionLabelFromNameAddress(
+                                  name: selectedPlace!.name,
+                                    address: selectedPlace!.address,
+                                  )} 현재 날씨",
+                                style: const TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
                                         ),
