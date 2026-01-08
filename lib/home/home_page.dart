@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -535,12 +536,12 @@ class _HomePageState extends State<HomePage> {
                   final fav = _selectedFavorite;
 
                   return _TransitCard(
-                      data: transitSnap.data!,
-                      onFavoritePressed: _openFavoriteActionsSheet,
-                      busArrivalService: _busArrivalService,
-                      startLat: fav?.start.lat ?? 0.0,
-                      startLon: fav?.start.lng ?? 0.0,
-                      favoriteId: fav?.id,
+                    data: transitSnap.data!,
+                    onFavoritePressed: _openFavoriteActionsSheet,
+                    busArrivalService: _busArrivalService,
+                    startLat: fav?.start.lat ?? 0.0,
+                    startLon: fav?.start.lng ?? 0.0,
+                    favoriteId: fav?.id,
                   );
                 },
               ),
@@ -552,41 +553,41 @@ class _HomePageState extends State<HomePage> {
         return _Card(
           child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
               stream: _nearbyIssuesStream ?? const Stream.empty(),
-            onData: (issues) {
+              onData: (issues) {
                 _nearbyIssuesLatest3 = issues;
-            },
-            onOpenPost: (docId) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Communityview(docId: docId),
-                ),
-              );
-            },
-            onMapPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NearbyIssuesMapPage(
-                    myLat: _lat!,
-                    myLng: _lon!,
-                    posts: _nearbyIssuesLatest3,
-                  ),
-                ),
-              );
-            },
-            onReportPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const Event()),
-              );
-            },
-            onAddPressed: () {
-              Navigator.push(
+              },
+              onOpenPost: (docId) {
+                Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => Communityadd())
-              );
-            }
+                  MaterialPageRoute(
+                    builder: (_) => Communityview(docId: docId),
+                  ),
+                );
+              },
+              onMapPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NearbyIssuesMapPage(
+                      myLat: _lat!,
+                      myLng: _lon!,
+                      posts: _nearbyIssuesLatest3,
+                    ),
+                  ),
+                );
+              },
+              onReportPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Event()),
+                );
+              },
+              onAddPressed: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => Communityadd())
+                );
+              }
           ),
         );
     }
