@@ -195,9 +195,7 @@
   </p>
 
   <p align="center">
-    <img src="IMAGE_URL_BG_1" width="210"/>
-    <img src="IMAGE_URL_BG_2" width="210"/>
-    <img src="IMAGE_URL_BG_3" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/home_page1.png" width="210"/>
   </p>
 
   <ul>
@@ -219,9 +217,7 @@
   </p>
 
   <p align="center">
-    <img src="IMAGE_URL_PTY_1" width="210"/>
-    <img src="IMAGE_URL_PTY_2" width="210"/>
-    <img src="IMAGE_URL_PTY_3" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/snow.gif" width="210"/>
   </p>
 
   <ul>
