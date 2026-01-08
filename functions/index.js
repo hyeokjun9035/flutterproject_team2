@@ -68,6 +68,157 @@ async function safe(promise, fallback, tag) {
   }
 }
 
+async function buildDashboardData({ lat, lon, locationName = "", addr = "", administrativeArea = "" }) {
+  const { nx, ny } = latLonToGrid(lat, lon);
+
+  const kmaNcst = await callKmaUltraNcst(nx, ny);
+  const kmaUltra = await callKmaUltraFcst(nx, ny);
+  const kmaVilage = await callKmaVilageFcst(nx, ny);
+
+  const ncstItems = Array.isArray(kmaNcst?.items) ? kmaNcst.items : [];
+  const ultraItems = Array.isArray(kmaUltra?.items) ? kmaUltra.items : [];
+  const vilageItems = Array.isArray(kmaVilage?.items) ? kmaVilage.items : [];
+
+  const hourlyFcst = mergeHourly(
+    buildHourlyUltraRaw(ultraItems),
+    buildHourlyFromVilage(vilageItems),
+    24
+  );
+
+  const weeklyShort = buildDailyFromVilage(vilageItems);
+  const baseYmd = weeklyShort[0]?.date ?? ymdKst(new Date());
+
+  const tmFc = midTmFc(new Date());
+  const landRegId = regIdLandFromAdmin(administrativeArea, String(locationName ?? ""), lon);
+  const taRegId = resolveRegIdTa({ administrativeArea, locationName, addr });
+
+  const midLandP = landRegId ? safe(callMidLand(landRegId, tmFc), null, "midLand") : Promise.resolve(null);
+  const midTaP   = taRegId   ? safe(callMidTa(taRegId, tmFc), null, "midTa")       : Promise.resolve(null);
+
+  const airP = safe(
+    buildAir(addr, administrativeArea),
+    { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { reason: "air_failed" } },
+    "air"
+  );
+
+  const alertsP = safe((async () => {
+    const todayYmd = ymdKst(new Date());
+    const fromYmd = addDaysYmd(todayYmd, -3);
+
+    const wrnItems = await callKmaWthrWrnList({
+      fromTmFc: fromYmd,
+      toTmFc: todayYmd,
+    });
+
+    const keywords = buildAlertKeywords(administrativeArea, addr);
+    const alerts = buildAlertsFromWrnList(wrnItems, { keywords });
+
+    if (!alerts || alerts.length === 0) {
+      return buildAlertsFromWrnList(wrnItems, { keywords: [] }).slice(0, 1);
+    }
+    return alerts;
+  })(), [], "alerts");
+
+  const [midLand, midTa, airRes, alerts] = await Promise.all([midLandP, midTaP, airP, alertsP]);
+
+  const weekly = (midLand || midTa)
+    ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd)
+    : weeklyShort;
+
+  return {
+    nx, ny,
+    weatherNow: ncstItems,
+    hourlyFcst,
+    weekly,
+    alerts,
+    air: airRes.air,
+  };
+}
+
+function getUserLatLon(u) {
+  const lat = u?.lastLocation?.latitude ?? u?.latitude ?? u?.lat;
+  const lon = u?.lastLocation?.longitude ?? u?.longitude ?? u?.lon;
+  const nLat = typeof lat === "string" ? parseFloat(lat) : lat;
+  const nLon = typeof lon === "string" ? parseFloat(lon) : lon;
+  if (!Number.isFinite(nLat) || !Number.isFinite(nLon)) return null;
+  return { lat: nLat, lon: nLon };
+}
+
+function mapByCategory(items) {
+  const m = {};
+  for (const it of (items ?? [])) {
+    if (it?.category) m[it.category] = it.fcstValue;
+  }
+  return m;
+}
+
+function ptyToText(pty) {
+  const v = Number(pty);
+  if (!Number.isFinite(v)) return null;
+  if (v === 0) return "없음";
+  if (v === 1) return "비";
+  if (v === 2) return "비/눈";
+  if (v === 3) return "눈";
+  if (v === 4) return "소나기";
+  if (v === 5) return "빗방울";
+  if (v === 6) return "빗방울/눈날림";
+  if (v === 7) return "눈날림";
+  return "강수";
+}
+
+function buildWeatherAlarmMessage(dashboard, fallbackLocName = "") {
+  const nowMap = mapByCategory(dashboard?.weatherNow);
+  const t1h = toNum(nowMap.T1H);
+  const ptyNow = toNum(nowMap.PTY);
+  const rn1 = nowMap.RN1; // "강수없음" 같은 문자열일 수도 있음
+
+  const hourly = Array.isArray(dashboard?.hourlyFcst) ? dashboard.hourlyFcst : [];
+  const next6 = hourly.slice(0, 6);
+
+  // 1) “지금 강수” 우선
+  const nowPtyTxt = ptyToText(ptyNow);
+  const hasNowPrecip = (ptyNow != null && ptyNow > 0);
+
+  // 2) “곧 강수” 판단 (다음 3~6시간 중 PTY>0 또는 POP 높음)
+  const nextPrecip = next6.find(h => (toNum(h.pty) != null && toNum(h.pty) > 0));
+  const maxPop = next6.reduce((acc, h) => {
+    const p = toNum(h.pop);
+    return p == null ? acc : Math.max(acc, p);
+  }, null);
+
+  // 3) 특보(있으면 한 줄 요약)
+  const alertTitle = (dashboard?.alerts?.[0]?.title) ? String(dashboard.alerts[0].title) : null;
+
+  const loc = fallbackLocName ? `${fallbackLocName} ` : "";
+
+  // 제목/본문 구성
+  let title = "날씨 알림";
+  let body = "";
+
+  if (alertTitle) {
+    // 특보가 있으면 최상단에 노출
+    body += `⚠️ ${alertTitle} `;
+  }
+
+  if (hasNowPrecip) {
+    body += `${loc}현재 ${nowPtyTxt ?? "강수"}가 내리고 있어요.`;
+  } else if (nextPrecip) {
+    body += `${loc}${nextPrecip.timeLabel ?? "곧"} ${ptyToText(nextPrecip.pty) ?? "강수"} 가능성이 있어요.`;
+  } else if (maxPop != null && maxPop >= 60) {
+    body += `${loc}오늘 강수확률이 높아요(최대 ${maxPop}%).`;
+  } else {
+    body += `${loc}강수 가능성은 낮아요.`;
+  }
+
+  if (t1h != null) body += ` 현재기온 ${t1h}°`;
+
+  // RN1이 숫자면 같이
+  const rnNum = toNum(rn1);
+  if (rnNum != null && rnNum > 0) body += ` (1시간 강수량 ${rnNum}mm)`;
+
+  return { title, body };
+}
+
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
@@ -1190,7 +1341,7 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
 });
 
 exports.sendDailyAlarm = onSchedule(
-  { schedule: "every 1 minutes", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  { schedule: "every day 00:00", timeZone: "Asia/Seoul", region: "asia-northeast3" },
   async () => {
     const db = admin.firestore();
 
@@ -1208,55 +1359,112 @@ exports.sendDailyAlarm = onSchedule(
     // 대상 유저 조회
     const snap = await db.collection("users")
       .where("isAlramChecked", "==", true)
-      .where("alarmTime", "==", currentTime)
+//      .where("alarmTime", "==", currentTime)
       .get();
 
     if (snap.empty) return;
 
-    // 토큰 수집 + 중복/빈값 제거 + 같은 분 중복발송 방지
-    const targets = [];
+    // 1) 유저별 좌표 확보 + 중복발송 방지 + (nx,ny)로 그룹핑
+    //    같은 nx/ny면 KMA 호출 1번으로 공유 가능
+    const groupsByGrid = new Map(); // "nx,ny" -> [{ref, token, userData}]
     for (const doc of snap.docs) {
       const u = doc.data() || {};
       const token = u.fcmToken;
       if (!token) continue;
 
-      if (u.lastAlarmSentKey === sentKey) continue; // ✅ 중복방지
+      // ✅ 같은 분 중복발송 방지
+      if (u.lastAlarmSentKey && String(u.lastAlarmSentKey) === sentKey) continue;
 
-      targets.push({ ref: doc.ref, token });
+      const ll = getUserLatLon(u);
+      if (!ll) continue;
+
+      const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
+      const gk = `${nx},${ny}`;
+      if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
+      groupsByGrid.get(gk).push({
+        ref: doc.ref,
+        token,
+        userData: u,
+        nx,
+        ny,
+        lat: ll.lat,
+        lon: ll.lon,
+      });
     }
 
-    if (targets.length === 0) return;
+    if (groupsByGrid.size === 0) return;
 
-    // 500개씩 끊어서 발송
-    const chunkSize = 500;
-    for (let i = 0; i < targets.length; i += chunkSize) {
-      const chunk = targets.slice(i, i + chunkSize);
-      const tokens = chunk.map(x => x.token);
+    // 2) 각 격자 그룹마다 대시보드(날씨) 1번만 만든 뒤,
+    //    메시지(제목/본문)별로 다시 그룹핑해서 멀티캐스트
+    const byMessage = new Map(); // "title||body" -> { title, body, entries: [{ref, token}] }
 
-      const res = await getMessaging().sendEachForMulticast({
-        notification: {
-          title: "알림",
-          body: "설정한 시간 알림입니다.",
-        },
-        data: {
-          type: "daily_alarm",
-          sentKey,
-        },
-        tokens,
-      });
+    for (const [gk, entries] of groupsByGrid.entries()) {
+      const first = entries[0];
 
-      // 성공한 것만 lastAlarmSentKey 갱신 (실패 토큰은 나중에 정리해도 됨)
-      const batch = db.batch();
-      chunk.forEach((x, idx) => {
-        const r = res.responses[idx];
-        if (r.success) {
-          batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
-        }
-      });
-      await batch.commit();
+      // 유저 데이터에 addr/administrativeArea/locationName 있으면 넣어주면 중기 regId/특보 키워드 정확도↑
+      const locationName = String(first.userData?.locationName ?? first.userData?.addressName ?? "");
+      const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
+      const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
+
+      const dashboard = await safe(
+        buildDashboardData({
+          lat: first.lat,
+          lon: first.lon,
+          locationName,
+          addr,
+          administrativeArea,
+        }),
+        null,
+        `weatherDashboard:${gk}`
+      );
+
+      if (!dashboard) continue;
+
+      // 격자별 메시지 생성
+      const { title, body } = buildWeatherAlarmMessage(dashboard, locationName);
+      const mk = `${title}||${body}`;
+
+      if (!byMessage.has(mk)) byMessage.set(mk, { title, body, entries: [] });
+      const bucket = byMessage.get(mk);
+
+      for (const e of entries) {
+        bucket.entries.push({ ref: e.ref, token: e.token });
+      }
     }
-    logger.info(`[alarm] now=${currentTime} sentKey=${sentKey}`);
-    logger.info(`[alarm] matchedUsers=${snap.size}`);
-    logger.info(`[alarm] targetsWithToken=${targets.length}`);
+
+    if (byMessage.size === 0) return;
+
+    // 3) 메시지별로 멀티캐스트 발송 + 성공한 유저만 lastAlarmSentKey 갱신
+    for (const { title, body, entries } of byMessage.values()) {
+      // 500개씩
+      const chunkSize = 500;
+      for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
+        const tokens = chunk.map(x => x.token);
+
+        const res = await getMessaging().sendEachForMulticast({
+          notification: { title, body },
+          data: {
+            type: "weather_alarm",
+            sentKey,
+          },
+          tokens,
+        });
+
+        const batch = db.batch();
+        chunk.forEach((x, idx) => {
+          const r = res.responses[idx];
+          if (r.success) {
+            batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
+          }
+        });
+        await batch.commit();
+      }
+    }
+
+    logger.info(`[weather-alarm] now=${currentTime} sentKey=${sentKey}`);
+    logger.info(`[weather-alarm] matchedUsers=${snap.size}`);
+    logger.info(`[weather-alarm] gridGroups=${groupsByGrid.size}`);
+    logger.info(`[weather-alarm] messageGroups=${byMessage.size}`);
   }
 );

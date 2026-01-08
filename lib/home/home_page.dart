@@ -466,7 +466,7 @@ class _HomePageState extends State<HomePage> {
                         child: const Text('추가'),
                       )
                     else
-                      OutlinedButton(
+                    OutlinedButton(
                         onPressed: _pickFavorite,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
@@ -1165,4 +1165,16 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+}
+Future<void> testAdminPush() async {
+  final functions = FirebaseFunctions.instanceFor(region: 'asia-northeast3');
+  final callable = functions.httpsCallable('sendAdminNotification');
+
+  final res = await callable.call({
+    "title": "테스트 푸시",
+    "body": "Flutter에서 callable 호출 테스트",
+    "topic": "community_topic",
+  });
+
+  print("callable result: ${res.data}");
 }
