@@ -3,7 +3,14 @@
  */
 const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore"); // ✅ 위로
+const { onSchedule } = require("firebase-functions/v2/scheduler");       // ✅ 위로
 const logger = require("firebase-functions/logger");
+
+const admin = require("firebase-admin");                                 // ✅ 위로
+if (admin.apps.length === 0) admin.initializeApp();
+const { getMessaging } = require("firebase-admin/messaging");
+
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
@@ -28,6 +35,17 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 function pad2(n) { return String(n).padStart(2, "0"); }
+
+// ⏰ KST 기준 현재 시각 → "HH:mm"
+function getHHmmKst() {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+
+  const hh = String(kst.getUTCHours()).padStart(2, "0");
+  const mm = String(kst.getUTCMinutes()).padStart(2, "0");
+
+  return `${hh}:${mm}`;
+}
 
 function addDaysYmd(ymd, addDays) {
   const y = Number(ymd.slice(0, 4));
@@ -976,7 +994,7 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
 
     // ✅ 4) weekly: mid가 있으면 append, 없으면 short 유지
     const weekly = (midLand || midTa)
-      ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd, tmFcYmd)
+      ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd)
       : weeklyShort;
 
     return {
@@ -1009,18 +1027,6 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
     throw new HttpsError("internal", `getDashboard failed: ${String(e?.message ?? e)}`);
   }
 });
-
-
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const admin = require("firebase-admin");
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
-
-const { getMessaging } = require("firebase-admin/messaging");
-
-
-
 
 
 
@@ -1183,5 +1189,74 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
   }
 });
 
+exports.sendDailyAlarm = onSchedule(
+  { schedule: "every 1 minutes", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  async () => {
+    const db = admin.firestore();
 
+    // "HH:mm" (KST)
+    const currentTime = getHHmmKst(); // 예: "09:00"
 
+    // 중복방지 키(오늘날짜 + 시간)
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const yyyy = kst.getUTCFullYear();
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(kst.getUTCDate()).padStart(2, "0");
+    const sentKey = `${yyyy}-${mm}-${dd} ${currentTime}`;
+
+    // 대상 유저 조회
+    const snap = await db.collection("users")
+      .where("isAlramChecked", "==", true)
+      .where("alarmTime", "==", currentTime)
+      .get();
+
+    if (snap.empty) return;
+
+    // 토큰 수집 + 중복/빈값 제거 + 같은 분 중복발송 방지
+    const targets = [];
+    for (const doc of snap.docs) {
+      const u = doc.data() || {};
+      const token = u.fcmToken;
+      if (!token) continue;
+
+      if (u.lastAlarmSentKey === sentKey) continue; // ✅ 중복방지
+
+      targets.push({ ref: doc.ref, token });
+    }
+
+    if (targets.length === 0) return;
+
+    // 500개씩 끊어서 발송
+    const chunkSize = 500;
+    for (let i = 0; i < targets.length; i += chunkSize) {
+      const chunk = targets.slice(i, i + chunkSize);
+      const tokens = chunk.map(x => x.token);
+
+      const res = await getMessaging().sendEachForMulticast({
+        notification: {
+          title: "알림",
+          body: "설정한 시간 알림입니다.",
+        },
+        data: {
+          type: "daily_alarm",
+          sentKey,
+        },
+        tokens,
+      });
+
+      // 성공한 것만 lastAlarmSentKey 갱신 (실패 토큰은 나중에 정리해도 됨)
+      const batch = db.batch();
+      chunk.forEach((x, idx) => {
+        const r = res.responses[idx];
+        if (r.success) {
+          batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
+        }
+      });
+      await batch.commit();
+    }
+    logger.info(`[alarm] now=${currentTime} sentKey=${sentKey}`);
+    logger.info(`[alarm] matchedUsers=${snap.size}`);
+    logger.info(`[alarm] targetsWithToken=${targets.length}`);
+  }
+);

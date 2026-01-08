@@ -84,6 +84,7 @@ class _JoinPage5State extends State<JoinPage5> {
           "isLocationChecked": widget.isLocationChecked,
           "isCameraChecked": widget.isCameraChecked,
           "isAlramChecked": widget.isAlramChecked,
+          "alarmTime": "09:00",
           "writeBlockedUntil": null,
           "status": "active",
           "createdAt": FieldValue.serverTimestamp(),

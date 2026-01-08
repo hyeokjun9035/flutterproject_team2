@@ -126,6 +126,18 @@ Future<void> main() async {
     debugPrint('❌ [FCM TOKEN ERROR] : $e');
   }
 
+  FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'fcmToken': newToken,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    debugPrint('✅ [FCM TOKEN REFRESH] 저장 완료: $newToken');
+  });
+
   // 4) 로컬 알림 채널 + 초기화
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'community_notification',
