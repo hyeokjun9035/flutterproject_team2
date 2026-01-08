@@ -126,26 +126,119 @@
   </thead>
   <tbody>
     <tr>
-      <td>BackEnd</td>
-      <td></td>
+      <td><b>FrontEnd</b></td>
+      <td>
+        <img src="https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white"/>
+        <img src="https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white"/>
+      </td>
     </tr>
     <tr>
-      <td>FrontEnd</td>
-      <td></td>
+      <td><b>BackEnd</b></td>
+      <td>
+        <img src="https://img.shields.io/badge/Firebase%20Auth-FF6F00?style=for-the-badge&logo=firebase&logoColor=white"/>
+        <img src="https://img.shields.io/badge/Cloud%20Functions-FFCA28?style=for-the-badge&logo=firebase&logoColor=black"/>
+        <img src="https://img.shields.io/badge/FCM-FFCA28?style=for-the-badge&logo=firebase&logoColor=black"/>
+      </td>
     </tr>
     <tr>
-      <td>DataBase</td>
-      <td></td>
+      <td><b>DataBase</b></td>
+      <td>
+        <img src="https://img.shields.io/badge/Cloud%20Firestore-FF6F00?style=for-the-badge&logo=firebase&logoColor=white"/>
+        <img src="https://img.shields.io/badge/Firebase%20Storage-4285F4?style=for-the-badge&logo=firebase&logoColor=white"/>
+      </td>
     </tr>
     <tr>
-      <td>etc.</td>
-      <td></td>
+      <td><b>ETC</b></td>
+      <td>
+        <img src="https://img.shields.io/badge/Google%20Maps-4285F4?style=for-the-badge&logo=googlemaps&logoColor=white"/>
+        <img src="https://img.shields.io/badge/Geolocator-2C2C2C?style=for-the-badge"/>
+        <img src="https://img.shields.io/badge/Dio-00A8E8?style=for-the-badge"/>
+        <img src="https://img.shields.io/badge/Git-F05032?style=for-the-badge&logo=git&logoColor=white"/>
+        <img src="https://img.shields.io/badge/Figma-F24E1E?style=for-the-badge&logo=figma&logoColor=white"/>
+      </td>
     </tr>
   </tbody>
 </table>
 
+---
 
+# 역할 분담 및 화면 소개
 
+<details>
+  <summary>🔐 로그인 / 회원가입 페이지 (담당: 하송화)</summary>
+
+  <p align="center">
+    <img src="docs/images/home.png" width="220"/>
+    <img src="docs/images/weather.png" width="220"/>
+    <img src="docs/images/bus.png" width="220"/>
+  </p>
+
+  <ul>
+    <li>로그인 / 회원가입</li>
+    <li>로그인 / 회원가입</li>
+    <li>로그인 / 회원가입</li>
+  </ul>
+</details>
+<details>
+  <summary>☀️ 메인 페이지 (담당: 김성민, 전경환)</summary>
+
+  <p align="center">
+    <img src="docs/images/home.png" width="220"/>
+    <img src="docs/images/weather.png" width="220"/>
+    <img src="docs/images/bus.png" width="220"/>
+  </p>
+
+  <ul>
+    <li>날씨 기반 행동/준비물 추천</li>
+    <li>대기질 표시</li>
+    <li>버스 도착 정보 제공</li>
+  </ul>
+</details>
+<details>
+  <summary>💬 커뮤니티 페이지 (담당: 권혁준)</summary>
+
+  <p align="center">
+    <img src="docs/images/home.png" width="220"/>
+    <img src="docs/images/weather.png" width="220"/>
+    <img src="docs/images/bus.png" width="220"/>
+  </p>
+
+  <ul>
+    <li>날씨 기반 행동/준비물 추천</li>
+    <li>대기질 표시</li>
+    <li>버스 도착 정보 제공</li>
+  </ul>
+</details>
+<details>
+  <summary>👤 마이 페이지 / 알림 (담당: 엄재준)</summary>
+
+  <p align="center">
+    <img src="docs/images/home.png" width="220"/>
+    <img src="docs/images/weather.png" width="220"/>
+    <img src="docs/images/bus.png" width="220"/>
+  </p>
+
+  <ul>
+    <li>날씨 기반 행동/준비물 추천</li>
+    <li>대기질 표시</li>
+    <li>버스 도착 정보 제공</li>
+  </ul>
+</details>
+<details>
+  <summary>🛠️ 관리자 페이지 / 알림 (담당: 전경환)</summary>
+
+  <p align="center">
+    <img src="docs/images/home.png" width="220"/>
+    <img src="docs/images/weather.png" width="220"/>
+    <img src="docs/images/bus.png" width="220"/>
+  </p>
+
+  <ul>
+    <li>날씨 기반 행동/준비물 추천</li>
+    <li>대기질 표시</li>
+    <li>버스 도착 정보 제공</li>
+  </ul>
+</details>
 
 
 
