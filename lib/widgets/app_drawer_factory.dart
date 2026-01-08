@@ -135,7 +135,12 @@ class AppDrawerFactory {
       isHome: isHome,
       onGoHome: onGoHome,
 
-      onGoNearbyMap: onGoNearbyMapOverride ?? () {},
+      onGoNearbyMap: onGoNearbyMapOverride ?? () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('내 주변 지도는 홈에서 위치를 불러온 뒤 사용해주세요.')),
+        );
+      },
 
       onGoReport: () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const Event()));
