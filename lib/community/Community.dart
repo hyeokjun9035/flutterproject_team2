@@ -8,6 +8,10 @@ import 'Chatter.dart';
 import 'Fashion.dart';
 import 'Notice.dart';
 
+import 'package:firebase_auth/firebase_auth.dart'; // ✅ 추가
+
+import '../widgets/app_drawer_factory.dart';
+
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key});
 
@@ -30,13 +34,51 @@ class _CommunityPageState extends State<CommunityPage> {
 
   @override
   Widget build(BuildContext context) {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+
+    final userStream = (firebaseUser == null)
+        ? const Stream<DocumentSnapshot<Map<String, dynamic>>>.empty()
+        : FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).snapshots();
+
     return PutterScaffold(
       currentIndex: 1,
       body: Scaffold(
         backgroundColor: Colors.grey[200],
+
+        // ✅ Drawer 추가
+        drawer: (firebaseUser == null)
+            ? null
+            : AppDrawerFactory.buildBasic(
+          context: context,
+          userStream: userStream,
+          locationLabel: null, // 커뮤니티 페이지에 위치라벨 없으면 null
+          isHome: false,
+          onGoHome: () {
+            // ✅ 홈이 따로 라우트면 아래로 교체:
+            Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
+          },
+          // (선택) 커뮤니티 페이지에서는 "내 주변 지도" 눌렀을 때 막기
+          onGoNearbyMapOverride: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('홈에서 위치를 불러온 뒤 사용해주세요.')),
+            );
+          },
+        ),
+
+        // (선택) Drawer 열릴 때 화면이 너무 어두우면 조절
+        drawerScrimColor: Colors.black54,
+
         appBar: AppBar(
           backgroundColor: Colors.grey[200],
-          leading: IconButton(onPressed: () {}, icon: const Icon(Icons.menu)),
+
+          // ✅ 메뉴 버튼으로 Drawer 열기 (Builder 필수)
+          leading: Builder(
+            builder: (context) => IconButton(
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(Icons.menu),
+            ),
+          ),
+
           title: const Text("커뮤니티"),
           elevation: 0,
           actions: [
@@ -51,6 +93,7 @@ class _CommunityPageState extends State<CommunityPage> {
             ),
           ],
         ),
+
         body: RefreshIndicator(
           onRefresh: () async {
             await Future.delayed(const Duration(milliseconds: 300));
@@ -58,8 +101,8 @@ class _CommunityPageState extends State<CommunityPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
+                // 공지사항
                 Center(
-                  //공지사항
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     width: 400,
@@ -72,9 +115,7 @@ class _CommunityPageState extends State<CommunityPage> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (context) => const Notice(),
-                          ),
+                          MaterialPageRoute(builder: (context) => const Notice()),
                         );
                       },
                       child: Column(
@@ -82,15 +123,11 @@ class _CommunityPageState extends State<CommunityPage> {
                         children: [
                           const Text(
                             "공지사항",
-                            style: TextStyle(
-                              fontSize: 40,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
                           ),
-                          Divider(height: 2, color: Colors.grey),
+                          const Divider(height: 2, color: Colors.grey),
                           const SizedBox(height: 10),
 
-                          // ✅ 여기서 최신글 3개 출력
                           StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('community')
@@ -99,28 +136,21 @@ class _CommunityPageState extends State<CommunityPage> {
                                 .limit(3)
                                 .snapshots(),
                             builder: (context, snap) {
-                              if (!snap.hasData)
-                                return const CircularProgressIndicator();
+                              if (!snap.hasData) return const CircularProgressIndicator();
 
                               final docs = snap.data!.docs;
 
                               return Column(
                                 children: docs.map((doc) {
-                                  final data =
-                                      doc.data() as Map<String, dynamic>;
+                                  final data = doc.data() as Map<String, dynamic>;
 
-                                  final title = (data['title'] ?? '')
-                                      .toString();
+                                  final title = (data['title'] ?? '').toString();
 
                                   final authorMap =
-                                      (data['author']
-                                          as Map<String, dynamic>?) ??
-                                      {};
+                                      (data['author'] as Map<String, dynamic>?) ?? {};
                                   final authorName =
-                                      (authorMap['nickName'] ??
-                                              authorMap['name'] ??
-                                              '익명')
-                                          .toString();
+                                  (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
+                                      .toString();
 
                                   final views = (data['viewCount'] ?? 0);
                                   final comments = (data['commentCount'] ?? 0);
@@ -133,18 +163,14 @@ class _CommunityPageState extends State<CommunityPage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) =>
-                                              Communityview(docId: doc.id),
+                                          builder: (_) => Communityview(docId: doc.id),
                                         ),
                                       );
                                     },
                                     child: Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 10,
-                                      ),
+                                      padding: const EdgeInsets.only(bottom: 10),
                                       child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             title,
@@ -164,11 +190,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                   color: Colors.grey,
                                                 ),
                                               ),
-                                              const Icon(
-                                                Icons.remove_red_eye_outlined,
-                                                size: 14,
-                                                color: Colors.grey,
-                                              ),
+                                              const Icon(Icons.remove_red_eye_outlined,
+                                                  size: 14, color: Colors.grey),
                                               const SizedBox(width: 3),
                                               Text(
                                                 "$views | ",
@@ -177,11 +200,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                   color: Colors.grey,
                                                 ),
                                               ),
-                                              const Icon(
-                                                Icons.comment_outlined,
-                                                size: 14,
-                                                color: Colors.grey,
-                                              ),
+                                              const Icon(Icons.comment_outlined,
+                                                  size: 14, color: Colors.grey),
                                               const SizedBox(width: 3),
                                               Text(
                                                 "$comments",
@@ -205,7 +225,7 @@ class _CommunityPageState extends State<CommunityPage> {
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
 
                 // 사건/이슈
                 Container(
@@ -228,15 +248,11 @@ class _CommunityPageState extends State<CommunityPage> {
                       children: [
                         const Text(
                           "사건/이슈",
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
                         ),
-                        Divider(height: 2, color: Colors.grey),
+                        const Divider(height: 2, color: Colors.grey),
                         const SizedBox(height: 10),
 
-                        // ✅ 여기서 최신글 3개 출력
                         StreamBuilder<QuerySnapshot>(
                           stream: FirebaseFirestore.instance
                               .collection('community')
@@ -245,8 +261,7 @@ class _CommunityPageState extends State<CommunityPage> {
                               .limit(3)
                               .snapshots(),
                           builder: (context, snap) {
-                            if (!snap.hasData)
-                              return const CircularProgressIndicator();
+                            if (!snap.hasData) return const CircularProgressIndicator();
 
                             final docs = snap.data!.docs;
 
@@ -257,13 +272,10 @@ class _CommunityPageState extends State<CommunityPage> {
                                 final title = (data['title'] ?? '').toString();
 
                                 final authorMap =
-                                    (data['author'] as Map<String, dynamic>?) ??
-                                    {};
+                                    (data['author'] as Map<String, dynamic>?) ?? {};
                                 final authorName =
-                                    (authorMap['nickName'] ??
-                                            authorMap['name'] ??
-                                            '익명')
-                                        .toString();
+                                (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
+                                    .toString();
 
                                 final views = (data['viewCount'] ?? 0);
                                 final comments = (data['commentCount'] ?? 0);
@@ -276,16 +288,14 @@ class _CommunityPageState extends State<CommunityPage> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) =>
-                                            Communityview(docId: doc.id),
+                                        builder: (_) => Communityview(docId: doc.id),
                                       ),
                                     );
                                   },
                                   child: Padding(
                                     padding: const EdgeInsets.only(bottom: 10),
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           title,
@@ -305,11 +315,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.remove_red_eye_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.remove_red_eye_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$views | ",
@@ -318,11 +325,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.comment_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.comment_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$comments",
@@ -345,9 +349,9 @@ class _CommunityPageState extends State<CommunityPage> {
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
 
-                //수다
+                // 수다
                 Container(
                   padding: const EdgeInsets.all(20),
                   width: 400,
@@ -360,9 +364,7 @@ class _CommunityPageState extends State<CommunityPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => const Chatter(),
-                        ),
+                        MaterialPageRoute(builder: (context) => const Chatter()),
                       );
                     },
                     child: Column(
@@ -370,15 +372,11 @@ class _CommunityPageState extends State<CommunityPage> {
                       children: [
                         const Text(
                           "수다",
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
                         ),
-                        Divider(height: 2, color: Colors.grey),
+                        const Divider(height: 2, color: Colors.grey),
                         const SizedBox(height: 10),
 
-                        // ✅ 여기서 최신글 3개 출력
                         StreamBuilder<QuerySnapshot>(
                           stream: FirebaseFirestore.instance
                               .collection('community')
@@ -387,8 +385,7 @@ class _CommunityPageState extends State<CommunityPage> {
                               .limit(3)
                               .snapshots(),
                           builder: (context, snap) {
-                            if (!snap.hasData)
-                              return const CircularProgressIndicator();
+                            if (!snap.hasData) return const CircularProgressIndicator();
 
                             final docs = snap.data!.docs;
 
@@ -399,13 +396,10 @@ class _CommunityPageState extends State<CommunityPage> {
                                 final title = (data['title'] ?? '').toString();
 
                                 final authorMap =
-                                    (data['author'] as Map<String, dynamic>?) ??
-                                    {};
+                                    (data['author'] as Map<String, dynamic>?) ?? {};
                                 final authorName =
-                                    (authorMap['nickName'] ??
-                                            authorMap['name'] ??
-                                            '익명')
-                                        .toString();
+                                (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
+                                    .toString();
 
                                 final views = (data['viewCount'] ?? 0);
                                 final comments = (data['commentCount'] ?? 0);
@@ -445,11 +439,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.remove_red_eye_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.remove_red_eye_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$views | ",
@@ -458,11 +449,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.comment_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.comment_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$comments",
@@ -485,8 +473,9 @@ class _CommunityPageState extends State<CommunityPage> {
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
-                //패션
+                const SizedBox(height: 10),
+
+                // 패션
                 Container(
                   padding: const EdgeInsets.all(20),
                   width: 400,
@@ -499,9 +488,7 @@ class _CommunityPageState extends State<CommunityPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => const Fashion(),
-                        ),
+                        MaterialPageRoute(builder: (context) => const Fashion()),
                       );
                     },
                     child: Column(
@@ -509,15 +496,11 @@ class _CommunityPageState extends State<CommunityPage> {
                       children: [
                         const Text(
                           "패션",
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
                         ),
-                        Divider(height: 2, color: Colors.grey),
+                        const Divider(height: 2, color: Colors.grey),
                         const SizedBox(height: 10),
 
-                        // ✅ 여기서 최신글 3개 출력
                         StreamBuilder<QuerySnapshot>(
                           stream: FirebaseFirestore.instance
                               .collection('community')
@@ -526,8 +509,7 @@ class _CommunityPageState extends State<CommunityPage> {
                               .limit(3)
                               .snapshots(),
                           builder: (context, snap) {
-                            if (!snap.hasData)
-                              return const CircularProgressIndicator();
+                            if (!snap.hasData) return const CircularProgressIndicator();
 
                             final docs = snap.data!.docs;
 
@@ -538,13 +520,10 @@ class _CommunityPageState extends State<CommunityPage> {
                                 final title = (data['title'] ?? '').toString();
 
                                 final authorMap =
-                                    (data['author'] as Map<String, dynamic>?) ??
-                                    {};
+                                    (data['author'] as Map<String, dynamic>?) ?? {};
                                 final authorName =
-                                    (authorMap['nickName'] ??
-                                            authorMap['name'] ??
-                                            '익명')
-                                        .toString();
+                                (authorMap['nickName'] ?? authorMap['name'] ?? '익명')
+                                    .toString();
 
                                 final views = (data['viewCount'] ?? 0);
                                 final comments = (data['commentCount'] ?? 0);
@@ -584,11 +563,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.remove_red_eye_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.remove_red_eye_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$views | ",
@@ -597,11 +573,8 @@ class _CommunityPageState extends State<CommunityPage> {
                                                 color: Colors.grey,
                                               ),
                                             ),
-                                            const Icon(
-                                              Icons.comment_outlined,
-                                              size: 14,
-                                              color: Colors.grey,
-                                            ),
+                                            const Icon(Icons.comment_outlined,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 3),
                                             Text(
                                               "$comments",
@@ -624,34 +597,12 @@ class _CommunityPageState extends State<CommunityPage> {
                     ),
                   ),
                 ),
+
+                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
-        // bottomNavigationBar: BottomNavigationBar(
-        //   type: BottomNavigationBarType.fixed,
-        //   backgroundColor: Colors.grey[200],
-        //   selectedItemColor: Colors.blue,
-        //   unselectedItemColor: Colors.grey,
-        //   items: const [
-        //     BottomNavigationBarItem(
-        //         icon: Icon(Icons.home_outlined),
-        //         label: '홈'
-        //     ),
-        //     BottomNavigationBarItem(
-        //         icon: Icon(Icons.comment),
-        //         label: '커뮤니티'
-        //     ),
-        //     BottomNavigationBarItem(
-        //         icon: Icon(Icons.person),
-        //         label: '마이페이지'
-        //     ),
-        //     BottomNavigationBarItem(
-        //         icon: Icon(Icons.notifications_active),
-        //         label: '알림'
-        //     ),
-        //   ],
-        // ),
       ),
     );
   }
