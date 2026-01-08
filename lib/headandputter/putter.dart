@@ -76,6 +76,7 @@ class _PutterScaffoldState extends State<PutterScaffold> {
             icon: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('notifications')
+                  // .where('receiverUid', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                   .where('isRead', isEqualTo: false)
                   .snapshots(),
               builder: (context, snapshot) {

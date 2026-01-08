@@ -28,9 +28,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
       // 1. snapshots() 대신 get()을 사용하여 현재 상태의 문서들을 가져옵니다.
       final querySnapshot = await FirebaseFirestore.instance
           .collection('notifications')
-          .where('receiverUid', isEqualTo: uid) // ✅ 위에서 검사한 uid 변수 사용
+          .where('receiverUid', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
           .where('isRead', isEqualTo: false)
-          .get(); // 👈 중요: snapshots()가 아닌 get() 사용
+          .get();
 
       if (querySnapshot.docs.isNotEmpty) {
         final batch = FirebaseFirestore.instance.batch();
@@ -59,28 +59,49 @@ class _NotificationScreenState extends State<NotificationScreen> {
             // --- 상단 커스텀 헤더 ---
             Container(
               width: double.infinity,
-              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 10, bottom: 20),
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 10,
+                bottom: 10, // 여백 조정
+                left: 20,
+                right: 20,
+              ),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(bottomLeft: Radius.circular(25), bottomRight: Radius.circular(25)),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 2))],
               ),
-              child: const Center(
-                child: Text("알림함", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
+              child: Stack( // 양쪽 배치를 위해 Stack 또는 Row 사용
+                alignment: Alignment.center,
+                children: [
+                  const Text(
+                      "알림함",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _markAllAsRead, // ✅ 버튼 클릭 시 일괄 읽음 함수 실행
+                      child: const Text(
+                          "모두 읽기",
+                          style: TextStyle(color: Colors.blueAccent, fontSize: 14, fontWeight: FontWeight.w600)
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
-            // --- 알림 리스트 ---
+            // --- 알림 리스트 (기존과 동일) ---
             Expanded(
               child: uid == null
                   ? const Center(child: Text("로그인이 필요합니다."))
                   : StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
-                // .where('receiverId', isEqualTo: uid) // 데이터 구조에 따라 주석 해제하여 사용
-                    .orderBy('createdAt', descending: true)
+                    .orderBy('createdAt', descending: true) // 👈 필터링 없이 정렬만 함
                     .snapshots(),
                 builder: (context, snapshot) {
+                  // ... (기존 snapshot 처리 로직 동일)
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
