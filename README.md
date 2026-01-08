@@ -104,6 +104,7 @@
     </tr>
     <tr>
       <td>하송화</td>
+      <hr>
       <td>
         <a href="https://github.com/hasonghwa">
           <img src="https://img.shields.io/badge/GitHub-하송화-black?logo=github"/>
@@ -167,6 +168,7 @@
 <details>
   <summary>🔐 로그인 / 회원가입 페이지 (담당: 하송화)</summary>
 
+<br>
   <p align="center">
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/login%20(2).PNG" width="220"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join1.PNG" width="220"/>
@@ -177,10 +179,8 @@
   </p>
 
   <ul>
-    <li>로그인 / 회원가입</li>
-    <li>.</li>
-    <li>상세 경로 보기 화면(RouteView)로 연결</li>
-    <li>주변 CCTV 확인 및 동영상 재생</li>
+    <li>회원가입시 firestore DB, Authentication에 정보를 저장합니다. </li>
+    <li>회원가입후 로그인페이지로 이동해 로그인할 수 있습니다.</li>
   </ul>
 
   <br/>
