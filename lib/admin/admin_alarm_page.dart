@@ -169,8 +169,7 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('notifications')
-                .where('receiverUid', isEqualTo: FirebaseAuth.instance.currentUser?.uid) // ✅ 이 줄을 반드시 추가하세요!
-                .where('type', isEqualTo: 'admin_alarm')
+                .where('type', isEqualTo: 'admin_alarm') // ✅ receiverUid 필터를 제거
                 .orderBy('createdAt', descending: true)
                 .limit(10)
                 .snapshots(),
