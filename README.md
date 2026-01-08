@@ -322,18 +322,29 @@
   </ul>
 </details>
 <details>
-  <summary>🛠️ 관리자 페이지 / 알림 (담당: 전경환)</summary>
+  <summary>🛠️ 관리자 페이지 & 알림 시스템 (담당: 전경환, 권혁준)</summary>
 
-  <p align="center">
-    <img src="docs/images/home.png" width="220"/>
-    <img src="docs/images/weather.png" width="220"/>
-    <img src="docs/images/bus.png" width="220"/>
+  <br/>
+  <p>
+    운영자가 실시간으로 지역별 이슈를 제어하고, 전체 사용자에게 긴급 알림(FCM)을 송출할 수 있는 통합 관리 환경을 구축했습니다.
   </p>
 
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/dashboard.png" width="230" alt="관리자 대시보드"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/fcm_send.png" width="230" alt="알림 전송 화면"/>
+  </p>
+
+  <h4>🚀 주요 구현 기능</h4>
   <ul>
-    <li>날씨 기반 행동/준비물 추천</li>
-    <li>대기질 표시</li>
-    <li>버스 도착 정보 제공</li>
+    <li><b>실시간 긴급 제보 관리:</b> 사용자가 등록한 데이터를 모니터링하고, 허위 정보 삭제 및 제재 관리 기능을 구현했습니다.</li>
+    <li><b>FCM 기반 스마트 알림:</b> Firebase Cloud Messaging을 활용해 특이 상황 시 사용자들 모두에게 푸시 알림을 전송하는 로직을 추가했습니다.</li>
+    <li><b>사용자 및 콘텐츠 통계:</b> Firestore의 데이터를 가공하여 게시판별 게시물과 사용자들 한눈에 파악할 수 있는 대시보드를 구성했습니다.</li>
+  </ul>
+
+  <h4>🧠 Technical Challenge</h4>
+  <ul>
+    <li><b>Firebase Cloud Functions 최적화:</b> 알림 발송 시 부하를 방지하기 위해 비동기 처리 로직을 적용했습니다.</li>
+    <li><b>데이터 정합성 유지:</b> 관리자 페이지에서의 상태 변경이 실시간으로 모든 클라이언트 앱에 반영되도록 Firestore의 실시간 리스너를 최적화했습니다.</li>
   </ul>
 </details>
 
