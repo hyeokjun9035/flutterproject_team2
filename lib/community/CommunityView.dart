@@ -32,7 +32,7 @@ class _CommunityviewState extends State<Communityview> {
     return "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
   }
 
-  bool _viewCounted = false; // ✅ 추가
+  bool _viewCounted = false; // 추가
 
   @override
   void initState() {
@@ -57,17 +57,11 @@ class _CommunityviewState extends State<Communityview> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    if (_isAuthorDeleted(postData)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('탈퇴한 사용자의 글에는 좋아요를 할 수 없습니다.')),
-      );
-      return;
-    }
-
     final fs = FirebaseFirestore.instance;
     final postRef = fs.collection('community').doc(widget.docId);
     final likeRef = postRef.collection('likes').doc(user.uid);
+
+    bool shouldSendNotification = false; // 알림 전송 여부 플래그
 
     try {
       await fs.runTransaction((tx) async {
@@ -76,18 +70,23 @@ class _CommunityviewState extends State<Communityview> {
         if (likeSnap.exists) {
           tx.delete(likeRef);
           tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
+          shouldSendNotification = false;
         } else {
           tx.set(likeRef, {
             'uid': user.uid,
             'createdAt': FieldValue.serverTimestamp(),
           });
           tx.update(postRef, {'likeCount': FieldValue.increment(1)});
+          shouldSendNotification = true; //  새로 좋아요를 누른 경우에만 true
         }
       });
 
-      // ✅ 알림은 트랜잭션 "밖"에서 (더 안전)
-      // 좋아요 추가일 때만 보내려면 likeSnap 여부를 밖에서 판단해야 해서
-      // 가장 쉬운 방법은 likeDoc을 한번 읽거나, 트랜잭션 안에서 bool 플래그를 만들어 밖에서 사용.
+      //  트랜잭션 성공 후 알림 함수 호출
+      if (shouldSendNotification) {
+        debugPrint(" 좋아요 알림 함수 호출 시도 중...");
+        await _sendNotification(postData, user, 'like');
+      }
+
     } catch (e) {
       debugPrint("좋아요 처리 에러: $e");
     }
@@ -101,20 +100,33 @@ class _CommunityviewState extends State<Communityview> {
     debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
 
     // 본인이 아닐 때만 실행 (테스트 중이라면 if (postAuthorUid.isNotEmpty) 만 사용)
+    if (postAuthorUid.isNotEmpty) {
     // 실제 사용용 (자기 댓글 알림 x)
     // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid) {
-    if (postAuthorUid.isNotEmpty) {
+
       try {
         // 내 닉네임 가져오기
         final senderSnap = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
         final senderNickName = senderSnap.data()?['nickName'] ?? '누군가';
 
+        String notificationTitle = '';
+        String notificationBody = '';
+        final String postTitle = postData['title'] ?? '게시글';
+        if (type == 'comment') {
+          notificationTitle = '새로운 댓글';
+          notificationBody = '$senderNickName님이 "$postTitle" 글에 댓글을 남겼습니다.';
+        } else if (type == 'like') {
+          notificationTitle = '좋아요 알림';
+          notificationBody = '$senderNickName님이 "$postTitle" 글을 좋아합니다.';
+        }
         // 알림 문서 생성
         await FirebaseFirestore.instance.collection('notifications').add({
           'receiverUid': postAuthorUid,
           'senderUid': currentUser.uid,
           'senderNickName': senderNickName,
-          'type': type,                      // 👈 전달받은 'like' 또는 'comment'가 들어감
+          'title': notificationTitle,  //  추가
+          'body': notificationBody,
+          'type': type,                      //  전달받은 'like' 또는 'comment'가 들어감
           'postId': widget.docId,
           'postTitle': postData['title'] ?? '게시글',
           'isRead': false,
