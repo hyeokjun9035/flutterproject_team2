@@ -10,7 +10,8 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../headandputter/putter.dart';
 import 'place_result.dart';
 import 'community_editor_widgets.dart'; // MiniQuillToolbar 같은거 네가 빼둔 파일
@@ -31,6 +32,9 @@ class CommunityEdit extends StatefulWidget {
 }
 
 class _CommunityEditState extends State<CommunityEdit> {
+  final Map<String, int> _imageIndexByLocalPath = {}; // localPath -> idx
+  final Map<String, int> _videoIndexByLocalPath = {}; // localPath -> idx
+
   GoogleMapController? _mapCtrl;
   LatLng? _placePos; // 현재 핀 위치
   double _mapZoom = 17; // 현재 줌 기억
@@ -164,6 +168,40 @@ class _CommunityEditState extends State<CommunityEdit> {
           .replaceAll('도', '')
           .trim();
       return cleaned.isNotEmpty ? cleaned : admin;
+    }
+
+    return null;
+  }
+
+  String? _extractLocalVideoRawFromInsertMap(Map insert) {
+    const kType = 'local_video';
+
+    // A) {"insert": {"local_video": "..."}}
+    if (insert.containsKey(kType)) {
+      return insert[kType]?.toString();
+    }
+
+    // B) {"insert": {"custom": "{\"local_video\":\"...\"}"}}
+    // 또는 {"insert": {"custom": "{\"type\":\"local_video\",\"data\":\"...\"}"}}
+    if (insert.containsKey('custom')) {
+      final customStr = insert['custom']?.toString();
+      if (customStr == null || customStr.isEmpty) return null;
+
+      try {
+        final decoded = jsonDecode(customStr);
+
+        // {"local_video": "..."}
+        if (decoded is Map && decoded.containsKey(kType)) {
+          return decoded[kType]?.toString();
+        }
+
+        // {"type":"local_video","data":"..."} 형태도 대응
+        if (decoded is Map &&
+            decoded['type']?.toString() == kType &&
+            decoded.containsKey('data')) {
+          return decoded['data']?.toString();
+        }
+      } catch (_) {}
     }
 
     return null;
@@ -399,6 +437,32 @@ class _CommunityEditState extends State<CommunityEdit> {
       TextSelection.collapsed(offset: index + 2),
       ChangeSource.local,
     );
+  }
+
+  Future<String> _uploadFileToStorage({
+    required File file,
+    required String storagePath,
+    required String contentType,
+  }) async {
+    final ref = FirebaseStorage.instance.ref().child(storagePath);
+    final metadata = SettableMetadata(contentType: contentType);
+    final task = ref.putFile(file, metadata);
+    final snap = await task.whenComplete(() {});
+    return await snap.ref.getDownloadURL();
+  }
+
+  String _guessImageContentType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  String _guessVideoContentType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mkv')) return 'video/x-matroska';
+    return 'video/mp4';
   }
 
   Future<String?> _createVideoThumbFile(String videoPath) async {
@@ -944,13 +1008,180 @@ class _CommunityEditState extends State<CommunityEdit> {
     };
   }
 
-  Future<void> _saveEdit() async {
-    try {
-      final content = _buildContentForSave();
+  Future<Map<String, dynamic>> _buildBlocksAndUploadForEdit() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('NOT_SIGNED_IN');
 
-      final placeMap = selectedPlace == null
-          ? null
-          : {
+    final docId = widget.docId;
+
+    // ✅ 기존 문서에 이미 저장된 URL들 가져와서 “기본 리스트”로 깔고 시작
+    final snap = await FirebaseFirestore.instance.collection('community').doc(docId).get();
+    final data = snap.data() ?? {};
+
+    final List<String> imageUrls = ((data['images'] as List?) ?? []).map((e) => e.toString()).toList();
+    final List<String> videoUrls = ((data['videos'] as List?) ?? []).map((e) => e.toString()).toList();
+    final List<String> videoThumbUrls = ((data['videoThumbs'] as List?) ?? []).map((e) => e.toString()).toList();
+
+    final List<Map<String, dynamic>> blocks = [];
+
+    final ops = _editorController.document.toDelta().toJson();
+
+    String? _extractVideoPayload(Map insert) {
+      // 너 코드에서 local_video/custom_video 등 섞여있을 수 있어서 안전하게
+      const keys = ['local_video', 'video', 'custom_video'];
+      for (final k in keys) {
+        if (insert.containsKey(k)) return insert[k]?.toString();
+      }
+      return null;
+    }
+
+    for (final op in ops) {
+      final insert = op['insert'];
+
+      // 1) text
+      if (insert is String) {
+        if (insert.isNotEmpty) blocks.add({'t': 'text', 'v': insert});
+        continue;
+      }
+
+      if (insert is! Map) continue;
+
+      // 2) image
+      if (insert.containsKey('image')) {
+        final src = insert['image']?.toString() ?? '';
+        if (src.isEmpty) continue;
+
+        if (_isUrl(src)) {
+          // 이미 URL이면 기존 images에 들어있는지 찾고 없으면 추가
+          var idx = imageUrls.indexOf(src);
+          if (idx < 0) {
+            idx = imageUrls.length;
+            imageUrls.add(src);
+          }
+          blocks.add({'t': 'image', 'v': idx});
+          continue;
+        }
+
+        // 로컬이면 업로드
+        if (_imageIndexByLocalPath.containsKey(src)) {
+          blocks.add({'t': 'image', 'v': _imageIndexByLocalPath[src]});
+          continue;
+        }
+
+        final file = File(src);
+        if (!file.existsSync()) continue;
+
+        final ext = p.extension(src).replaceFirst('.', '');
+        final safeName = '${DateTime.now().millisecondsSinceEpoch}_${p.basename(src).isNotEmpty ? p.basename(src) : "image.$ext"}';
+
+        final url = await _uploadFileToStorage(
+          file: file,
+          storagePath: 'community/$docId/images/$safeName',
+          contentType: _guessImageContentType(src),
+        );
+
+        final idx = imageUrls.length;
+        imageUrls.add(url);
+        _imageIndexByLocalPath[src] = idx;
+
+        blocks.add({'t': 'image', 'v': idx});
+        continue;
+      }
+
+      // 3) video (payload JSON)
+      final payload = _extractLocalVideoRawFromInsertMap(insert);
+      if (payload != null && payload.isNotEmpty) {
+        Map<String, dynamic> m = {};
+        try { m = jsonDecode(payload) as Map<String, dynamic>; } catch (_) {}
+
+        final url = (m['url'] ?? '').toString();
+        final path = (m['path'] ?? '').toString();
+        final name = (m['name'] ?? '').toString();
+        final thumb = (m['thumb'] ?? '').toString();
+
+        // 3-1) 이미 URL 영상이면 그대로
+        if (url.isNotEmpty) {
+          var vidx = videoUrls.indexOf(url);
+          if (vidx < 0) {
+            vidx = videoUrls.length;
+            videoUrls.add(url);
+
+            // thumb도 같이 정렬 맞추기
+            final thumbUrl = _isUrl(thumb) ? thumb : '';
+            videoThumbUrls.add(thumbUrl);
+          }
+          blocks.add({'t': 'video', 'v': vidx, 'name': name});
+          continue;
+        }
+
+        // 3-2) 로컬 path 영상이면 업로드
+        if (path.isEmpty) continue;
+
+        if (_videoIndexByLocalPath.containsKey(path)) {
+          blocks.add({'t': 'video', 'v': _videoIndexByLocalPath[path], 'name': name});
+          continue;
+        }
+
+        final file = File(path);
+        if (!file.existsSync()) continue;
+
+        final ext = p.extension(path).replaceFirst('.', '');
+        final safeName = '${DateTime.now().millisecondsSinceEpoch}_${name.isNotEmpty ? name : "video.$ext"}';
+
+        final videoUrl = await _uploadFileToStorage(
+          file: file,
+          storagePath: 'community/$docId/videos/$safeName',
+          contentType: _guessVideoContentType(path),
+        );
+
+        // thumb 만들고 업로드 (thumb가 로컬경로로 들어왔을 가능성 큼)
+        String thumbUrl = '';
+        try {
+          final thumbBytes = await VideoThumbnail.thumbnailData(
+            video: path,
+            imageFormat: ImageFormat.JPEG,
+            maxWidth: 900,
+            quality: 75,
+          );
+          if (thumbBytes != null) {
+            final tmp = await getTemporaryDirectory();
+            final thumbPath = p.join(tmp.path, '${DateTime.now().millisecondsSinceEpoch}_thumb.jpg');
+            final thumbFile = File(thumbPath);
+            await thumbFile.writeAsBytes(thumbBytes, flush: true);
+
+            thumbUrl = await _uploadFileToStorage(
+              file: thumbFile,
+              storagePath: 'community/$docId/video_thumbs/${p.basenameWithoutExtension(safeName)}.jpg',
+              contentType: 'image/jpeg',
+            );
+          }
+        } catch (_) {}
+
+        final vidx = videoUrls.length;
+        videoUrls.add(videoUrl);
+        videoThumbUrls.add(thumbUrl); // ✅ 인덱스 정렬 유지
+        _videoIndexByLocalPath[path] = vidx;
+
+        blocks.add({'t': 'video', 'v': vidx, 'name': name});
+        continue;
+      }
+    }
+
+    return {
+      'blocks': blocks,
+      'images': imageUrls,
+      'videos': videoUrls,
+      'videoThumbs': videoThumbUrls,
+      'plain': _editorController.document.toPlainText().trim(),
+    };
+  }
+
+  Future<void> _saveEdit() async {
+    debugPrint('[EDIT DELTA] ${jsonEncode(_editorController.document.toDelta().toJson())}');
+    try {
+      final built = await _buildBlocksAndUploadForEdit();
+
+      final placeMap = selectedPlace == null ? null : {
         'name': selectedPlace!.name,
         'address': selectedPlace!.address,
         'lat': selectedPlace!.lat,
@@ -960,38 +1191,26 @@ class _CommunityEditState extends State<CommunityEdit> {
 
       final weatherMap = (_temp == null && _wind == null && _rainChance == null && _weatherCode == null)
           ? null
-          : {
-        'temp': _temp,
-        'wind': _wind,
-        'rainChance': _rainChance,
-        'code': _weatherCode,
-      };
+          : {'temp': _temp, 'wind': _wind, 'rainChance': _rainChance, 'code': _weatherCode};
 
       final airMap = (_pm10 == null && _pm25 == null)
           ? null
-          : {
-        'pm10': _pm10,
-        'pm25': _pm25,
-      };
+          : {'pm10': _pm10, 'pm25': _pm25};
 
-      await FirebaseFirestore.instance
-          .collection('community')
-          .doc(widget.docId)
-          .update({
+      await FirebaseFirestore.instance.collection('community').doc(widget.docId).update({
         'title': _title.text.trim(),
         'category': selectedCategory,
-        'updatedAt': FieldValue.serverTimestamp(),
 
-        // ✅ 본문 저장
-        'blocks': content['blocks'],
-        'images': content['images'],
-        'videos': content['videos'],
-        'videoThumbs': content['videoThumbs'],
+        'blocks': built['blocks'],
+        'images': built['images'],
+        'videos': built['videos'],
+        'videoThumbs': built['videoThumbs'],
+        'plain': built['plain'],
 
-        // ✅ 위치/날씨/대기 저장
         'place': placeMap,
         'weather': weatherMap,
         'air': airMap,
+
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedAtClient': DateTime.now().millisecondsSinceEpoch,
       });
@@ -1000,9 +1219,7 @@ class _CommunityEditState extends State<CommunityEdit> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('수정 실패: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('수정 실패: $e')));
     }
   }
 
@@ -1087,7 +1304,7 @@ class _CommunityEditState extends State<CommunityEdit> {
 
                     // ✅ 에디터 (URL/로컬 둘 다 보이게 Hybrid builders)
                     Container(
-                      height: 220,
+                      height: 500,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: Colors.grey),

@@ -7,6 +7,7 @@ import 'CommunityEdit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:math';
+import 'dart:io';
 
 class Communityview extends StatefulWidget {
   final String docId;
@@ -22,6 +23,8 @@ class _CommunityviewState extends State<Communityview> {
     final authorMap = (postData['author'] as Map<String, dynamic>?) ?? {};
     return (postData['authorDeleted'] == true) || (authorMap['deleted'] == true);
   }
+  bool _isUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+
   String _timeAgoFromTs(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
@@ -642,14 +645,16 @@ class _CommunityviewState extends State<Communityview> {
     }
   }
 
-  Future<void> _playVideoAt(int idx, String url) async {
+  Future<void> _playVideoAt(int idx, String src) async {
     if (_playingVideoIndex == idx && _vp != null && _chewie != null) return;
 
     await _disposePlayer();
-
     setState(() => _playingVideoIndex = idx);
 
-    final vp = VideoPlayerController.networkUrl(Uri.parse(url));
+    final vp = _isUrl(src)
+        ? VideoPlayerController.networkUrl(Uri.parse(src))
+        : VideoPlayerController.file(File(src));
+
     _vp = vp;
 
     try {
@@ -657,9 +662,9 @@ class _CommunityviewState extends State<Communityview> {
     } catch (e) {
       await _disposePlayer();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('영상 로드 실패: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('영상 로드 실패: $e')),
+      );
       return;
     }
 
@@ -1365,22 +1370,34 @@ class _CommunityviewState extends State<Communityview> {
     return widgets;
   }
 
-  Widget _imageWidget(String url) {
+  Widget _imageWidget(String src) {
+    final isUrl = _isUrl(src);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: AspectRatio(
           aspectRatio: 16 / 9,
-          child: Image.network(url, fit: BoxFit.cover),
+          child: isUrl
+              ? Image.network(src, fit: BoxFit.cover)
+              : Image.file(File(src), fit: BoxFit.cover),
         ),
       ),
     );
   }
 
-  Widget _videoItemWidget(int idx, String videoUrl, List<String> videoThumbs) {
+  Widget _videoItemWidget(int idx, String videoSrc, List<String> videoThumbs) {
     final thumb = (idx < videoThumbs.length) ? videoThumbs[idx] : '';
     final isPlaying = _playingVideoIndex == idx && _chewie != null;
+
+    Widget thumbWidget() {
+      if (thumb.isEmpty) return Container(color: Colors.black12);
+
+      return _isUrl(thumb)
+          ? Image.network(thumb, fit: BoxFit.cover)
+          : Image.file(File(thumb), fit: BoxFit.cover);
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -1403,14 +1420,11 @@ class _CommunityviewState extends State<Communityview> {
             ],
           )
               : InkWell(
-            onTap: () => _playVideoAt(idx, videoUrl),
+            onTap: () => _playVideoAt(idx, videoSrc),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                if (thumb.isNotEmpty)
-                  Image.network(thumb, fit: BoxFit.cover)
-                else
-                  Container(color: Colors.black12),
+                thumbWidget(),
                 Container(
                   width: 56,
                   height: 56,
