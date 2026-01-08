@@ -322,11 +322,44 @@
   </ul>
 </details>
 
+---
 
+# 📂관련 자료들
 
-
-
-
+<table>
+  <thead>
+    <tr>
+      <th>분류</th>
+      <th>링크</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PPT</td>
+      <td>추가 예정</td>
+    </tr>
+    <tr>
+      <td>피그마</td>
+      <td>
+        <a href="https://www.figma.com/files/team/1562006658844760933/project/477864605/%ED%8C%80-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8?fuid=1562006656198164517">
+          <img src="https://img.shields.io/badge/Figma-Design-F24E1E?style=for-the-badge&logo=figma&logoColor=white"/>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td>구글 공유 문서</td>
+      <td>
+        <a href="https://drive.google.com/drive/folders/1SPuhaTbefXxkavVJK2CkP71h3y1WkZ0L?usp=drive_link">
+          <img src="https://img.shields.io/badge/Google%20Drive-Docs-4285F4?style=for-the-badge&logo=google-drive&logoColor=white"/>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td>시연 영상</td>
+      <td>추가 예정</td>
+    </tr>
+  </tbody>
+</table>
 
 
 
