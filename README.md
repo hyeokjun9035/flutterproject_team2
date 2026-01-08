@@ -183,9 +183,9 @@
   <summary>☀️ 메인 페이지 (담당: 김성민, 전경환)</summary>
 
   <p align="center">
-    <img src="docs/images/home.png" width="220"/>
-    <img src="docs/images/weather.png" width="220"/>
-    <img src="docs/images/bus.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/home_page1.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/weather.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" width="220"/>
   </p>
 
   <ul>
