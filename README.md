@@ -168,16 +168,21 @@
   <summary>🔐 로그인 / 회원가입 페이지 (담당: 하송화)</summary>
 
   <p align="center">
-    <img src="docs/images/home.png" width="220"/>
-    <img src="docs/images/weather.png" width="220"/>
-    <img src="docs/images/bus.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" width="220"/>
   </p>
 
   <ul>
-    <li>로그인 / 회원가입</li>
-    <li>로그인 / 회원가입</li>
-    <li>로그인 / 회원가입</li>
+    <li>회원가입</li>
+    <li>가까운 거리 자동 감지 → 도보 추천 카드로 전환</li>
+    <li>상세 경로 보기 화면(RouteView)로 연결</li>
+    <li>주변 CCTV 확인 및 동영상 재생</li>
   </ul>
+
+  <br/>
+
 </details>
 <details>
   <summary>☀️ 메인 페이지 (담당: 김성민, 전경환)</summary>
