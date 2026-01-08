@@ -224,7 +224,7 @@
 
   <p align="center">
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="210"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="210"/>
   </p>
 
@@ -247,9 +247,9 @@
   </p>
 
   <p align="center">
-    <img src="IMAGE_URL_BUS_1" width="210"/>
-    <img src="IMAGE_URL_BUS_2" width="210"/>
-    <img src="IMAGE_URL_BUS_3" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" width="210"/>
   </p>
 
   <ul>
@@ -270,9 +270,9 @@
   </p>
 
   <p align="center">
-    <img src="IMAGE_URL_NEARBY_1" width="210"/>
-    <img src="IMAGE_URL_NEARBY_2" width="210"/>
-    <img src="IMAGE_URL_MENU_EDIT_1" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" width="210"/>
   </p>
 
   <ul>
