@@ -201,9 +201,8 @@
   </p>
 
   <p align="center">
-    <img src="IMAGE_URL_WEATHER_VISUAL_1" width="210"/>
-    <img src="IMAGE_URL_WEATHER_VISUAL_2" width="210"/>
-    <img src="IMAGE_URL_WEATHER_VISUAL_3" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/home_page1.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/snow.gif" width="210"/>
   </p>
 
   <ul>
