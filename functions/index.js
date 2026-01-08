@@ -894,7 +894,7 @@ function guessWthrWrnStnId(administrativeArea) {
 /** -----------------------------
  *  메인: getDashboard
  * ------------------------------ */
-exports.jghGetDashboard = onCall({ region: "asia-northeast3" }, async (request) => {
+exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => {
   try {
     const { lat, lon, locationName } = request.data || {};
     if (typeof lat !== "number" || typeof lon !== "number") {
@@ -1019,6 +1019,12 @@ if (admin.apps.length === 0) {
 
 const { getMessaging } = require("firebase-admin/messaging");
 
+
+
+
+
+
+
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -1031,7 +1037,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 //  좋아요/댓글 알림 (notifications 컬렉션 감시)
-exports.jghSendPushNotification = onDocumentCreated({
+exports.sendPushNotification = onDocumentCreated({
     document: "notifications/{notificationId}",
     region: "asia-northeast3"
 }, async (event) => {
@@ -1073,8 +1079,8 @@ exports.jghSendPushNotification = onDocumentCreated({
 });
 
 //  새 게시글 위치 기반 알림 (community 컬렉션 감시)
-exports.jghSendPostNotification = onDocumentCreated({ 
-    document: "community/{postId}", 
+exports.sendPostNotification = onDocumentCreated({ // 이름을 'sendPostNotification'으로 수정!
+    document: "community/{postId}", // 감시 대상도 'community'로 수정!
     region: "asia-northeast3"
 }, async (event) => {
     const snapshot = event.data;
@@ -1132,7 +1138,7 @@ exports.jghSendPostNotification = onDocumentCreated({
 /** -----------------------------
  *  2. 관리자 알림 발송 (Alarm 전용)
  * ------------------------------ */
-exports.jghSendAdminNotification = onCall({ region: "asia-northeast3" }, async (request) => {
+exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (request) => {
   const { title, body, topic } = request.data || {};
 
   // ✅ 오류 해결을 위한 FieldValue 명시적 선언
@@ -1146,12 +1152,14 @@ exports.jghSendAdminNotification = onCall({ region: "asia-northeast3" }, async (
     // 1. FCM 발송
     await admin.messaging().send({
       notification: { title, body },
+        //  관리자 알림 아이콘 설정을 위해 이 부분을 추가 jgh260106----s
         android: {
           notification: {
-            icon: 'ic_notification', 
-            color: '#000000',       
+            icon: 'ic_notification', // 안드로이드 리소스 폴더에 저장할 이미지 파일명 (확장자 제외)
+            color: '#000000',       // 아이콘 배경색 (선택사항)
           },
         },
+        //  관리자 알림 아이콘 설정을 위해 이 부분을 추가 jgh260106----E
       data: {
         type: "admin_alarm",
         click_action: "FLUTTER_NOTIFICATION_CLICK"
@@ -1159,12 +1167,12 @@ exports.jghSendAdminNotification = onCall({ region: "asia-northeast3" }, async (
       topic: topic || "community_topic",
     });
 
-    // 2. 발송 기록 저장
+    // 2. 발송 기록 저장 (이 부분이 성공해야 앱 하단 리스트에 나타납니다)
     await admin.firestore().collection("notifications").add({
       title: title,
       body: body,
       type: "admin_alarm",
-      createdAt: FieldValue.serverTimestamp(), 
+      createdAt: FieldValue.serverTimestamp(), // ✅ 수정 완료
       isRead: false
     });
 
@@ -1175,72 +1183,5 @@ exports.jghSendAdminNotification = onCall({ region: "asia-northeast3" }, async (
   }
 });
 
-/** -----------------------------
- *  3. 자동 날씨 알림 (매일 아침 06:55)
- *  2026-01-08 jgh260108---S
- * ------------------------------ */
-const { onSchedule } = require("firebase-functions/v2/scheduler");
 
-exports.jghScheduledWeatherNotify = onSchedule({
-  schedule: "55 6 * * *",
-  timeZone: "Asia/Seoul",
-  region: "asia-northeast3",
-}, async (event) => {
-  const db = admin.firestore();
-  const usersSnap = await db.collection("users").get();
-  
-  const gridMap = new Map();
 
-  usersSnap.forEach(doc => {
-    const u = doc.data();
-    if (!u.fcmToken) return;
-    
-    const lat = u.lastLocation?.latitude || u.latitude;
-    const lon = u.lastLocation?.longitude || u.longitude;
-    
-    if (lat && lon) {
-      const { nx, ny } = latLonToGrid(lat, lon);
-      const key = `${nx},${ny}`;
-      if (!gridMap.has(key)) gridMap.set(key, []);
-      gridMap.get(key).push(u.fcmToken);
-    }
-  });
-
-  for (const [key, tokens] of gridMap.entries()) {
-    try {
-      const [nx, ny] = key.split(",").map(Number);
-      
-      const vilage = await callKmaVilageFcst(nx, ny);
-      const hasRain = vilage.items.some(it => 
-        it.category === "PTY" && parseInt(it.fcstValue) > 0
-      );
-
-      const ncst = await callKmaUltraNcst(nx, ny);
-      const tempItem = ncst.items.find(it => it.category === "T1H");
-      const currentTemp = tempItem ? parseFloat(tempItem.obsrValue) : null;
-
-      let title = "";
-      let body = "";
-
-      if (currentTemp !== null && currentTemp <= 0) {
-        title = "❄️ 영하권 추위 알림";
-        body = `현재 기온이 ${currentTemp}°C입니다. 롱패딩 챙기시고 따뜻하게 입으세요!`;
-      } else if (hasRain) {
-        title = "☔ 우산 챙기세요";
-        body = "오늘 비나 눈 소식이 있습니다. 외출 시 우산을 꼭 챙기세요!";
-      }
-
-      if (title && tokens.length > 0) {
-        await admin.messaging().sendEachForMulticast({
-          notification: { title, body },
-          tokens: tokens,
-          data: { type: "admin_alarm" }
-        });
-        console.log(`📍 [Grid ${key}] 알림 전송: ${tokens.length}명`);
-      }
-    } catch (e) {
-      console.error(`❌ [Grid ${key}] 처리 중 오류:`, e);
-    }
-  }
-});
-// 2026-01-08 jgh260108---E
