@@ -230,12 +230,14 @@
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="220"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="220"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" width="220"/>
   </p>
 
   <ul>
     <li>옵션 선택(최소 도보/시간/환승) + 경로 요약 플로우 표시</li>
     <li>가까운 거리 자동 감지 → 도보 추천 카드로 전환</li>
     <li>상세 경로 보기 화면(RouteView)로 연결</li>
+    <li>주변 CCTV 확인 및 동영상 재생</li>
   </ul>
 
   <br/>
