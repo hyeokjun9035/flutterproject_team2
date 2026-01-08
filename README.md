@@ -331,20 +331,30 @@
 
   <br/>
   <p>
-    운영자가 실시간으로 지역별 이슈를 제어하고, 전체 사용자에게 긴급 알림(FCM)을 송출할 수 있는 통합 관리 환경을 구축했습니다.
+    운영자가 실시간으로 게시글 내용을 제어하고, 전체 사용자에게 긴급 알림(FCM)을 송출할 수 있는 통합 관리 환경을 구축했습니다.
   </p>
 
+
+
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/dashboard.png" width="230" alt="관리자 대시보드"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/911.png" width="230" alt="신고기능"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/fcm_send.png" width="230" alt="알림 전송 화면"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/dashboard.png" width="230" alt="관리자 대시보드"/>
   </p>
 
   <h4>🚀 주요 구현 기능</h4>
   <ul>
     <li><b>실시간 긴급 제보 관리:</b> 사용자가 등록한 데이터를 모니터링하고, 허위 정보 삭제 및 제재 관리 기능을 구현했습니다.</li>
-    <li><b>FCM 기반 스마트 알림:</b> Firebase Cloud Messaging을 활용해 특이 상황 시 사용자들 모두에게 푸시 알림을 전송하는 로직을 추가했습니다.</li>
+    <li><b>FCM 기반 스마트 알림:</b> Firebase Cloud Messaging을 활용해 관리자가 사용자들 모두에게 푸시 알림을 전송할 수 있는 기능을 추가했습니다.</li>
     <li><b>사용자 및 콘텐츠 통계:</b> Firestore의 데이터를 가공하여 게시판별 게시물과 사용자들 한눈에 파악할 수 있는 대시보드를 구성했습니다.</li>
   </ul>
+
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/issue.png" width="230" alt="사용자확인"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/user.png" width="230" alt="사용자확인"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/admin/userinfo.png" width="230" alt="사용자확인"/>
+  </p>
 
   <h4>🧠 Technical Challenge</h4>
   <ul>
