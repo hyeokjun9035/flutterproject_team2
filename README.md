@@ -223,9 +223,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="220"/>
   </p>
 
   <ul>
@@ -247,9 +247,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="230"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" width="230"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" width="230"/>
   </p>
 
   <ul>
@@ -271,8 +271,8 @@
 
   <p align="center">
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" width="210"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" width="210"/>
   </p>
 
   <ul>
