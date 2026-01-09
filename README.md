@@ -10,7 +10,7 @@
 
 <!-- 프로젝트 대표 스크린샷 또는 배너 (예: /docs/images/cover.png) -->
 
-<p align="center"><img src="https://github.com/hyeokjun9035/flutter_image/blob/main/main.png" width=250 alt="프로젝트 대표 이미지" /></p>
+<p align="center"><img src="https://github.com/hyeokjun9035/flutter_image/blob/main/final_main.png" alt="프로젝트 대표 이미지" /></p>
 
 ---
 
@@ -505,7 +505,11 @@
     </tr>
     <tr>
       <td>시연 영상</td>
-      <td>추가 예정</td>
+      <td>
+        <a href="https://drive.google.com/file/d/1U0dRbVpy90aU06-juUYx2DO42H5qlFkh/view?usp=sharing">
+          <img src="https://img.shields.io/badge/Demo-Play-0F9D58?style=for-the-badge&logo=google-drive&logoColor=white"/>
+        </a>
+      </td>
     </tr>
   </tbody>
 </table>
