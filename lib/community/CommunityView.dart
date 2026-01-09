@@ -5,6 +5,9 @@ import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'CommunityEdit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:math';
+import 'dart:io';
 
 class Communityview extends StatefulWidget {
   final String docId;
@@ -20,6 +23,8 @@ class _CommunityviewState extends State<Communityview> {
     final authorMap = (postData['author'] as Map<String, dynamic>?) ?? {};
     return (postData['authorDeleted'] == true) || (authorMap['deleted'] == true);
   }
+  bool _isUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+
   String _timeAgoFromTs(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
@@ -196,6 +201,108 @@ class _CommunityviewState extends State<Communityview> {
     if (v is Timestamp) return v.toDate();
     if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
     return null;
+  }
+
+  Widget _placeMapWidget(Map<String, dynamic>? place) {
+    if (place == null) return const SizedBox.shrink();
+
+    final lat = (place['lat'] as num?)?.toDouble();
+    final lng = (place['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return const SizedBox.shrink();
+
+    final name = (place['name'] ?? '위치').toString();
+    final address = (place['address'] ?? '').toString();
+    final pos = LatLng(lat, lng);
+
+    LatLngBounds _boundsFromCenter(LatLng c, double radiusMeters) {
+      // 위도 1도 ≈ 111km
+      final latDelta = radiusMeters / 111000.0;
+      // 경도는 위도에 따라 달라짐
+      final lngDelta = radiusMeters / (111000.0 * (cos(c.latitude * pi / 180)));
+
+      return LatLngBounds(
+        southwest: LatLng(c.latitude - latDelta, c.longitude - lngDelta),
+        northeast: LatLng(c.latitude + latDelta, c.longitude + lngDelta),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.black12),
+          color: Colors.white,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 상단 텍스트
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (address.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                address,
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 지도 (핀만)
+              SizedBox(
+                height: 220,
+                width: double.infinity,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(target: pos, zoom: 17),
+                  onMapCreated: (c) async {
+                    final bounds = _boundsFromCenter(pos, 100); // 반경 100m (원하는 값으로 조절)
+                    await c.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
+                  },
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('place'),
+                      position: pos,
+                      infoWindow: InfoWindow(title: name),
+                    ),
+                  },
+                  liteModeEnabled: true,
+                  zoomControlsEnabled: false,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
+                  rotateGesturesEnabled: false,
+                  scrollGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+                  zoomGesturesEnabled: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   int? _playingVideoIndex;
@@ -538,14 +645,16 @@ class _CommunityviewState extends State<Communityview> {
     }
   }
 
-  Future<void> _playVideoAt(int idx, String url) async {
+  Future<void> _playVideoAt(int idx, String src) async {
     if (_playingVideoIndex == idx && _vp != null && _chewie != null) return;
 
     await _disposePlayer();
-
     setState(() => _playingVideoIndex = idx);
 
-    final vp = VideoPlayerController.networkUrl(Uri.parse(url));
+    final vp = _isUrl(src)
+        ? VideoPlayerController.networkUrl(Uri.parse(src))
+        : VideoPlayerController.file(File(src));
+
     _vp = vp;
 
     try {
@@ -553,9 +662,9 @@ class _CommunityviewState extends State<Communityview> {
     } catch (e) {
       await _disposePlayer();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('영상 로드 실패: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('영상 로드 실패: $e')),
+      );
       return;
     }
 
@@ -632,6 +741,8 @@ class _CommunityviewState extends State<Communityview> {
     final images = (data['images'] as List?)?.cast<String>() ?? [];
     final videos = (data['videos'] as List?)?.cast<String>() ?? [];
     final videoThumbs = (data['videoThumbs'] as List?)?.cast<String>() ?? [];
+
+    final place = (data['place'] as Map?)?.cast<String, dynamic>();
 
     final category = (data['category'] ?? '').toString();
     final bool isNotice = category == '공지사항';
@@ -804,7 +915,7 @@ class _CommunityviewState extends State<Communityview> {
               ),
             ),
           ),
-
+        if (!isNotice) _placeMapWidget(place),
         // 본문 렌더링
         if (blocks.isNotEmpty)
           ..._buildContentBlocks(
@@ -1259,22 +1370,34 @@ class _CommunityviewState extends State<Communityview> {
     return widgets;
   }
 
-  Widget _imageWidget(String url) {
+  Widget _imageWidget(String src) {
+    final isUrl = _isUrl(src);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: AspectRatio(
           aspectRatio: 16 / 9,
-          child: Image.network(url, fit: BoxFit.cover),
+          child: isUrl
+              ? Image.network(src, fit: BoxFit.cover)
+              : Image.file(File(src), fit: BoxFit.cover),
         ),
       ),
     );
   }
 
-  Widget _videoItemWidget(int idx, String videoUrl, List<String> videoThumbs) {
+  Widget _videoItemWidget(int idx, String videoSrc, List<String> videoThumbs) {
     final thumb = (idx < videoThumbs.length) ? videoThumbs[idx] : '';
     final isPlaying = _playingVideoIndex == idx && _chewie != null;
+
+    Widget thumbWidget() {
+      if (thumb.isEmpty) return Container(color: Colors.black12);
+
+      return _isUrl(thumb)
+          ? Image.network(thumb, fit: BoxFit.cover)
+          : Image.file(File(thumb), fit: BoxFit.cover);
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -1297,14 +1420,11 @@ class _CommunityviewState extends State<Communityview> {
             ],
           )
               : InkWell(
-            onTap: () => _playVideoAt(idx, videoUrl),
+            onTap: () => _playVideoAt(idx, videoSrc),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                if (thumb.isNotEmpty)
-                  Image.network(thumb, fit: BoxFit.cover)
-                else
-                  Container(color: Colors.black12),
+                thumbWidget(),
                 Container(
                   width: 56,
                   height: 56,

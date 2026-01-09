@@ -1485,7 +1485,7 @@ class _CommunityaddState extends State<Communityadd> {
                   const SizedBox(height: 8),
 
                   Container(
-                    height: 220,
+                    height: 500,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       border: Border.all(color: Colors.grey),

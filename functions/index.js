@@ -9,6 +9,7 @@ const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");                                 // ✅ 위로
 if (admin.apps.length === 0) admin.initializeApp();
+const { FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 
 const axios = require("axios");
@@ -27,6 +28,103 @@ setGlobalOptions({ maxInstances: 2 });
 /** -----------------------------
  *  공통 유틸
  * ------------------------------ */
+ async function fetchEnabledChecklistItems(db) {
+   const snap = await db
+     .collection("checklist_items")
+     .where("enabled", "==", true)
+     .get();
+
+   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ }
+
+ function extractDongName(raw) {
+   const s = String(raw ?? "").trim();
+   if (!s) return "";
+
+   // 공백/구두점 정리
+   const cleaned = s.replace(/[,\(\)\[\]]/g, " ").replace(/\s+/g, " ").trim();
+   const tokens = cleaned.split(" ").filter(Boolean);
+
+   // 뒤에서부터 '동/읍/면/리/가' 로 끝나는 토큰 찾기
+   for (let i = tokens.length - 1; i >= 0; i--) {
+     const t = tokens[i];
+     if (/(동|읍|면|리|가)$/.test(t)) return t;
+   }
+
+   // 혹시 "부평구부평동" 같이 붙어오면 분리 시도
+   const glued = cleaned.replace(/\s+/g, "");
+   const m = glued.match(/([가-힣0-9]+(동|읍|면|리|가))$/);
+   if (m) return m[1];
+
+   return "";
+ }
+
+ function pickNotificationDongName(userData) {
+   // 후보(네가 이미 쓰던 필드들 + 동 후보가 있을 법한 순서)
+   const candidates = [
+     userData?.locationName,
+     userData?.addressName,
+     userData?.addr,
+     userData?.address,
+   ];
+
+   for (const c of candidates) {
+     const dong = extractDongName(c);
+     if (dong) return dong;
+   }
+
+   // 마지막 fallback: '행정구역' 기반으로라도 "동네"로
+   // (절대 "내 위치"는 쓰지 않기)
+   return "우리 동네";
+ }
+
+ function matchesChecklistRule(item, ctx) {
+   const rules = item?.rules || {};
+
+   const pty = ctx.pty;     // number
+   const pop = ctx.pop;     // number (0~100)
+   const temp = ctx.temp;   // number
+   const pm25 = ctx.pm25;   // number
+
+   if (Array.isArray(rules.ptyIn)) {
+     const set = rules.ptyIn.map(Number);
+     if (pty == null || !set.includes(Number(pty))) return false;
+   }
+
+   if (Array.isArray(rules.ptyNotIn)) {
+     const set = rules.ptyNotIn.map(Number);
+     if (pty != null && set.includes(Number(pty))) return false;
+   }
+
+   if (rules.popMin != null) {
+     if (pop == null || Number(pop) < Number(rules.popMin)) return false;
+   }
+
+   if (rules.tempMin != null) {
+     if (temp == null || Number(temp) < Number(rules.tempMin)) return false;
+   }
+   if (rules.tempMax != null) {
+     if (temp == null || Number(temp) > Number(rules.tempMax)) return false;
+   }
+
+   if (rules.pm25Min != null) {
+     if (pm25 == null || Number(pm25) < Number(rules.pm25Min)) return false;
+   }
+   if (rules.pm25Max != null) {
+     if (pm25 == null || Number(pm25) > Number(rules.pm25Max)) return false;
+   }
+
+   return true;
+ }
+
+ function buildChecklistText(items, maxLines = 3) {
+   const top = items.slice(0, maxLines);
+   if (top.length === 0) return "";
+   return "\n\n" + top.map(it => `• ${it.title}`).join("\n");
+   // 메시지까지 넣고 싶으면:
+   // return "\n\n" + top.map(it => `• ${it.title}: ${it.message}`).join("\n");
+ }
+
 function toNum(v) {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
@@ -66,6 +164,210 @@ async function safe(promise, fallback, tag) {
     logger.warn(`${tag} failed (ignored)`, summarizeErr(e));
     return fallback;
   }
+}
+
+async function buildDashboardData({ lat, lon, locationName = "", addr = "", administrativeArea = "" }) {
+  const { nx, ny } = latLonToGrid(lat, lon);
+
+  const kmaNcst = await callKmaUltraNcst(nx, ny);
+  const kmaUltra = await callKmaUltraFcst(nx, ny);
+  const kmaVilage = await callKmaVilageFcst(nx, ny);
+
+  const ncstItems = Array.isArray(kmaNcst?.items) ? kmaNcst.items : [];
+  const ultraItems = Array.isArray(kmaUltra?.items) ? kmaUltra.items : [];
+  const vilageItems = Array.isArray(kmaVilage?.items) ? kmaVilage.items : [];
+
+  const hourlyFcst = mergeHourly(
+    buildHourlyUltraRaw(ultraItems),
+    buildHourlyFromVilage(vilageItems),
+    24
+  );
+
+  const weeklyShort = buildDailyFromVilage(vilageItems);
+  const baseYmd = weeklyShort[0]?.date ?? ymdKst(new Date());
+
+  const tmFc = midTmFc(new Date());
+  const landRegId = regIdLandFromAdmin(administrativeArea, String(locationName ?? ""), lon);
+  const taRegId = resolveRegIdTa({ administrativeArea, locationName, addr });
+
+  const midLandP = landRegId ? safe(callMidLand(landRegId, tmFc), null, "midLand") : Promise.resolve(null);
+  const midTaP   = taRegId   ? safe(callMidTa(taRegId, tmFc), null, "midTa")       : Promise.resolve(null);
+
+  const airP = safe(
+    buildAir(addr, administrativeArea),
+    { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { reason: "air_failed" } },
+    "air"
+  );
+
+  const alertsP = safe((async () => {
+    const todayYmd = ymdKst(new Date());
+    const fromYmd = addDaysYmd(todayYmd, -3);
+
+    const wrnItems = await callKmaWthrWrnList({
+      fromTmFc: fromYmd,
+      toTmFc: todayYmd,
+    });
+
+    const keywords = buildAlertKeywords(administrativeArea, addr);
+    const alerts = buildAlertsFromWrnList(wrnItems, { keywords });
+
+    if (!alerts || alerts.length === 0) {
+      return buildAlertsFromWrnList(wrnItems, { keywords: [] }).slice(0, 1);
+    }
+    return alerts;
+  })(), [], "alerts");
+
+  const [midLand, midTa, airRes, alerts] = await Promise.all([midLandP, midTaP, airP, alertsP]);
+
+  const weekly = (midLand || midTa)
+    ? appendMidToWeekly(weeklyShort, midLand, midTa, baseYmd)
+    : weeklyShort;
+
+  return {
+    nx, ny,
+    weatherNow: ncstItems,
+    hourlyFcst,
+    weekly,
+    alerts,
+    air: airRes.air,
+  };
+}
+
+function getUserLatLon(u) {
+  const lat = u?.lastLocation?.latitude ?? u?.latitude ?? u?.lat;
+  const lon = u?.lastLocation?.longitude ?? u?.longitude ?? u?.lon;
+  const nLat = typeof lat === "string" ? parseFloat(lat) : lat;
+  const nLon = typeof lon === "string" ? parseFloat(lon) : lon;
+  if (!Number.isFinite(nLat) || !Number.isFinite(nLon)) return null;
+  return { lat: nLat, lon: nLon };
+}
+
+function mapByCategory(items) {
+  const m = {};
+  for (const it of (items ?? [])) {
+    if (it?.category) m[it.category] = it.fcstValue;
+  }
+  return m;
+}
+
+function ptyToText(pty) {
+  const v = Number(pty);
+  if (!Number.isFinite(v)) return null;
+  if (v === 0) return "없음";
+  if (v === 1) return "비";
+  if (v === 2) return "비/눈";
+  if (v === 3) return "눈";
+  if (v === 4) return "소나기";
+  if (v === 5) return "빗방울";
+  if (v === 6) return "빗방울/눈날림";
+  if (v === 7) return "눈날림";
+  return "강수";
+}
+
+function skyToText(sky) {
+  const v = Number(sky);
+  if (!Number.isFinite(v)) return null;
+  if (v === 1) return "맑음";
+  if (v === 3) return "구름많음";
+  if (v === 4) return "흐림";
+  return null;
+}
+
+// POP 최대값 뽑기 (null 무시 + fallback)
+function maxPopFromHourly(hourly, hours = 12) {
+  const arr = Array.isArray(hourly) ? hourly : [];
+  let max = null;
+  for (const h of arr.slice(0, hours)) {
+    const p = toNum(h?.pop);
+    if (p == null) continue;
+    max = (max == null) ? p : Math.max(max, p);
+  }
+  return max;
+}
+
+function buildWeatherAlarmMessage(dashboard, fallbackLocName = "", checklistText = "") {
+  const nowMap = mapByCategory(dashboard?.weatherNow);
+
+  // 초단기실황(현재)
+  const t1h = toNum(nowMap.T1H);
+  const reh = toNum(nowMap.REH);     // 습도
+  const wsd = toNum(nowMap.WSD);     // 풍속
+  const ptyNow = toNum(nowMap.PTY);  // 현재 강수형태
+  const rn1 = toNum(nowMap.RN1);     // 1시간 강수량
+
+  // 시간대별(초단기+단기 merge)
+  const hourly = Array.isArray(dashboard?.hourlyFcst) ? dashboard.hourlyFcst : [];
+
+  // NOW 근처(첫 1~2개)에서 SKY/PTY를 보조로 가져오기
+  const h0 = hourly[0] || {};
+  const skyNow = toNum(h0.sky);
+  const ptyNow2 = toNum(h0.pty);
+
+  // 강수확률: next 6에서 null 무시 -> 없으면 next 12로 fallback
+  let maxPop = maxPopFromHourly(hourly, 6);
+  if (maxPop == null) maxPop = maxPopFromHourly(hourly, 12);
+
+  // 오늘 최저/최고(weekly[0])
+  const today = Array.isArray(dashboard?.weekly) ? dashboard.weekly[0] : null;
+  const tMin = toNum(today?.min);
+  const tMax = toNum(today?.max);
+
+  const alertTitle = (dashboard?.alerts?.[0]?.title) ? String(dashboard.alerts[0].title) : null;
+  const locName =
+    String(fallbackLocName ?? "").trim() ||
+    "우리 동네";
+
+  const loc = `${locName} `;
+
+  // 상태 텍스트
+  const ptyText = ptyToText(ptyNow ?? ptyNow2);
+  const skyText = skyToText(skyNow);
+  const condition = (ptyNow != null && ptyNow > 0)
+    ? (ptyText ?? "강수")
+    : (skyText ?? "날씨");
+
+  // ✅ title을 “지역 + 현재온도 + 상태”로(알림 리스트에서 바로 보이게)
+  const tempNow = (t1h != null) ? t1h : toNum(h0.temp);
+  const titleTemp = (tempNow != null) ? `${tempNow}°` : "현재";
+  const title = `${loc}${titleTemp} ${condition}`.trim() || "날씨 알림";
+
+  // ✅ body를 여러 줄로(확장하면 다 보임)
+  const lines = [];
+
+  // 1) 현재 한 줄 요약
+  const nowParts = [];
+  // ✅ checklistText를 한 줄로 압축해서 추가
+  if (checklistText) {
+    const oneLine = checklistText
+      .replace(/\n/g, " ")       // 줄바꿈 제거
+      .replace(/•\s/g, "")       // 불릿 제거
+      .replace(/\s+/g, " ")
+      .trim();
+    // 너무 길면 더 잘리니까 적당히 컷
+    nowParts.push(`${oneLine}`.slice(0, 70));
+  }
+  if (tMin != null && tMax != null) nowParts.push(`오늘 ${tMin}~${tMax}°`);
+  if (maxPop != null) nowParts.push(`강수확률 ${maxPop}%`);
+  lines.push(nowParts.join(" · "));
+  if (alertTitle) lines.push(`⚠️ ${alertTitle}`);
+
+  // 2) 강수 관련 디테일(있을 때만)
+  const hasNowPrecip = (ptyNow != null && ptyNow > 0);
+  if (hasNowPrecip) {
+    const extra = [];
+    extra.push(`지금 ${ptyText ?? "강수"} 중`);
+    if (rn1 != null && rn1 > 0) extra.push(`1시간 ${rn1}mm`);
+    lines.push(extra.join(" · "));
+  } else {
+    // 다음 강수 시점(있으면)
+    const nextPrecip = hourly.slice(0, 12).find(h => (toNum(h?.pty) != null && toNum(h.pty) > 0));
+    if (nextPrecip) {
+      lines.push(`${nextPrecip.timeLabel ?? "곧"} ${ptyToText(nextPrecip.pty) ?? "강수"} 가능`);
+    }
+  }
+
+  const body = lines.filter(Boolean).join("\n");
+  return { title, body, maxPop, t1h, pty: (ptyNow ?? ptyNow2) };
 }
 
 function sleep(ms) {
@@ -407,6 +709,7 @@ function buildHourlyUltraRaw(items) {
         timeLabel: `${hh}시`,
         sky: v.SKY != null ? Number(v.SKY) : null,
         pty: v.PTY != null ? Number(v.PTY) : null,
+        pop: v.POP != null ? Number(v.POP) : null,      // ✅ 추가
         temp: v.T1H != null ? Number(v.T1H) : (v.TMP != null ? Number(v.TMP) : null),
       };
     })
@@ -430,7 +733,8 @@ function buildHourlyFromVilage(items) {
         timeLabel: `${hh}시`,
         sky: v.SKY != null ? Number(v.SKY) : null,
         pty: v.PTY != null ? Number(v.PTY) : null,
-        temp: v.TMP != null ? Number(v.TMP) : null, // 단기예보는 TMP
+        pop: v.POP != null ? Number(v.POP) : null,      // ✅ 추가
+        temp: v.TMP != null ? Number(v.TMP) : null,
       };
     })
     .filter(x => x.temp !== null)
@@ -438,21 +742,28 @@ function buildHourlyFromVilage(items) {
 }
 
 function mergeHourly(ultra, vilage, take = 24) {
-  const seen = new Set();
-  const out = [];
+  const byKey = new Map();
 
-  for (const x of ultra) {
-    if (!x._k || seen.has(x._k)) continue;
-    seen.add(x._k);
-    out.push(x);
-  }
-  for (const x of vilage) {
-    if (!x._k || seen.has(x._k)) continue;
-    seen.add(x._k);
-    out.push(x);
-  }
+  const put = (x) => {
+    if (!x?._k) return;
+    const prev = byKey.get(x._k) || { _k: x._k };
+    // 기존 값이 null이면 새 값으로 채우기
+    byKey.set(x._k, {
+      _k: x._k,
+      timeLabel: prev.timeLabel ?? x.timeLabel,
+      sky: prev.sky ?? x.sky,
+      pty: prev.pty ?? x.pty,
+      pop: prev.pop ?? x.pop,
+      temp: prev.temp ?? x.temp,
+    });
+  };
 
-  out.sort((a, b) => (a._k < b._k ? -1 : 1));
+  // ultra 먼저 넣고
+  for (const x of (ultra ?? [])) put(x);
+  // vilage로 부족한 필드를 채우기
+  for (const x of (vilage ?? [])) put(x);
+
+  const out = [...byKey.values()].sort((a, b) => (a._k < b._k ? -1 : 1));
   if (out.length > 0) out[0].timeLabel = "NOW";
 
   return out.slice(0, take).map(({ _k, ...rest }) => rest);
@@ -1028,8 +1339,51 @@ exports.getDashboard = onCall({ region: "asia-northeast3" }, async (request) => 
   }
 });
 
+exports.getChecklistForLocation = onCall({ region: "asia-northeast3" }, async (request) => {
+  try {
+    const { lat, lon, locationName = "", addr = "", administrativeArea = "" } = request.data || {};
+    if (typeof lat !== "number" || typeof lon !== "number") {
+      throw new HttpsError("invalid-argument", "lat/lon is required");
+    }
 
+    const db = admin.firestore();
 
+    const dashboard = await buildDashboardData({ lat, lon, locationName, addr, administrativeArea });
+
+    const nowMap = mapByCategory(dashboard?.weatherNow);
+    const temp = toNum(nowMap.T1H);
+    const pty  = toNum(nowMap.PTY);
+    const pm25 = toNum(dashboard?.air?.pm25);
+    const pop  = maxPopFromHourly(dashboard?.hourlyFcst ?? [], 6)
+              ?? maxPopFromHourly(dashboard?.hourlyFcst ?? [], 12);
+
+    const ctx = { temp, pty, pop, pm25 };
+
+    const enabled = await fetchEnabledChecklistItems(db);
+
+    const matched = enabled
+      .filter(it => matchesChecklistRule(it, ctx))
+      .sort((a, b) => (Number(b.priority ?? 0) - Number(a.priority ?? 0)));
+
+    return {
+      ctx,
+      items: matched.map(it => ({
+        id: it.id,
+        title: it.title,
+        message: it.message ?? null,
+        priority: it.priority ?? 0,
+        rules: it.rules ?? {},
+      })),
+    };
+  } catch (e) {
+    logger.error("getChecklistForLocation failed", summarizeErr(e));
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError(
+      "internal",
+      `getChecklistForLocation failed: ${String(e?.message ?? e)}`
+    );
+  }
+});
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -1047,8 +1401,10 @@ exports.sendPushNotification = onDocumentCreated({
     document: "notifications/{notificationId}",
     region: "asia-northeast3"
 }, async (event) => {
-    const data = event.data.data();
-    if (!data) return;
+    const snap = event.data;
+     if (!snap) return;
+     const data = snap.data();
+     if (!data) return;
 
     const receiverUid = data.receiverUid;
     const senderNickName = data.senderNickName || "누군가";
@@ -1147,9 +1503,6 @@ exports.sendPostNotification = onDocumentCreated({ // 이름을 'sendPostNotific
 exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (request) => {
   const { title, body, topic } = request.data || {};
 
-  // ✅ 오류 해결을 위한 FieldValue 명시적 선언
-  const { FieldValue } = require("firebase-admin/firestore");
-
   if (!title || !body) {
     throw new HttpsError("invalid-argument", "제목과 내용을 모두 입력해주세요.");
   }
@@ -1190,14 +1543,12 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
 });
 
 exports.sendDailyAlarm = onSchedule(
-  { schedule: "every 1 minutes", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  { schedule: "every day 00:00", timeZone: "Asia/Seoul", region: "asia-northeast3" },
   async () => {
     const db = admin.firestore();
 
-    // "HH:mm" (KST)
-    const currentTime = getHHmmKst(); // 예: "09:00"
+    const currentTime = getHHmmKst();
 
-    // 중복방지 키(오늘날짜 + 시간)
     const now = new Date();
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const yyyy = kst.getUTCFullYear();
@@ -1205,58 +1556,235 @@ exports.sendDailyAlarm = onSchedule(
     const dd = String(kst.getUTCDate()).padStart(2, "0");
     const sentKey = `${yyyy}-${mm}-${dd} ${currentTime}`;
 
+    // ✅ 0) 스케줄러가 도는지 확인하는 "시작 로그"
+    logger.info("[weather-alarm] start", {
+      nowKst: `${yyyy}-${mm}-${dd} ${currentTime}`,
+      sentKey,
+      region: "asia-northeast3",
+    });
+
+    const lockRef = db.collection("alarmLocks").doc(sentKey);
+    try {
+      await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
+      logger.info("[weather-alarm] lock acquired", { sentKey });
+    } catch (e) {
+      // 이미 있으면(=이미 누가 실행함) 그냥 종료
+      logger.warn("[weather-alarm] lock exists -> skip", {
+        sentKey,
+        code: e?.code ?? null,
+        msg: e?.message ?? String(e),
+      });
+      if (e.code === 6 || e.code === "already-exists") return;
+      throw e;
+    }
+
     // 대상 유저 조회
     const snap = await db.collection("users")
       .where("isAlramChecked", "==", true)
       .where("alarmTime", "==", currentTime)
       .get();
 
+    logger.info("[weather-alarm] target query result", {
+      sentKey,
+      targetUserCount: snap.size,
+      empty: snap.empty,
+    });
+
     if (snap.empty) return;
 
-    // 토큰 수집 + 중복/빈값 제거 + 같은 분 중복발송 방지
-    const targets = [];
+    const usersSnapshot = await admin.firestore().collection("users").get();
+
+    let totalUsers = 0;
+    let tokenUsers = 0;
+    const tokenMap = new Map(); // token -> [uid...]
+    usersSnapshot.forEach(doc => {
+      totalUsers++;
+      const t = doc.data()?.fcmToken;
+      if (!t) return;
+      tokenUsers++;
+      if (!tokenMap.has(t)) tokenMap.set(t, []);
+      tokenMap.get(t).push(doc.id);
+    });
+
+    logger.info("[weather-alarm] token stats", {
+      sentKey,
+      totalUsers,
+      tokenUsers,
+      uniqueTokens: tokenMap.size,
+    });
+
+    const groupsByGrid = new Map();
+
+    // ✅ 카운터들로 "왜 빠졌는지" 파악
+    let skippedNoToken = 0;
+    let skippedAlreadySent = 0;
+    let skippedNoLatLon = 0;
+
     for (const doc of snap.docs) {
       const u = doc.data() || {};
       const token = u.fcmToken;
-      if (!token) continue;
+      if (!token) { skippedNoToken++; continue; }
 
-      if (u.lastAlarmSentKey === sentKey) continue; // ✅ 중복방지
+      if (u.lastAlarmSentKey && String(u.lastAlarmSentKey) === sentKey) {
+        skippedAlreadySent++;
+        continue;
+      }
 
-      targets.push({ ref: doc.ref, token });
+      const ll = getUserLatLon(u);
+      if (!ll) { skippedNoLatLon++; continue; }
+
+      const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
+      const gk = `${nx},${ny}`;
+      if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
+      groupsByGrid.get(gk).push({
+        ref: doc.ref,
+        token,
+        userData: u,
+        nx,
+        ny,
+        lat: ll.lat,
+        lon: ll.lon,
+      });
     }
 
-    if (targets.length === 0) return;
+    logger.info("[weather-alarm] grouping summary", {
+      sentKey,
+      gridCount: groupsByGrid.size,
+      skippedNoToken,
+      skippedAlreadySent,
+      skippedNoLatLon,
+    });
 
-    // 500개씩 끊어서 발송
-    const chunkSize = 500;
-    for (let i = 0; i < targets.length; i += chunkSize) {
-      const chunk = targets.slice(i, i + chunkSize);
-      const tokens = chunk.map(x => x.token);
+    if (groupsByGrid.size === 0) return;
 
-      const res = await getMessaging().sendEachForMulticast({
-        notification: {
-          title: "알림",
-          body: "설정한 시간 알림입니다.",
-        },
-        data: {
-          type: "daily_alarm",
+    const byMessage = new Map();
+    const enabledChecklist = await fetchEnabledChecklistItems(db);
+
+    logger.info("[weather-alarm] checklist loaded", {
+      sentKey,
+      enabledChecklistCount: enabledChecklist.length,
+    });
+
+    for (const [gk, entries] of groupsByGrid.entries()) {
+      const first = entries[0];
+
+      // ✅ 알림에는 "동(읍/면/리/가)"만 노출 + "내 위치" 금지
+      const locationName = pickNotificationDongName(first.userData);
+
+      const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
+      const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
+
+      const dashboard = await safe(
+        buildDashboardData({ lat: first.lat, lon: first.lon, locationName, addr, administrativeArea }),
+        null,
+        `weatherDashboard:${gk}`
+      );
+
+      if (!dashboard) {
+        logger.warn("[weather-alarm] dashboard build failed -> skip grid", { sentKey, gk });
+        continue;
+      }
+
+      const nowMap = mapByCategory(dashboard?.weatherNow);
+      const temp = toNum(nowMap.T1H);
+      const pty  = toNum(nowMap.PTY);
+      const pm25 = toNum(dashboard?.air?.pm25);
+
+      const pop = maxPopFromHourly(dashboard?.hourlyFcst ?? [], 6)
+               ?? maxPopFromHourly(dashboard?.hourlyFcst ?? [], 12);
+
+      const ctx = { temp, pty, pop, pm25 };
+
+      let matched = enabledChecklist
+        .filter(it => matchesChecklistRule(it, ctx))
+        .sort((a, b) => (Number(b.priority ?? 0) - Number(a.priority ?? 0)));
+
+      if (!matched.length) {
+        matched = enabledChecklist
+          .filter(it => it?.rules?.always === true)
+          .sort((a,b) => Number(b.priority ?? 0) - Number(a.priority ?? 0))
+          .slice(0, 3);
+      }
+
+      const checklistText = buildChecklistText(matched, 3);
+
+      // ✅ msg는 여기서 딱 1번만
+      const msg = buildWeatherAlarmMessage(dashboard, locationName, checklistText);
+
+      // ✅ checklistText를 msg.body에 “추가로” 붙이지 말고(중복됨)
+      // msg 안에서 이미 checklistText를 nowParts에 넣고 있음.
+      // 그래도 body에 별도 섹션으로도 넣고 싶으면 아래처럼(원하면 유지)
+      // ✅ checklistText는 buildWeatherAlarmMessage 내부에서 이미 반영됨(중복 방지)
+      const body2 = msg.body;
+
+      const mk = `${msg.title}||${body2}`;
+
+      if (!byMessage.has(mk)) byMessage.set(mk, { title: msg.title, body: body2, entries: [] });
+
+      const bucket = byMessage.get(mk);
+      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
+
+    }
+
+    logger.info("[weather-alarm] message buckets ready", {
+      sentKey,
+      bucketCount: byMessage.size,
+      totalReceivers: [...byMessage.values()].reduce((acc, b) => acc + b.entries.length, 0),
+    });
+
+    if (byMessage.size === 0) return;
+
+    for (const { title, body, entries } of byMessage.values()) {
+      const chunkSize = 500;
+      for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
+        const tokens = chunk.map(x => x.token);
+
+        const res = await getMessaging().sendEachForMulticast({
+          notification: { title, body },
+          data: { type: "weather_alarm", sentKey },
+          tokens,
+        });
+
+        const ok = res.responses.filter(r => r.success).length;
+        const fail = res.responses.length - ok;
+
+        logger.info("[weather-alarm] multicast result", {
           sentKey,
-        },
-        tokens,
-      });
+          tokens: tokens.length,
+          ok,
+          fail,
+          titlePreview: String(title).slice(0, 40),
+        });
 
-      // 성공한 것만 lastAlarmSentKey 갱신 (실패 토큰은 나중에 정리해도 됨)
-      const batch = db.batch();
-      chunk.forEach((x, idx) => {
-        const r = res.responses[idx];
-        if (r.success) {
-          batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
+        // (선택) 실패 사유 상위 몇 개만 찍기
+        const topFail = [];
+        for (let j = 0; j < res.responses.length; j++) {
+          const r = res.responses[j];
+          if (r.success) continue;
+          const err = r.error;
+          topFail.push({
+            idx: j,
+            code: err?.code ?? null,
+            msg: err?.message ? String(err.message).slice(0, 120) : null,
+          });
+          if (topFail.length >= 5) break;
         }
-      });
-      await batch.commit();
+        if (topFail.length) {
+          logger.warn("[weather-alarm] multicast failures (top)", { sentKey, topFail });
+        }
+
+        const batch = db.batch();
+        chunk.forEach((x, idx) => {
+          const r = res.responses[idx];
+          if (r.success) {
+            batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
+          }
+        });
+        await batch.commit();
+      }
     }
-    logger.info(`[alarm] now=${currentTime} sentKey=${sentKey}`);
-    logger.info(`[alarm] matchedUsers=${snap.size}`);
-    logger.info(`[alarm] targetsWithToken=${targets.length}`);
+
+    logger.info("[weather-alarm] done", { sentKey, now: currentTime });
   }
 );

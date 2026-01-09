@@ -466,7 +466,7 @@ class _HomePageState extends State<HomePage> {
                         child: const Text('추가'),
                       )
                     else
-                      OutlinedButton(
+                    OutlinedButton(
                         onPressed: _pickFavorite,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
@@ -536,12 +536,12 @@ class _HomePageState extends State<HomePage> {
                   final fav = _selectedFavorite;
 
                   return _TransitCard(
-                    data: transitSnap.data!,
-                    onFavoritePressed: _openFavoriteActionsSheet,
-                    busArrivalService: _busArrivalService,
-                    startLat: fav?.start.lat ?? 0.0,
-                    startLon: fav?.start.lng ?? 0.0,
-                    favoriteId: fav?.id,
+                      data: transitSnap.data!,
+                      onFavoritePressed: _openFavoriteActionsSheet,
+                      busArrivalService: _busArrivalService,
+                      startLat: fav?.start.lat ?? 0.0,
+                      startLon: fav?.start.lng ?? 0.0,
+                      favoriteId: fav?.id,
                   );
                 },
               ),
@@ -553,41 +553,41 @@ class _HomePageState extends State<HomePage> {
         return _Card(
           child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
               stream: _nearbyIssuesStream ?? const Stream.empty(),
-              onData: (issues) {
+            onData: (issues) {
                 _nearbyIssuesLatest3 = issues;
-              },
-              onOpenPost: (docId) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => Communityview(docId: docId),
+            },
+            onOpenPost: (docId) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Communityview(docId: docId),
+                ),
+              );
+            },
+            onMapPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NearbyIssuesMapPage(
+                    myLat: _lat!,
+                    myLng: _lon!,
+                    posts: _nearbyIssuesLatest3,
                   ),
-                );
-              },
-              onMapPressed: () {
-                Navigator.push(
+                ),
+              );
+            },
+            onReportPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const Event()),
+              );
+            },
+            onAddPressed: () {
+              Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => NearbyIssuesMapPage(
-                      myLat: _lat!,
-                      myLng: _lon!,
-                      posts: _nearbyIssuesLatest3,
-                    ),
-                  ),
-                );
-              },
-              onReportPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const Event()),
-                );
-              },
-              onAddPressed: () {
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => Communityadd())
-                );
-              }
+                  MaterialPageRoute(builder: (_) => Communityadd())
+              );
+            }
           ),
         );
     }
@@ -1165,4 +1165,16 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+}
+Future<void> testAdminPush() async {
+  final functions = FirebaseFunctions.instanceFor(region: 'asia-northeast3');
+  final callable = functions.httpsCallable('sendAdminNotification');
+
+  final res = await callable.call({
+    "title": "테스트 푸시",
+    "body": "Flutter에서 callable 호출 테스트",
+    "topic": "community_topic",
+  });
+
+  print("callable result: ${res.data}");
 }
