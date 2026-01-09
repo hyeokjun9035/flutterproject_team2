@@ -73,19 +73,27 @@ Future<geo.Position> _determinePosition() async {
 }
 
 // -------------------- 알림 클릭 처리 --------------------
-void _handleMessage(RemoteMessage message) {
-  final String? postId = message.data['postId'];
-  if (postId == null || postId.isEmpty) return;
+void _goHome() {
+  navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (r) => false);
+}
 
-  navigatorKey.currentState?.push(
-    MaterialPageRoute(
-      builder: (context) => Detailmypost(
-        postId: postId,
-        imageUrl: '',
-        postData: const {},
+void _handleMessage(RemoteMessage message) {
+  final postId = (message.data['postId'] ?? '').toString().trim();
+
+  // ✅ postId 있으면 상세, 없으면 홈
+  if (postId.isNotEmpty) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => Detailmypost(
+          postId: postId,
+          imageUrl: '',
+          postData: const {},
+        ),
       ),
-    ),
-  );
+    );
+  } else {
+    _goHome();
+  }
 }
 
 // -------------------- main --------------------
@@ -155,18 +163,21 @@ Future<void> main() async {
   await flutterLocalNotificationsPlugin.initialize(
     const InitializationSettings(android: initializationSettingsAndroid),
     onDidReceiveNotificationResponse: (NotificationResponse response) {
-      final payload = response.payload;
-      if (payload == null || payload.isEmpty) return;
+      final payload = (response.payload ?? '').trim();
 
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (context) => Detailmypost(
-            postId: payload,
-            imageUrl: '',
-            postData: const {},
+      if (payload.isNotEmpty) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => Detailmypost(
+              postId: payload,
+              imageUrl: '',
+              postData: const {},
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (r) => false);
+      }
     },
   );
 
@@ -198,7 +209,7 @@ Future<void> main() async {
           importance: Importance.max,
         ),
       ),
-      payload: message.data['postId'],
+      payload: (message.data['postId'] ?? '').toString(),
     );
   });
 

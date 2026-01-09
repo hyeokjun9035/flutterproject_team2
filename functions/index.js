@@ -128,14 +128,6 @@ setGlobalOptions({ maxInstances: 2 });
    return true;
  }
 
- function buildChecklistText(items, maxLines = 3) {
-   const top = items.slice(0, maxLines);
-   if (top.length === 0) return "";
-   return "\n\n" + top.map(it => `• ${it.title}`).join("\n");
-   // 메시지까지 넣고 싶으면:
-   // return "\n\n" + top.map(it => `• ${it.title}: ${it.message}`).join("\n");
- }
-
  function buildChecklistInline(items, maxItems = 4, maxChars = 36) {
    const titles = (items ?? [])
      .slice(0, maxItems)
@@ -145,6 +137,29 @@ setGlobalOptions({ maxInstances: 2 });
    let s = titles.join(" · ");
    if (s.length > maxChars) s = s.slice(0, maxChars - 1) + "…";
    return s;
+ }
+
+ function addInboxNotificationToBatch(db, batch, {
+   receiverUid,
+   title,
+   body,
+   type,
+   sentKey,
+   extra = {},
+ }) {
+   const nref = db.collection("notifications").doc();
+   batch.set(nref, {
+     receiverUid,
+     title,
+     body,
+     type,
+     sentKey: sentKey ?? null,
+     postId: extra.postId ?? "",     // 없으면 빈 값
+     kind: extra.kind ?? null,       // evening용
+     source: "system",               // ✅ 트리거가 푸시 안 보내게 구분
+     isRead: false,
+     createdAt: FieldValue.serverTimestamp(),
+   });
  }
 
 function toNum(v) {
@@ -1567,6 +1582,17 @@ exports.sendPushNotification = onDocumentCreated({
     const receiverUid = data.receiverUid;
     const senderNickName = data.senderNickName || "누군가";
     const type = data.type || "like";
+    // ✅ system이 만든 알림(아침/저녁/날씨)은 여기서 푸시를 또 보내면 중복됨 → 무조건 스킵
+    if (data.source === "system") {
+      logger.info("[push] skip system notification", { type });
+      return;
+    }
+
+    // ✅ 좋아요/댓글만 이 트리거가 푸시 발송 담당 (나머지는 스케줄러/관리자 함수가 직접 보냄)
+    if (type !== "like" && type !== "comment") {
+      logger.info("[push] skip non-like/comment", { type });
+      return;
+    }
     const postTitle = data.postTitle || "게시글";
 
     if (!receiverUid || typeof receiverUid !== 'string') {
@@ -1701,10 +1727,9 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
 });
 
 exports.sendDailyAlarm = onSchedule(
-  { schedule: "every day 10:09", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  { schedule: "every day 00:00", timeZone: "Asia/Seoul", region: "asia-northeast3" },
   async () => {
     const db = admin.firestore();
-
     const currentTime = getHHmmKst();
 
     const now = new Date();
@@ -1714,69 +1739,29 @@ exports.sendDailyAlarm = onSchedule(
     const dd = String(kst.getUTCDate()).padStart(2, "0");
     const sentKey = `${yyyy}-${mm}-${dd} ${currentTime}`;
 
-    // ✅ 0) 스케줄러가 도는지 확인하는 "시작 로그"
-    logger.info("[weather-alarm] start", {
-      nowKst: `${yyyy}-${mm}-${dd} ${currentTime}`,
-      sentKey,
-      region: "asia-northeast3",
-    });
+    logger.info("[weather-alarm] start", { sentKey });
 
     const lockRef = db.collection("alarmLocks").doc(sentKey);
     try {
       await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
-      logger.info("[weather-alarm] lock acquired", { sentKey });
     } catch (e) {
-      // 이미 있으면(=이미 누가 실행함) 그냥 종료
-      logger.warn("[weather-alarm] lock exists -> skip", {
-        sentKey,
-        code: e?.code ?? null,
-        msg: e?.message ?? String(e),
-      });
-      if (e.code === 6 || e.code === "already-exists") return;
+      logger.warn("[weather-alarm] lock exists -> skip", { sentKey });
+      if (e?.code === 6 || e?.code === "already-exists") return;
       throw e;
     }
 
-    // 대상 유저 조회
     const snap = await db.collection("users")
       .where("isAlramChecked", "==", true)
       .where("alarmTime", "==", currentTime)
       .get();
 
-    logger.info("[weather-alarm] target query result", {
-      sentKey,
-      targetUserCount: snap.size,
-      empty: snap.empty,
-    });
-
+    logger.info("[weather-alarm] target", { sentKey, count: snap.size, empty: snap.empty });
     if (snap.empty) return;
 
-//    const usersSnapshot = await admin.firestore().collection("users").get();
-//
-//    let totalUsers = 0;
-//    let tokenUsers = 0;
-//    const tokenMap = new Map(); // token -> [uid...]
-//    usersSnapshot.forEach(doc => {
-//      totalUsers++;
-//      const t = doc.data()?.fcmToken;
-//      if (!t) return;
-//      tokenUsers++;
-//      if (!tokenMap.has(t)) tokenMap.set(t, []);
-//      tokenMap.get(t).push(doc.id);
-//    });
-//
-//    logger.info("[weather-alarm] token stats", {
-//      sentKey,
-//      totalUsers,
-//      tokenUsers,
-//      uniqueTokens: tokenMap.size,
-//    });
+    const enabledChecklist = await fetchEnabledChecklistItems(db);
 
     const groupsByGrid = new Map();
-
-    // ✅ 카운터들로 "왜 빠졌는지" 파악
-    let skippedNoToken = 0;
-    let skippedAlreadySent = 0;
-    let skippedNoLatLon = 0;
+    let skippedNoToken = 0, skippedAlreadySent = 0, skippedNoLatLon = 0;
 
     for (const doc of snap.docs) {
       const u = doc.data() || {};
@@ -1795,17 +1780,16 @@ exports.sendDailyAlarm = onSchedule(
       const gk = `${nx},${ny}`;
       if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
       groupsByGrid.get(gk).push({
+        uid: doc.id,     // ✅ 추가
         ref: doc.ref,
         token,
         userData: u,
-        nx,
-        ny,
         lat: ll.lat,
         lon: ll.lon,
       });
     }
 
-    logger.info("[weather-alarm] grouping summary", {
+    logger.info("[weather-alarm] grouping", {
       sentKey,
       gridCount: groupsByGrid.size,
       skippedNoToken,
@@ -1816,19 +1800,11 @@ exports.sendDailyAlarm = onSchedule(
     if (groupsByGrid.size === 0) return;
 
     const byMessage = new Map();
-    const enabledChecklist = await fetchEnabledChecklistItems(db);
-
-    logger.info("[weather-alarm] checklist loaded", {
-      sentKey,
-      enabledChecklistCount: enabledChecklist.length,
-    });
 
     for (const [gk, entries] of groupsByGrid.entries()) {
       const first = entries[0];
 
-      // ✅ 알림에는 "동(읍/면/리/가)"만 노출 + "내 위치" 금지
       const locationName = pickNotificationAreaName(first.userData);
-
       const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
       const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
 
@@ -1837,21 +1813,22 @@ exports.sendDailyAlarm = onSchedule(
         null,
         `weatherDashboard:${gk}`
       );
-
-      if (!dashboard) {
-        logger.warn("[weather-alarm] dashboard build failed -> skip grid", { sentKey, gk });
-        continue;
-      }
+      if (!dashboard) continue;
 
       const nowMap = mapByCategory(dashboard?.weatherNow);
       const temp = toNum(nowMap.T1H);
-      const pty  = toNum(nowMap.PTY);
-      const pm25 = toNum(dashboard?.air?.pm25);
+      const ptyFromNow = toNum(nowMap.PTY);
+
+      const h0 = (dashboard?.hourlyFcst ?? [])[0] || {};
+      const sky0 = toNum(h0.sky);
+      const pty0 = (ptyFromNow != null) ? ptyFromNow : toNum(h0.pty);
 
       const pop = maxPopFromHourly(dashboard?.hourlyFcst ?? [], 6)
                ?? maxPopFromHourly(dashboard?.hourlyFcst ?? [], 12);
 
-      const ctx = { temp, pty, pop, pm25 };
+      const pm25 = toNum(dashboard?.air?.pm25);
+
+      const ctx = { temp, pty: pty0, pop, pm25 };
 
       let matched = enabledChecklist
         .filter(it => matchesChecklistRule(it, ctx))
@@ -1866,36 +1843,30 @@ exports.sendDailyAlarm = onSchedule(
 
       const inline = buildChecklistInline(matched, 4, 36);
 
-      // ✅ 안전: 내부에서 now/hourly를 보고 title 만들어줌
-      const msg = buildWeatherAlarmMessage(
-        dashboard,
-        locationName,
-        inline ? `챙길 것: ${inline}` : ""
-      );
+      const condition =
+        (pty0 != null && pty0 > 0)
+          ? (ptyToText(pty0) ?? "강수")
+          : (skyToText(sky0) ?? "날씨");
 
-      const title = msg.title;
+      const titleTemp = (temp != null) ? `${temp}°` : "현재";
+      const title = `${locationName} · ${titleTemp} ${condition}`.replace(/\s+/g, " ").trim();
+
       const body =
         `챙길 것: ${inline || "없음"}\n` +
-        `현재 ${temp ?? "?"}° · 강수확률 ${pop ?? "?"}% · 미세먼지(PM2.5) ${pm25 ?? "?"}`;
+        `강수확률 ${pop ?? "?"}% · 미세먼지(PM2.5) ${pm25 ?? "?"}`;
 
       const mk = `${title}||${body}`;
       if (!byMessage.has(mk)) byMessage.set(mk, { title, body, entries: [] });
 
       const bucket = byMessage.get(mk);
-      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
-
+      for (const e of entries) bucket.entries.push({ uid: e.uid, ref: e.ref, token: e.token });
     }
 
-    logger.info("[weather-alarm] message buckets ready", {
-      sentKey,
-      bucketCount: byMessage.size,
-      totalReceivers: [...byMessage.values()].reduce((acc, b) => acc + b.entries.length, 0),
-    });
-
+    logger.info("[weather-alarm] buckets", { sentKey, bucketCount: byMessage.size });
     if (byMessage.size === 0) return;
 
     for (const { title, body, entries } of byMessage.values()) {
-      const chunkSize = 500;
+      const chunkSize = 200;
       for (let i = 0; i < entries.length; i += chunkSize) {
         const chunk = entries.slice(i, i + chunkSize);
         const tokens = chunk.map(x => x.token);
@@ -1906,46 +1877,26 @@ exports.sendDailyAlarm = onSchedule(
           tokens,
         });
 
-        const ok = res.responses.filter(r => r.success).length;
-        const fail = res.responses.length - ok;
-
-        logger.info("[weather-alarm] multicast result", {
-          sentKey,
-          tokens: tokens.length,
-          ok,
-          fail,
-          titlePreview: String(title).slice(0, 40),
-        });
-
-        // (선택) 실패 사유 상위 몇 개만 찍기
-        const topFail = [];
-        for (let j = 0; j < res.responses.length; j++) {
-          const r = res.responses[j];
-          if (r.success) continue;
-          const err = r.error;
-          topFail.push({
-            idx: j,
-            code: err?.code ?? null,
-            msg: err?.message ? String(err.message).slice(0, 120) : null,
-          });
-          if (topFail.length >= 5) break;
-        }
-        if (topFail.length) {
-          logger.warn("[weather-alarm] multicast failures (top)", { sentKey, topFail });
-        }
-
         const batch = db.batch();
         chunk.forEach((x, idx) => {
-          const r = res.responses[idx];
-          if (r.success) {
+          if (res.responses[idx]?.success) {
             batch.set(x.ref, { lastAlarmSentKey: sentKey }, { merge: true });
+
+            // ✅ 알림함 저장
+            addInboxNotificationToBatch(db, batch, {
+              receiverUid: x.uid,
+              title,
+              body,
+              type: "weather_alarm",
+              sentKey,
+            });
           }
         });
         await batch.commit();
       }
     }
 
-    logger.info("[weather-alarm] done", { sentKey, now: currentTime });
+    logger.info("[weather-alarm] done", { sentKey });
   }
 );
 
@@ -1964,7 +1915,6 @@ exports.sendMorningCarry = onSchedule(
 
     logger.info("[morning] start", { sentKey });
 
-    // 락(중복 실행 방지)
     const lockRef = db.collection("alarmLocks").doc(sentKey);
     try {
       await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
@@ -1973,7 +1923,6 @@ exports.sendMorningCarry = onSchedule(
       return;
     }
 
-    // 대상 유저 (원하면 morningEnabled 같은 필드로 바꿔도 됨)
     const snap = await db.collection("users")
       .where("isAlramChecked", "==", true)
       .get();
@@ -1998,7 +1947,14 @@ exports.sendMorningCarry = onSchedule(
       const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
       const gk = `${nx},${ny}`;
       if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
-      groupsByGrid.get(gk).push({ ref: doc.ref, token, userData: u, lat: ll.lat, lon: ll.lon });
+      groupsByGrid.get(gk).push({
+        uid: doc.id,        // ✅ 추가
+        ref: doc.ref,
+        token,
+        userData: u,
+        lat: ll.lat,
+        lon: ll.lon
+      });
     }
 
     logger.info("[morning] grouping", {
@@ -2058,14 +2014,15 @@ exports.sendMorningCarry = onSchedule(
       if (!byMessage.has(mk)) byMessage.set(mk, { title, body, entries: [] });
 
       const bucket = byMessage.get(mk);
-      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
+      for (const e of entries) bucket.entries.push({ uid: e.uid, ref: e.ref, token: e.token });
     }
 
     if (byMessage.size === 0) return;
 
     for (const { title, body, entries } of byMessage.values()) {
-      for (let i = 0; i < entries.length; i += 500) {
-        const chunk = entries.slice(i, i + 500);
+      const chunkSize = 200; // ✅ batch 500 제한(유저업데이트+알림문서=2 ops) 안전하게
+      for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
         const tokens = chunk.map(x => x.token);
 
         const res = await getMessaging().sendEachForMulticast({
@@ -2078,6 +2035,15 @@ exports.sendMorningCarry = onSchedule(
         chunk.forEach((x, idx) => {
           if (res.responses[idx]?.success) {
             batch.set(x.ref, { lastMorningSentKey: sentKey }, { merge: true });
+
+            // ✅ 알림함 저장
+            addInboxNotificationToBatch(db, batch, {
+              receiverUid: x.uid,
+              title,
+              body,
+              type: "morning_carry",
+              sentKey,
+            });
           }
         });
         await batch.commit();
@@ -2099,13 +2065,10 @@ exports.sendEveningUmbrella = onSchedule(
     const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
     const dd = String(kst.getUTCDate()).padStart(2, "0");
     const dateKey = `${yyyy}-${mm}-${dd}`;
-
-    // ✅ 운영용 sentKey (하루 1회)
     const sentKey = `${dateKey} EVENING`;
 
     logger.info("[evening] start", { sentKey });
 
-    // ✅ 중복 실행 방지 락
     const lockRef = db.collection("alarmLocks").doc(sentKey);
     try {
       await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
@@ -2114,7 +2077,6 @@ exports.sendEveningUmbrella = onSchedule(
       return;
     }
 
-    // 대상 유저
     const snap = await db.collection("users")
       .where("isAlramChecked", "==", true)
       .get();
@@ -2122,7 +2084,6 @@ exports.sendEveningUmbrella = onSchedule(
     logger.info("[evening] target users", { sentKey, count: snap.size, empty: snap.empty });
     if (snap.empty) return;
 
-    // 그리드 그룹핑
     const groupsByGrid = new Map();
     let skippedNoToken = 0, skippedNoLatLon = 0, skippedAlreadySent = 0;
 
@@ -2139,7 +2100,14 @@ exports.sendEveningUmbrella = onSchedule(
       const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
       const gk = `${nx},${ny}`;
       if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
-      groupsByGrid.get(gk).push({ ref: doc.ref, token, userData: u, lat: ll.lat, lon: ll.lon });
+      groupsByGrid.get(gk).push({
+        uid: doc.id,     // ✅ 추가
+        ref: doc.ref,
+        token,
+        userData: u,
+        lat: ll.lat,
+        lon: ll.lon
+      });
     }
 
     logger.info("[evening] grouping", {
@@ -2152,8 +2120,7 @@ exports.sendEveningUmbrella = onSchedule(
 
     if (groupsByGrid.size === 0) return;
 
-    // 메시지 버킷(동일 title/body끼리 묶어서 발송)
-    const byMessage = new Map(); // mk -> { title, body, kind, entries: [{ref, token}] }
+    const byMessage = new Map(); // mk -> { title, body, kind, entries }
 
     for (const [gk, entries] of groupsByGrid.entries()) {
       const first = entries[0];
@@ -2175,7 +2142,7 @@ exports.sendEveningUmbrella = onSchedule(
       if (!byMessage.has(mk)) byMessage.set(mk, { title, body, kind, entries: [] });
 
       const bucket = byMessage.get(mk);
-      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
+      for (const e of entries) bucket.entries.push({ uid: e.uid, ref: e.ref, token: e.token });
     }
 
     logger.info("[evening] buckets", {
@@ -2186,26 +2153,32 @@ exports.sendEveningUmbrella = onSchedule(
 
     if (byMessage.size === 0) return;
 
-    // ✅ 여기서 “한 번만” 전송 + 성공한 유저만 lastEveningSentKey 업데이트
     for (const { title, body, kind, entries } of byMessage.values()) {
-      for (let i = 0; i < entries.length; i += 500) {
-        const chunk = entries.slice(i, i + 500);
+      const chunkSize = 200;
+      for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
         const tokens = chunk.map(x => x.token);
 
         const res = await getMessaging().sendEachForMulticast({
           notification: { title, body },
-          data: { type: "evening_weather", sentKey, kind },
+          data: { type: "evening_weather", sentKey, kind: String(kind ?? "") },
           tokens,
         });
-
-        const ok = res.responses.filter(r => r.success).length;
-        const fail = res.responses.length - ok;
-        logger.info("[evening] multicast", { sentKey, ok, fail, tokens: tokens.length });
 
         const batch = db.batch();
         chunk.forEach((x, idx) => {
           if (res.responses[idx]?.success) {
             batch.set(x.ref, { lastEveningSentKey: sentKey }, { merge: true });
+
+            // ✅ 알림함 저장
+            addInboxNotificationToBatch(db, batch, {
+              receiverUid: x.uid,
+              title,
+              body,
+              type: "evening_weather",
+              sentKey,
+              extra: { kind },
+            });
           }
         });
         await batch.commit();
