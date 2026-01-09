@@ -350,7 +350,7 @@
    <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram 1.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/chatAliram.gif" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/chatAliram.gif" width="220"/>
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/likeAlram.gif" width="210"/>
  </p>
    <ul>
