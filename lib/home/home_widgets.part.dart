@@ -863,12 +863,11 @@ class _PrecipPoint {
 
   String get label {
     if (isSnowType) {
-      if (snowCmEffective > 0) return '적설 ${snowCmEffective.toStringAsFixed(1)}cm';
-      return '눈';
+      final v = snowCmEffective > 0 ? snowCmEffective : snowCm;
+      return v > 0 ? '${v.toStringAsFixed(1)}cm' : '';
     }
-    if (snowCm > 0) return '적설 ${snowCm.toStringAsFixed(1)}cm';
     if (rainMm > 0) return '${rainMm.toStringAsFixed(1)}mm';
-    if (pty != 0) return isRainType ? '비' : '강수';
+    if (snowCm > 0) return '${snowCm.toStringAsFixed(1)}cm';
     return '';
   }
 }
