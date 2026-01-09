@@ -337,13 +337,21 @@
    <ul>
     <li>자주 이용하는 이동 경로를 즐겨찾기에 추가하거나 삭제하는 기능을 통해 개인화된 편의성을 제공합니다.</li>
   </ul>
-
    <p align="center">
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.gif" width="200"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.gif" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/push.gif" width="210"/>
+    
  </p>
    <ul>
-    <li>자주 이용하는 이동 경로를 즐겨찾기에 추가하거나 삭제하는 기능을 통해 개인화된 편의성을 제공합니다.</li>
+    <li>커뮤니티 및 알림 설정: 사용자가 직접 푸시 알림의 ON/OFF 상태를 관리할 수 있는 설정 페이지를 구현하여, 개인의 선호에 맞는 알림 환경을 구축할 수 있습니다.</li>
+  </ul>
+
+   <p align="center">
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/like aliram.png" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram1.png" width="210"/>
+ </p>
+   <ul>
+    <li>소셜 인터렉션 알림: 내가 작성한 게시글에 새로운 댓글이 달리거나 '좋아요' 반응이 올 경우 즉각적인 알림을 통해 커뮤니티 활동의 연속성을 높였습니다.</li>
   </ul>
 
   
