@@ -316,9 +316,9 @@
   <summary>👤 마이 페이지 / 알림 (담당: 엄재준)</summary>
 
   <p align="center">
-    <img src="docs/images/home.png" width="220"/>
-    <img src="docs/images/weather.png" width="220"/>
-    <img src="docs/images/bus.png" width="220"/>
+    <img src="docs/mypage/mypage.png" width="220"/>
+    <img src="docs/images/postList.png" width="220"/>
+    <img src="docs/images/aliram page.png" width="220"/>
   </p>
 
   <ul>
