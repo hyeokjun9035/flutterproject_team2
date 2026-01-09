@@ -37,19 +37,30 @@
   <tbody>
     <tr>
       <td align="center"><b>2025.12.22 ~ 2025.12.26</b></td>
-      <td>설계</td>
+      <td>
+        기획 의도 정립 및 페르소나 분석
+        (우산 사례 기반 사용자 불편함 정의)
+      </td>
     </tr>
     <tr>
       <td align="center"><b>2025.12.26 ~ 2026.01.02</b></td>
-      <td>개발</td>
+      <td>
+        Flutter UI 구현 및 Firebase 아키텍처 설계
+        (기상청/TMAP 등 외부 API 연동)
+      </td>
     </tr>
     <tr>
       <td align="center"><b>2026.01.05 ~ 2026.01.07</b></td>
-      <td>테스트 및 유지보수</td>
+      <td>
+        사용자 UX 테스트 및 예외 처리 고도화
+        (API 미작동 대비 및 성능 최적화) 
+      </td>
     </tr>
     <tr>
       <td align="center"><b>2026.01.08</b></td>
-      <td>배포</td>
+      <td>
+        최종 서비스 배포 및 관리 시스템 구축 관리자페이지 점검을 통한 안정적인 운영 환경 확보
+      </td>
     </tr>
   </tbody>
 </table>
@@ -470,7 +481,11 @@
   <tbody>
     <tr>
       <td>PPT</td>
-      <td>추가 예정</td>
+      <td>
+        <a href="https://drive.google.com/file/d/1MflzwTxsz12m3_7Uxb8mugYE3K3NxP2q/view?usp=sharing">
+          <img src="https://img.shields.io/badge/PPT-Download-EA4335?style=for-the-badge&logo=google-drive&logoColor=white"/>
+        </a>
+      </td>
     </tr>
     <tr>
       <td>피그마</td>
