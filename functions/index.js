@@ -1701,7 +1701,7 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
 });
 
 exports.sendDailyAlarm = onSchedule(
-  { schedule: "every 1 minutes", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  { schedule: "every day 10:09", timeZone: "Asia/Seoul", region: "asia-northeast3" },
   async () => {
     const db = admin.firestore();
 
