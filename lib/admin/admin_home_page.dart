@@ -892,24 +892,69 @@ class _AdminReportPageState extends State<_AdminReportPage> {
                 final status = (r['status'] ?? 'open').toString();
                 final createdAt = r['createdAt']; // 없을 수도 있음
 
+                final isOpen = status == 'open';
+
+                // jgh260109----S 신고 목록 시각적 구분 코드
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: isOpen ? Colors.red.withOpacity(0.2) : Colors.black12,
+                      width: isOpen ? 1.5 : 0.5,
+                    ),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.report)),
-                      title: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      leading: CircleAvatar(
+                        backgroundColor:
+                            isOpen ? Colors.red.shade50 : Colors.grey.shade100,
+                        child: Icon(
+                          isOpen ? Icons.report_problem : Icons.check_circle_outline,
+                          color: isOpen ? Colors.red : Colors.grey,
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: isOpen ? Colors.red : Colors.grey,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isOpen ? '미처리' : '처리완료',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight:
+                                    isOpen ? FontWeight.bold : FontWeight.normal,
+                                color: isOpen ? Colors.black : Colors.black54,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       subtitle: Text(
-                        '[$category] 사유: $reason\n상태: $status · ${_fmt(createdAt)}',
+                        '[$category] 사유: $reason\n${_fmt(createdAt)}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isOpen ? Colors.black87 : Colors.black45,
+                        ),
                       ),
                       trailing: Wrap(
                         spacing: 6,
@@ -945,6 +990,7 @@ class _AdminReportPageState extends State<_AdminReportPage> {
                     ),
                   ),
                 );
+                // jgh260109----E 신고 목록 시각적 구분 코드
               }).toList(),
             );
           },
