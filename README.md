@@ -324,10 +324,12 @@
   <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="200"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/editusers.gif" width="210"/>
 
   </p>
    <ul>
     <li>마이페이지 및 활동 관리: 내가 작성한 게시글을  모아볼 수 있습니다 </li>
+    <li>사용자 정보 수정: 사용자의 이미지 및 정보 수정할 수 있습니다 </li>
   </ul>
 
  <p align="center">
