@@ -178,9 +178,11 @@ class _NearbyIssuesCard extends StatelessWidget {
     required this.onOpenPost,
     required this.onAddPressed,
     this.onData,
+    this.initialIssues = const <NearbyIssuePost>[],
   });
 
   final Stream<List<NearbyIssuePost>> stream;
+  final List<NearbyIssuePost> initialIssues;
 
   final VoidCallback onMapPressed;
   final VoidCallback onReportPressed;
@@ -227,9 +229,14 @@ class _NearbyIssuesCard extends StatelessWidget {
 
     return StreamBuilder<List<NearbyIssuePost>>(
       stream: stream,
+      initialData: initialIssues,
       builder: (context, snap) {
-        // 로딩
-        if (snap.connectionState == ConnectionState.waiting) {
+        final issues = snap.data ?? const <NearbyIssuePost>[];
+        // ✅ "진짜로 데이터가 없을 때만" 로딩 표시
+        final showLoading =
+            (snap.connectionState == ConnectionState.waiting) && issues.isEmpty;
+
+        if (showLoading) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator())),
@@ -246,8 +253,6 @@ class _NearbyIssuesCard extends StatelessWidget {
             ),
           );
         }
-
-        final issues = snap.data ?? const <NearbyIssuePost>[];
 
         // ✅ Home으로 최신 리스트 전달 (무한 rebuild 안전하게 post-frame)
         if (onData != null) {

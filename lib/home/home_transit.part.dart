@@ -303,14 +303,12 @@ class _TransitCardState extends State<_TransitCard> {
     required double lon,
     required String routeNo,
   }) async {
-    debugPrint('[BUS] ensureStop ENTER route=$routeNo lat=$lat lon=$lon');
     final key = _stopKey(lat, lon, routeNo);
     final now = DateTime.now();
 
     final cached = _stopCache[key];
     final cachedAt = _stopCacheAt[key];
     if (cached != null && cachedAt != null && now.difference(cachedAt).inMinutes < 10) {
-      debugPrint('[BUS] ensureStop CACHE HIT route=$routeNo stop=${cached.name}/${cached.nodeId}');
       return cached;
     }
 
@@ -319,10 +317,6 @@ class _TransitCardState extends State<_TransitCard> {
         lon: lon,
         maxStops: 20,
     );
-
-    debugPrint('[BUS] candidates=${stops.length} route=$routeNo '
-        'near=(${lat.toStringAsFixed(6)},${lon.toStringAsFixed(6)}) '
-        '=> ${stops.map((s) => "${s.name}/${s.cityCode}/${s.nodeId}").join(" | ")}');
 
     // ✅ "routeNo가 실제로 뜨는 정류장"을 찾는다 (최대 8개)
     for (final st in stops) {
@@ -348,9 +342,6 @@ class _TransitCardState extends State<_TransitCard> {
     final lat = info?.lat ?? widget.startLat;
     final lon = info?.lon ?? widget.startLon;
 
-    debugPrint('[BUS] fetch v=$v info=${info != null} rawRoute=${info?.rawRoute} '
-        'lat=${lat.toStringAsFixed(6)} lon=${lon.toStringAsFixed(6)}');
-
     if (lat == 0.0 || lon == 0.0) return null;
 
     // routeNo: raw 우선, 없으면 summary에서 토큰 추출
@@ -359,7 +350,7 @@ class _TransitCardState extends State<_TransitCard> {
         extractRouteToken(s.firstArrivalText) ?? extractRouteToken(s.secondArrivalText);
 
     final routeNo = info?.routeNo ?? _normRouteNo(fallbackToken ?? '');
-    debugPrint('[BUS] routeNo=$routeNo fallbackToken=$fallbackToken');
+
     if (routeNo.isEmpty) return null;
 
     // ✅ key를 만들 info가 없으면 임시로 만들어서 key 생성
@@ -378,7 +369,6 @@ class _TransitCardState extends State<_TransitCard> {
       final n = (_busFailCount[key] ?? 0) + 1;
       _busFailCount[key] = n;
 
-      debugPrint('[BUS] stop not found for route=$routeNo failCount=$n');
 
       if (n >= 2) {
         _markUnsupported(
@@ -402,8 +392,6 @@ class _TransitCardState extends State<_TransitCard> {
       final n = (_busFailCount[key] ?? 0) + 1;
       _busFailCount[key] = n;
 
-      debugPrint('[BUS] live empty route=$routeNo failCount=$n');
-
       if (n >= 2) {
         _markUnsupported(
           infoKeyBase,
@@ -425,8 +413,6 @@ class _TransitCardState extends State<_TransitCard> {
     final hasBus = _hasBusLeg(_selected);
     final hasVillage = _hasVillageBusLeg(_selected);
     final shouldPoll = _shouldPollBus(_selected);
-
-    debugPrint('[BUS] refresh v=$_selected hasBus=$hasBus hasVillage=$hasVillage shouldPoll=$shouldPoll');
 
     if (!shouldPoll) {
       if (mounted) {
