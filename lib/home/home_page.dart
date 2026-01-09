@@ -826,6 +826,13 @@ class _HomePageState extends State<HomePage> {
     return '';
   }
 
+  String _pickNotiArea(String label) {
+    final parts = label.split('·').map((e) => e.trim()).toList();
+    // "부평역 · 부평구 부평동" -> "부평구 부평동"
+    if (parts.length >= 2) return parts.last;
+    return label.trim(); // 이미 "부평구 부평동"이면 그대로
+  }
+
   Future<DashboardData> _initLocationAndFetch({
     bool forceFreshPosition = false, // ✅ 새로고침이면 true
     bool ignoreDashboardCache = false,
@@ -979,6 +986,18 @@ class _HomePageState extends State<HomePage> {
       _airAddr = addr;
       _adminArea = adminArea;
     });
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final notiArea = _pickNotiArea(label); // label은 지역변수로 쓰고 있지
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'lastLocation': {'latitude': _lat, 'longitude': _lon},
+        'locationName': label,               // 표시용(역 포함 가능)
+        'notiArea': notiArea,                // ✅ 알림용(구 동)
+        'addr': addr,                        // airAddr (인천광역시 부평구)
+        'administrativeArea': adminArea,     // 인천광역시
+        'lastLocationUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
 
     // ✅ 3) Functions 호출: state 말고 지역 변수로 넘기기(안전)
     final dashboard = await _service.fetchDashboardByLatLon(
