@@ -350,8 +350,8 @@
    <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram 1.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/chatAliram.gif" width="220"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/likeAlram.gif" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/chatAliram.gif" width="230"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/likeAlram.gif" width="220"/>
  </p>
    <ul>
     <li>소셜 인터렉션 알림: 내가 작성한 게시글에 새로운 댓글이 달리거나 '좋아요' 반응이 올 경우 즉각적인 알림을 통해 커뮤니티 활동의 연속성을 높였습니다.</li>
