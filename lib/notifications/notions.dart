@@ -144,17 +144,24 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final dynamic timestamp = data['createdAt'];
 
     return GestureDetector(
-      onTap: () {
-        FirebaseFirestore.instance.collection('notifications').doc(docId).update({'isRead': true});
+      onTap: () async {
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(docId)
+            .update({'isRead': true});
 
-        String? pId = data['postId'];
-        if (pId != null && pId.isNotEmpty) {
+        final pId = (data['postId'] ?? '').toString().trim();
+
+        if (pId.isNotEmpty) {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => Detailmypost(postId: pId, imageUrl: '', postData: const {}),
             ),
           );
+        } else {
+          // ✅ postId 없는(날씨/아침/저녁) 알림은 홈으로
+          Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
         }
       },
       child: Container(
