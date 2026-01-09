@@ -316,9 +316,9 @@
   <summary>👤 마이 페이지 / 알림 (담당: 엄재준)</summary>
 
   <p align="center">
-    <img src="docs/mypage/mypage.png" width="220"/>
-    <img src="docs/images/postList.png" width="220"/>
-    <img src="docs/images/aliram page.png" width="220"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="220"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
   </p>
 
   <ul>
