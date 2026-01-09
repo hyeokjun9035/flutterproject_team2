@@ -146,15 +146,6 @@ class DashboardService {
     double? _d(String k) => double.tryParse(nowMap[k] ?? '');
     int? _i(String k) => int.tryParse(nowMap[k] ?? '');
 
-    final now = WeatherNow(
-      temp: _d('T1H') ?? _d('TMP'),
-      humidity: _d('REH'),
-      wind: _d('WSD'),
-      sky: _i('SKY'),
-      pty: _i('PTY'),
-      rn1: _d('RN1'),
-    );
-
     final hourlyRaw = (data['hourlyFcst'] ?? []) as List;
     final hourly = hourlyRaw.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
@@ -165,6 +156,19 @@ class DashboardService {
         temp: m['temp'] is num ? (m['temp'] as num).toDouble() : double.tryParse('${m['temp']}'),
       );
     }).toList();
+
+    final h0 = hourly.isNotEmpty ? hourly.first : null;
+
+    final now = WeatherNow(
+      temp: _d('T1H') ?? _d('TMP') ?? h0?.temp,
+      humidity: _d('REH'),
+      wind: _d('WSD'),
+      // ✅ NCST엔 SKY가 없어서 null인 경우가 많음 → hourly NOW에서 보강
+      sky: _i('SKY') ?? h0?.sky,
+      // ✅ PTY는 보통 NCST에 있긴 한데 혹시 없을 때 대비
+      pty: _i('PTY') ?? h0?.pty,
+      rn1: _d('RN1'),
+    );
 
     final alertsRaw = (data['alerts'] ?? []) as List;
     final alerts = alertsRaw.map((e) {
