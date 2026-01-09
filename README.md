@@ -37,15 +37,15 @@
   <tbody>
     <tr>
       <td align="center"><b>2025.12.22 ~ 2025.12.26</b></td>
-      <td></td>
+      <td>설계</td>
     </tr>
     <tr>
       <td align="center"><b>2025.12.26 ~ 2026.01.02</b></td>
-      <td></td>
+      <td>개발</td>
     </tr>
     <tr>
       <td align="center"><b>2026.01.05 ~ 2026.01.07</b></td>
-      <td></td>
+      <td>테스트 및 유지보수</td>
     </tr>
     <tr>
       <td align="center"><b>2026.01.08</b></td>
