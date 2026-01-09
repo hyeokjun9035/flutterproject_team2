@@ -419,7 +419,7 @@
   
 </details>
 <details>
-  <summary>🛠️ 관리자 페이지 & 알림 시스템 (담당: 전경환, 권혁준)</summary>
+  <summary>🛠️ 관리자 페이지 & 알림 (담당: 전경환, 권혁준)</summary>
 
   <br/>
   <p>
