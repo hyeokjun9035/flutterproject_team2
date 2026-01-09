@@ -323,7 +323,7 @@
 
   <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="200"/>
 
   </p>
    <ul>
