@@ -347,7 +347,6 @@
 
    <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/like aliram.png" width="210"/>
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram 1.png" width="210"/>
  </p>
    <ul>
