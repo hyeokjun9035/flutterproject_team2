@@ -37,31 +37,43 @@ setGlobalOptions({ maxInstances: 2 });
    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
  }
 
- function extractDongName(raw) {
-   const s = String(raw ?? "").trim();
-   if (!s) return "";
+ function extractAreaName(raw) {
+   const s0 = String(raw ?? "").trim();
+   if (!s0) return "";
 
-   // 공백/구두점 정리
-   const cleaned = s.replace(/[,\(\)\[\]]/g, " ").replace(/\s+/g, " ").trim();
+   const cleaned = s0.replace(/[,\(\)\[\]]/g, " ").replace(/\s+/g, " ").trim();
    const tokens = cleaned.split(" ").filter(Boolean);
 
-   // 뒤에서부터 '동/읍/면/리/가' 로 끝나는 토큰 찾기
-   for (let i = tokens.length - 1; i >= 0; i--) {
-     const t = tokens[i];
-     if (/(동|읍|면|리|가)$/.test(t)) return t;
+   // 구/군/시
+   let guGunSi = "";
+   for (const t of tokens) {
+     if (/(구|군|시)$/.test(t) && !/(광역시|특별시|특별자치시|특별자치도)$/.test(t)) {
+       guGunSi = t;
+     }
    }
 
-   // 혹시 "부평구부평동" 같이 붙어오면 분리 시도
+   // 동/읍/면/리/가 (뒤에서부터)
+   let dong = "";
+   for (let i = tokens.length - 1; i >= 0; i--) {
+     const t = tokens[i];
+     if (/(동|읍|면|리|가)$/.test(t)) { dong = t; break; }
+   }
+
+   if (guGunSi && dong && guGunSi !== dong) return `${guGunSi} ${dong}`;
+   if (dong) return dong;
+   if (guGunSi) return guGunSi;
+
+   // 공백없이 붙어온 케이스 fallback
    const glued = cleaned.replace(/\s+/g, "");
-   const m = glued.match(/([가-힣0-9]+(동|읍|면|리|가))$/);
-   if (m) return m[1];
+   const m = glued.match(/([가-힣0-9]+(구|군|시))?([가-힣0-9]+(동|읍|면|리|가))/);
+   if (m) return [m[1], m[3]].filter(Boolean).join(" ").trim();
 
    return "";
  }
 
- function pickNotificationDongName(userData) {
-   // 후보(네가 이미 쓰던 필드들 + 동 후보가 있을 법한 순서)
+ function pickNotificationAreaName(userData) {
    const candidates = [
+     userData?.notiArea,       // ✅ 제일 우선
      userData?.locationName,
      userData?.addressName,
      userData?.addr,
@@ -69,12 +81,9 @@ setGlobalOptions({ maxInstances: 2 });
    ];
 
    for (const c of candidates) {
-     const dong = extractDongName(c);
-     if (dong) return dong;
+     const name = extractAreaName(c); // 네가 쓰는 구/동 추출기
+     if (name) return name;
    }
-
-   // 마지막 fallback: '행정구역' 기반으로라도 "동네"로
-   // (절대 "내 위치"는 쓰지 않기)
    return "우리 동네";
  }
 
@@ -88,12 +97,14 @@ setGlobalOptions({ maxInstances: 2 });
 
    if (Array.isArray(rules.ptyIn)) {
      const set = rules.ptyIn.map(Number);
-     if (pty == null || !set.includes(Number(pty))) return false;
+     if (pty == null) return false;              // ✅ pty 없으면 매칭 실패
+     if (!set.includes(Number(pty))) return false;
    }
 
    if (Array.isArray(rules.ptyNotIn)) {
      const set = rules.ptyNotIn.map(Number);
-     if (pty != null && set.includes(Number(pty))) return false;
+     if (pty == null) return false;              // ✅ pty 없으면 매칭 실패
+     if (set.includes(Number(pty))) return false;
    }
 
    if (rules.popMin != null) {
@@ -123,6 +134,17 @@ setGlobalOptions({ maxInstances: 2 });
    return "\n\n" + top.map(it => `• ${it.title}`).join("\n");
    // 메시지까지 넣고 싶으면:
    // return "\n\n" + top.map(it => `• ${it.title}: ${it.message}`).join("\n");
+ }
+
+ function buildChecklistInline(items, maxItems = 4, maxChars = 36) {
+   const titles = (items ?? [])
+     .slice(0, maxItems)
+     .map(it => String(it.title ?? "").trim())
+     .filter(Boolean);
+
+   let s = titles.join(" · ");
+   if (s.length > maxChars) s = s.slice(0, maxChars - 1) + "…";
+   return s;
  }
 
 function toNum(v) {
@@ -233,6 +255,140 @@ async function buildDashboardData({ lat, lon, locationName = "", addr = "", admi
   };
 }
 
+async function buildAlarmDashboardData({ lat, lon, addr = "", administrativeArea = "" }) {
+  const { nx, ny } = latLonToGrid(lat, lon);
+
+  const [kmaNcst, kmaUltra, kmaVilage] = await Promise.all([
+    callKmaUltraNcst(nx, ny),
+    callKmaUltraFcst(nx, ny),
+    callKmaVilageFcst(nx, ny),
+  ]);
+
+  const ncstItems   = Array.isArray(kmaNcst?.items) ? kmaNcst.items : [];
+  const ultraItems  = Array.isArray(kmaUltra?.items) ? kmaUltra.items : [];
+  const vilageItems = Array.isArray(kmaVilage?.items) ? kmaVilage.items : [];
+
+  const hourlyFcst = mergeHourly(
+    buildHourlyUltraRaw(ultraItems),
+    buildHourlyFromVilage(vilageItems),
+    24
+  );
+
+  const airRes = await safe(
+    buildAir(addr, administrativeArea),
+    { air: { gradeText: "정보없음", pm10: null, pm25: null }, meta: { reason: "air_failed" } },
+    "air"
+  );
+
+  return { nx, ny, weatherNow: ncstItems, hourlyFcst, air: airRes.air };
+}
+
+const UMBRELLA_POP_THRESHOLD = 50; // 원하면 60으로 올려도 됨
+
+const POP_1H_THRESHOLD = 50;      // 1시간 내 강수확률 임계값
+const PM25_BAD = 36;              // (권장) 36부터 '나쁨' 느낌으로 경고
+const PM25_VERY_BAD = 76;         // (권장) 76부터 '매우나쁨'
+
+function maxPopFromFirstN(hourly, n) {
+  const arr = Array.isArray(hourly) ? hourly : [];
+  let max = null;
+  for (const h of arr.slice(0, n)) {
+    const p = toNum(h?.pop);
+    if (p == null) continue;
+    max = (max == null) ? p : Math.max(max, p);
+  }
+  return max;
+}
+
+function buildEveningWeatherMessage(dashboard, locationName) {
+  const nowMap = mapByCategory(dashboard?.weatherNow);
+  const t1h = toNum(nowMap.T1H);
+  const ptyNow = toNum(nowMap.PTY) ?? 0;
+
+  const hourly = Array.isArray(dashboard?.hourlyFcst) ? dashboard.hourlyFcst : [];
+  const h0 = hourly[0] || {}; // NOW
+  const skyNow = toNum(h0.sky);
+  const ptyNow2 = toNum(h0.pty) ?? 0;
+
+  // “1시간 이내”를 NOW + next(0~1) 정도로 잡는 게 제일 안정적
+  const near = hourly.slice(0, 2);
+  const ptySoon = near.some(h => (toNum(h?.pty) ?? 0) > 0);
+  const maxPop1h = maxPopFromFirstN(near, 2);
+
+  const pm25 = toNum(dashboard?.air?.pm25);
+
+  // ✅ 강수 판단(비/눈/소나기/빗방울 등)
+  const ptyEffective = (ptyNow > 0) ? ptyNow : ptyNow2;
+  const isPrecipNow = ptyEffective > 0;
+  const isPrecipSoon = ptySoon || (maxPop1h != null && maxPop1h >= POP_1H_THRESHOLD);
+
+  const conditionText =
+    (isPrecipNow || isPrecipSoon)
+      ? (ptyToText(ptyEffective > 0 ? ptyEffective : (toNum(near[1]?.pty) ?? 0)) ?? "강수")
+      : (skyToText(skyNow) ?? "날씨");
+
+  // ✅ 제목은 리스트에서 한 눈에 보이게(온도 + 상태)
+  const titleTemp = (t1h != null) ? `${t1h}°` : "";
+  const title = `${locationName} · 저녁 ${titleTemp} ${conditionText}`.replace(/\s+/g, " ").trim();
+
+  // ✅ 메시지 우선순위
+  // 1) 강수(현재/1시간 내)
+  if (isPrecipNow) {
+    return {
+      title,
+      body: `지금 ${ptyToText(ptyEffective) ?? "강수"} 중이에요 ☔\n우산(또는 방한 준비) 챙겨서 나가요!`,
+      kind: "precip_now",
+    };
+  }
+  if (isPrecipSoon) {
+    const popText = (maxPop1h != null) ? ` (강수확률 최대 ${maxPop1h}%)` : "";
+    return {
+      title,
+      body: `1시간 안에 ${conditionText} 소식이 있어요 ☔${popText}\n우산 챙겨서 나가요!`,
+      kind: "precip_soon",
+    };
+  }
+
+  // 2) 미세먼지(수치 기반)
+  if (pm25 != null && pm25 >= PM25_VERY_BAD) {
+    return {
+      title,
+      body: `미세먼지가 매우 나빠요 😷 (PM2.5 ${pm25})\n마스크 챙기고 오래 야외활동은 피하는 게 좋아요.`,
+      kind: "pm25_very_bad",
+    };
+  }
+  if (pm25 != null && pm25 >= PM25_BAD) {
+    return {
+      title,
+      body: `미세먼지가 나쁜 편이에요 😷 (PM2.5 ${pm25})\n마스크 챙기면 좋아요.`,
+      kind: "pm25_bad",
+    };
+  }
+
+  // 3) 하늘 상태(흐림/구름많음/맑음)
+  if (skyNow === 4) {
+    return {
+      title,
+      body: `하늘이 흐려요.\n기온 변화 있을 수 있으니 겉옷 챙겨요.`,
+      kind: "overcast",
+    };
+  }
+  if (skyNow === 3) {
+    return {
+      title,
+      body: `구름이 많은 날씨예요.\n가볍게 산책하기 괜찮아요 🙂`,
+      kind: "cloudy",
+    };
+  }
+
+  // 4) 기본(맑음/기타)
+  return {
+    title,
+    body: `날씨가 맑아요 ✨\n좋은 저녁 보내요!`,
+    kind: "clear",
+  };
+}
+
 function getUserLatLon(u) {
   const lat = u?.lastLocation?.latitude ?? u?.latitude ?? u?.lat;
   const lon = u?.lastLocation?.longitude ?? u?.longitude ?? u?.lon;
@@ -245,7 +401,9 @@ function getUserLatLon(u) {
 function mapByCategory(items) {
   const m = {};
   for (const it of (items ?? [])) {
-    if (it?.category) m[it.category] = it.fcstValue;
+    if (!it?.category) continue;
+    const v = it.fcstValue ?? it.obsrValue; // ✅ 예보/실황 둘 다
+    if (v != null) m[it.category] = v;
   }
   return m;
 }
@@ -1543,7 +1701,7 @@ exports.sendAdminNotification = onCall({ region: "asia-northeast3" }, async (req
 });
 
 exports.sendDailyAlarm = onSchedule(
-  { schedule: "every day 00:00", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  { schedule: "every 1 minutes", timeZone: "Asia/Seoul", region: "asia-northeast3" },
   async () => {
     const db = admin.firestore();
 
@@ -1592,26 +1750,26 @@ exports.sendDailyAlarm = onSchedule(
 
     if (snap.empty) return;
 
-    const usersSnapshot = await admin.firestore().collection("users").get();
-
-    let totalUsers = 0;
-    let tokenUsers = 0;
-    const tokenMap = new Map(); // token -> [uid...]
-    usersSnapshot.forEach(doc => {
-      totalUsers++;
-      const t = doc.data()?.fcmToken;
-      if (!t) return;
-      tokenUsers++;
-      if (!tokenMap.has(t)) tokenMap.set(t, []);
-      tokenMap.get(t).push(doc.id);
-    });
-
-    logger.info("[weather-alarm] token stats", {
-      sentKey,
-      totalUsers,
-      tokenUsers,
-      uniqueTokens: tokenMap.size,
-    });
+//    const usersSnapshot = await admin.firestore().collection("users").get();
+//
+//    let totalUsers = 0;
+//    let tokenUsers = 0;
+//    const tokenMap = new Map(); // token -> [uid...]
+//    usersSnapshot.forEach(doc => {
+//      totalUsers++;
+//      const t = doc.data()?.fcmToken;
+//      if (!t) return;
+//      tokenUsers++;
+//      if (!tokenMap.has(t)) tokenMap.set(t, []);
+//      tokenMap.get(t).push(doc.id);
+//    });
+//
+//    logger.info("[weather-alarm] token stats", {
+//      sentKey,
+//      totalUsers,
+//      tokenUsers,
+//      uniqueTokens: tokenMap.size,
+//    });
 
     const groupsByGrid = new Map();
 
@@ -1669,7 +1827,7 @@ exports.sendDailyAlarm = onSchedule(
       const first = entries[0];
 
       // ✅ 알림에는 "동(읍/면/리/가)"만 노출 + "내 위치" 금지
-      const locationName = pickNotificationDongName(first.userData);
+      const locationName = pickNotificationAreaName(first.userData);
 
       const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
       const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
@@ -1706,20 +1864,22 @@ exports.sendDailyAlarm = onSchedule(
           .slice(0, 3);
       }
 
-      const checklistText = buildChecklistText(matched, 3);
+      const inline = buildChecklistInline(matched, 4, 36);
 
-      // ✅ msg는 여기서 딱 1번만
-      const msg = buildWeatherAlarmMessage(dashboard, locationName, checklistText);
+      // ✅ 안전: 내부에서 now/hourly를 보고 title 만들어줌
+      const msg = buildWeatherAlarmMessage(
+        dashboard,
+        locationName,
+        inline ? `챙길 것: ${inline}` : ""
+      );
 
-      // ✅ checklistText를 msg.body에 “추가로” 붙이지 말고(중복됨)
-      // msg 안에서 이미 checklistText를 nowParts에 넣고 있음.
-      // 그래도 body에 별도 섹션으로도 넣고 싶으면 아래처럼(원하면 유지)
-      // ✅ checklistText는 buildWeatherAlarmMessage 내부에서 이미 반영됨(중복 방지)
-      const body2 = msg.body;
+      const title = msg.title;
+      const body =
+        `챙길 것: ${inline || "없음"}\n` +
+        `현재 ${temp ?? "?"}° · 강수확률 ${pop ?? "?"}% · 미세먼지(PM2.5) ${pm25 ?? "?"}`;
 
-      const mk = `${msg.title}||${body2}`;
-
-      if (!byMessage.has(mk)) byMessage.set(mk, { title: msg.title, body: body2, entries: [] });
+      const mk = `${title}||${body}`;
+      if (!byMessage.has(mk)) byMessage.set(mk, { title, body, entries: [] });
 
       const bucket = byMessage.get(mk);
       for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
@@ -1786,5 +1946,272 @@ exports.sendDailyAlarm = onSchedule(
     }
 
     logger.info("[weather-alarm] done", { sentKey, now: currentTime });
+  }
+);
+
+exports.sendMorningCarry = onSchedule(
+  { schedule: "0 7 * * *", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  async () => {
+    const db = admin.firestore();
+
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const yyyy = kst.getUTCFullYear();
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(kst.getUTCDate()).padStart(2, "0");
+    const dateKey = `${yyyy}-${mm}-${dd}`;
+    const sentKey = `${dateKey} MORNING`;
+
+    logger.info("[morning] start", { sentKey });
+
+    // 락(중복 실행 방지)
+    const lockRef = db.collection("alarmLocks").doc(sentKey);
+    try {
+      await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
+    } catch (e) {
+      logger.warn("[morning] lock exists -> skip", { sentKey });
+      return;
+    }
+
+    // 대상 유저 (원하면 morningEnabled 같은 필드로 바꿔도 됨)
+    const snap = await db.collection("users")
+      .where("isAlramChecked", "==", true)
+      .get();
+
+    if (snap.empty) return;
+
+    const enabledChecklist = await fetchEnabledChecklistItems(db);
+
+    const groupsByGrid = new Map();
+    let skippedNoToken = 0, skippedNoLatLon = 0, skippedAlreadySent = 0;
+
+    for (const doc of snap.docs) {
+      const u = doc.data() || {};
+      if (u.lastMorningSentKey === sentKey) { skippedAlreadySent++; continue; }
+
+      const token = u.fcmToken;
+      if (!token) { skippedNoToken++; continue; }
+
+      const ll = getUserLatLon(u);
+      if (!ll) { skippedNoLatLon++; continue; }
+
+      const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
+      const gk = `${nx},${ny}`;
+      if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
+      groupsByGrid.get(gk).push({ ref: doc.ref, token, userData: u, lat: ll.lat, lon: ll.lon });
+    }
+
+    logger.info("[morning] grouping", {
+      sentKey,
+      gridCount: groupsByGrid.size,
+      skippedNoToken,
+      skippedNoLatLon,
+      skippedAlreadySent,
+    });
+
+    if (groupsByGrid.size === 0) return;
+
+    const byMessage = new Map();
+
+    for (const [gk, entries] of groupsByGrid.entries()) {
+      const first = entries[0];
+
+      const locationName = pickNotificationAreaName(first.userData);
+      const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
+      const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
+
+      const dashboard = await safe(
+        buildAlarmDashboardData({ lat: first.lat, lon: first.lon, addr, administrativeArea }),
+        null,
+        `morningDashboard:${gk}`
+      );
+      if (!dashboard) continue;
+
+      const nowMap = mapByCategory(dashboard?.weatherNow);
+      const temp = toNum(nowMap.T1H);
+      const pty  = toNum(nowMap.PTY);
+      const pm25 = toNum(dashboard?.air?.pm25);
+      const pop  = maxPopFromHourly(dashboard?.hourlyFcst ?? [], 6)
+                ?? maxPopFromHourly(dashboard?.hourlyFcst ?? [], 12);
+
+      const ctx = { temp, pty, pop, pm25 };
+
+      let matched = enabledChecklist
+        .filter(it => matchesChecklistRule(it, ctx))
+        .sort((a,b) => Number(b.priority ?? 0) - Number(a.priority ?? 0));
+
+      if (!matched.length) {
+        matched = enabledChecklist
+          .filter(it => it?.rules?.always === true)
+          .sort((a,b) => Number(b.priority ?? 0) - Number(a.priority ?? 0))
+          .slice(0, 3);
+      }
+
+      const inline = buildChecklistInline(matched, 4, 36);
+
+      const title = `${locationName} · 오늘 아침`;
+      const body =
+        `챙길 것: ${inline || "없음"}\n` +
+        `현재 ${temp ?? "?"}° · 강수확률 ${pop ?? "?"}%`;
+
+      const mk = `${title}||${body}`;
+      if (!byMessage.has(mk)) byMessage.set(mk, { title, body, entries: [] });
+
+      const bucket = byMessage.get(mk);
+      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
+    }
+
+    if (byMessage.size === 0) return;
+
+    for (const { title, body, entries } of byMessage.values()) {
+      for (let i = 0; i < entries.length; i += 500) {
+        const chunk = entries.slice(i, i + 500);
+        const tokens = chunk.map(x => x.token);
+
+        const res = await getMessaging().sendEachForMulticast({
+          notification: { title, body },
+          data: { type: "morning_carry", sentKey },
+          tokens,
+        });
+
+        const batch = db.batch();
+        chunk.forEach((x, idx) => {
+          if (res.responses[idx]?.success) {
+            batch.set(x.ref, { lastMorningSentKey: sentKey }, { merge: true });
+          }
+        });
+        await batch.commit();
+      }
+    }
+
+    logger.info("[morning] done", { sentKey });
+  }
+);
+
+exports.sendEveningUmbrella = onSchedule(
+  { schedule: "0 18 * * *", timeZone: "Asia/Seoul", region: "asia-northeast3" },
+  async () => {
+    const db = admin.firestore();
+
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const yyyy = kst.getUTCFullYear();
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(kst.getUTCDate()).padStart(2, "0");
+    const dateKey = `${yyyy}-${mm}-${dd}`;
+
+    // ✅ 운영용 sentKey (하루 1회)
+    const sentKey = `${dateKey} EVENING`;
+
+    logger.info("[evening] start", { sentKey });
+
+    // ✅ 중복 실행 방지 락
+    const lockRef = db.collection("alarmLocks").doc(sentKey);
+    try {
+      await lockRef.create({ createdAt: FieldValue.serverTimestamp() });
+    } catch (e) {
+      logger.warn("[evening] lock exists -> skip", { sentKey });
+      return;
+    }
+
+    // 대상 유저
+    const snap = await db.collection("users")
+      .where("isAlramChecked", "==", true)
+      .get();
+
+    logger.info("[evening] target users", { sentKey, count: snap.size, empty: snap.empty });
+    if (snap.empty) return;
+
+    // 그리드 그룹핑
+    const groupsByGrid = new Map();
+    let skippedNoToken = 0, skippedNoLatLon = 0, skippedAlreadySent = 0;
+
+    for (const doc of snap.docs) {
+      const u = doc.data() || {};
+      if (u.lastEveningSentKey === sentKey) { skippedAlreadySent++; continue; }
+
+      const token = u.fcmToken;
+      if (!token) { skippedNoToken++; continue; }
+
+      const ll = getUserLatLon(u);
+      if (!ll) { skippedNoLatLon++; continue; }
+
+      const { nx, ny } = latLonToGrid(ll.lat, ll.lon);
+      const gk = `${nx},${ny}`;
+      if (!groupsByGrid.has(gk)) groupsByGrid.set(gk, []);
+      groupsByGrid.get(gk).push({ ref: doc.ref, token, userData: u, lat: ll.lat, lon: ll.lon });
+    }
+
+    logger.info("[evening] grouping", {
+      sentKey,
+      gridCount: groupsByGrid.size,
+      skippedNoToken,
+      skippedNoLatLon,
+      skippedAlreadySent,
+    });
+
+    if (groupsByGrid.size === 0) return;
+
+    // 메시지 버킷(동일 title/body끼리 묶어서 발송)
+    const byMessage = new Map(); // mk -> { title, body, kind, entries: [{ref, token}] }
+
+    for (const [gk, entries] of groupsByGrid.entries()) {
+      const first = entries[0];
+
+      const locationName = pickNotificationAreaName(first.userData);
+      const addr = String(first.userData?.addr ?? first.userData?.address ?? "");
+      const administrativeArea = String(first.userData?.administrativeArea ?? first.userData?.adminArea ?? "");
+
+      const dashboard = await safe(
+        buildAlarmDashboardData({ lat: first.lat, lon: first.lon, addr, administrativeArea }),
+        null,
+        `eveningDashboard:${gk}`
+      );
+      if (!dashboard) continue;
+
+      const { title, body, kind } = buildEveningWeatherMessage(dashboard, locationName);
+
+      const mk = `${title}||${body}`;
+      if (!byMessage.has(mk)) byMessage.set(mk, { title, body, kind, entries: [] });
+
+      const bucket = byMessage.get(mk);
+      for (const e of entries) bucket.entries.push({ ref: e.ref, token: e.token });
+    }
+
+    logger.info("[evening] buckets", {
+      sentKey,
+      bucketCount: byMessage.size,
+      totalReceivers: [...byMessage.values()].reduce((acc, b) => acc + b.entries.length, 0),
+    });
+
+    if (byMessage.size === 0) return;
+
+    // ✅ 여기서 “한 번만” 전송 + 성공한 유저만 lastEveningSentKey 업데이트
+    for (const { title, body, kind, entries } of byMessage.values()) {
+      for (let i = 0; i < entries.length; i += 500) {
+        const chunk = entries.slice(i, i + 500);
+        const tokens = chunk.map(x => x.token);
+
+        const res = await getMessaging().sendEachForMulticast({
+          notification: { title, body },
+          data: { type: "evening_weather", sentKey, kind },
+          tokens,
+        });
+
+        const ok = res.responses.filter(r => r.success).length;
+        const fail = res.responses.length - ok;
+        logger.info("[evening] multicast", { sentKey, ok, fail, tokens: tokens.length });
+
+        const batch = db.batch();
+        chunk.forEach((x, idx) => {
+          if (res.responses[idx]?.success) {
+            batch.set(x.ref, { lastEveningSentKey: sentKey }, { merge: true });
+          }
+        });
+        await batch.commit();
+      }
+    }
+
+    logger.info("[evening] done", { sentKey });
   }
 );
