@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_project/community/CommunityView.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -98,6 +99,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   : StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
+                    .where('receiverUid', whereIn: [uid, 'all', 'system']) //자기 관련 알림 관련 필터
                     .orderBy('createdAt', descending: true) // 👈 필터링 없이 정렬만 함
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -156,7 +158,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => Detailmypost(postId: pId, imageUrl: '', postData: const {}),
+              builder: (context) => Communityview(docId: pId),
             ),
           );
         } else {

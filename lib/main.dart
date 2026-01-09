@@ -19,6 +19,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:flutter_project/community/CommunityView.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -84,11 +85,7 @@ void _handleMessage(RemoteMessage message) {
   if (postId.isNotEmpty) {
     navigatorKey.currentState?.push(
       MaterialPageRoute(
-        builder: (context) => Detailmypost(
-          postId: postId,
-          imageUrl: '',
-          postData: const {},
-        ),
+        builder: (context) => Communityview(docId: postId),
       ),
     );
   } else {
@@ -168,11 +165,7 @@ Future<void> main() async {
       if (payload.isNotEmpty) {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
-            builder: (context) => Detailmypost(
-              postId: payload,
-              imageUrl: '',
-              postData: const {},
-            ),
+            builder: (context) => Communityview(docId: payload),
           ),
         );
       } else {

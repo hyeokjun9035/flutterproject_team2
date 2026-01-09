@@ -105,9 +105,9 @@ class _CommunityviewState extends State<Communityview> {
     debugPrint("🆔 작성자 UID 확인: $postAuthorUid");
 
     // 본인이 아닐 때만 실행 (테스트 중이라면 if (postAuthorUid.isNotEmpty) 만 사용)
-    if (postAuthorUid.isNotEmpty) {
+    // if (postAuthorUid.isNotEmpty) {
     // 실제 사용용 (자기 댓글 알림 x)
-    // if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid) {
+    if (postAuthorUid.isNotEmpty && postAuthorUid != currentUser.uid) {
 
       try {
         // 내 닉네임 가져오기
