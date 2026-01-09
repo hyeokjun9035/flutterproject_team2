@@ -335,6 +335,7 @@
   <p align="center">
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add.png" width="210" style="height:auto;"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/location.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add_play.gif" width="210" style="height:auto;"/>
   </p>
 
   <br/>
