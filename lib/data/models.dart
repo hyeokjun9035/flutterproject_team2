@@ -20,13 +20,19 @@ class HourlyForecast {
   final String timeLabel; // "09시"
   final int? sky;
   final int? pty;
+  final int? pop;
   final double? temp;
+  final double? rainMm;
+  final double? snowCm;
 
   const HourlyForecast({
     required this.timeLabel,
     this.sky,
     this.pty,
+    this.pop,
     this.temp,
+    this.rainMm,
+    this.snowCm,
   });
 }
 
