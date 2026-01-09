@@ -323,8 +323,8 @@
 
   <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.mp4" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.mp4" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.gif" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.gif" width="210"/>
   </p>
    <ul>
     <li>마이페이지 및 활동 관리: 내가 작성한 게시글을 카테고리별로 모아볼 수 있습니다 </li>
