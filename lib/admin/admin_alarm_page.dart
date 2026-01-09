@@ -169,11 +169,33 @@ class _AdminAlarmPageState extends State<AdminAlarmPage> {
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('notifications')
-                .where('type', isEqualTo: 'admin_alarm') // ✅ receiverUid 필터를 제거
+                .where('type', isEqualTo: 'admin_alarm')
                 .orderBy('createdAt', descending: true)
-                .limit(10)
+                .limit(15)
                 .snapshots(),
             builder: (context, snapshot) {
+              // jgh260109----S 에러 처리 추가
+              if (snapshot.hasError) {
+                return SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                        const SizedBox(height: 10),
+                        Text('데이터를 불러올 수 없습니다.\n${snapshot.error}', 
+                             textAlign: TextAlign.center,
+                             style: const TextStyle(color: Colors.red, fontSize: 12)),
+                        const SizedBox(height: 10),
+                        const Text('💡 Firestore 콘솔에서 복합 색인이 생성되었는지 확인해주세요.',
+                                   style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              // jgh260109----E 에러 처리 추가
+
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
               }
