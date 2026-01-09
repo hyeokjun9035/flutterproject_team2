@@ -235,7 +235,6 @@
 
   <p align="center">
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/selectroute.png" width="220"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="220"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" width="220"/>
   </p>
