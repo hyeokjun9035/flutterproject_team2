@@ -323,15 +323,30 @@
 
   <p align="center">
      <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.gif" width="200"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.gif" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="210"/>
+
   </p>
    <ul>
     <li>마이페이지 및 활동 관리: 내가 작성한 게시글을 카테고리별로 모아볼 수 있습니다 </li>
+  </ul>
+
+ <p align="center">
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.gif" width="200"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.gif" width="210"/>
+ </p>
+   <ul>
     <li>자주 이용하는 이동 경로를 즐겨찾기에 추가하거나 삭제하는 기능을 통해 개인화된 편의성을 제공합니다.</li>
   </ul>
 
+   <p align="center">
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/add.gif" width="200"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/delete.gif" width="210"/>
+ </p>
+   <ul>
+    <li>자주 이용하는 이동 경로를 즐겨찾기에 추가하거나 삭제하는 기능을 통해 개인화된 편의성을 제공합니다.</li>
+  </ul>
 
+  
 </details>
 <details>
   <summary>🛠️ 관리자 페이지 & 알림 시스템 (담당: 전경환, 권혁준)</summary>
