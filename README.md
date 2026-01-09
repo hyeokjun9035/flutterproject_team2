@@ -315,17 +315,23 @@
 <details>
   <summary>👤 마이 페이지 / 알림 (담당: 엄재준)</summary>
 
-  <p align="center">
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/postList.png" width="210"/>
-     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/aliram page.png" width="210"/>
+    <h3>👤 사용자 중심의 마이페이지 & 실시간 위치 기반 알림 시스템</h3>
+  <p>
+   사용자가 활동한 내역을 한눈에 관리하고, 실시간으로 주변의 위험 요소나 반응을 확인할 수 있는 사용자 경험을 구현했습니다.
+   특히 위치 기반 기술을 활용하여 사용자 간의 안전 정보를 빠르게 공유할 수 있도록 구성했습니다.
   </p>
 
-  <ul>
-    <li>날씨 기반 행동/준비물 추천</li>
-    <li>대기질 표시</li>
-    <li>버스 도착 정보 제공</li>
+  <p align="center">
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/mypage.png" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/추가.mp4" width="210"/>
+     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/mypage/삭제.mp4" width="210"/>
+  </p>
+   <ul>
+    <li>마이페이지 및 활동 관리: 내가 작성한 게시글을 카테고리별로 모아볼 수 있습니다 </li>
+    <li>자주 이용하는 이동 경로를 즐겨찾기에 추가하거나 삭제하는 기능을 통해 개인화된 편의성을 제공합니다.</li>
   </ul>
+
+
 </details>
 <details>
   <summary>🛠️ 관리자 페이지 & 알림 시스템 (담당: 전경환, 권혁준)</summary>
