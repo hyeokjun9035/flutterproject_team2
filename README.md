@@ -300,18 +300,76 @@
 <details>
   <summary>💬 커뮤니티 페이지 (담당: 권혁준)</summary>
 
-  <p align="center">
-    <img src="docs/images/home.png" width="220"/>
-    <img src="docs/images/weather.png" width="220"/>
-    <img src="docs/images/bus.png" width="220"/>
+  <p>
+    커뮤니티는 사용자들이 지역 사건, 생활 정보, 일상 이야기를 자유롭게 공유하고
+    서로 소통할 수 있는 공간으로 구성했습니다.
+    사진·영상 중심 UI와 위치 기반 게시글을 통해 현장성 있는 정보를 제공하고,
+    댓글·좋아요·신고 기능으로 신뢰도 높은 커뮤니티 환경을 구현했습니다.
   </p>
 
-  <ul>
-    <li>날씨 기반 행동/준비물 추천</li>
-    <li>대기질 표시</li>
-    <li>버스 도착 정보 제공</li>
-  </ul>
+  <br/>
+
+  <!-- 1. 커뮤니티 메인 -->
+  <h3>📰 커뮤니티 메인</h3>
+  <p>
+    공지사항 / 사건·이슈 / 수다 카테고리를 분리하여
+    사용자가 원하는 정보를 빠르게 탐색할 수 있도록 구성했습니다.
+    각 카테고리별 최신 글이 한눈에 보이도록 카드형 UI로 배치했습니다.
+  </p>
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_main.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_list.png" width="210" style="height:auto;"/>
+  </p>
+
+  <br/>
+
+  <!-- 2. 게시글 작성 -->
+  <h3>✍ 게시글 작성 & 위치 등록</h3>
+  <p>
+    사진·영상 업로드, 서식 편집 기능을 제공하며
+    게시글 작성 시 지도에서 위치를 직접 선택해 주소와 함께 저장할 수 있도록 구현했습니다.
+    이를 통해 사건·이슈 정보의 정확성과 신뢰도를 높였습니다.
+  </p>
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/location.png" width="210" style="height:auto;"/>
+  </p>
+
+  <br/>
+
+  <!-- 3. 게시글 조회 -->
+  <h3>🔍 게시글 상세 보기</h3>
+  <p>
+    게시글 상세 화면에서는 사진·영상·본문을 컬럼 구조로 배치하여
+    콘텐츠 가독성을 높였으며, 위치 정보는 지도와 함께 제공해
+    상황을 직관적으로 파악할 수 있도록 구성했습니다.
+  </p>
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view2.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view2.png" width="210" style="height:auto;"/>
+  </p>
+
+  <br/>
+
+  <!-- 4. 댓글 & 소통 -->
+  <h3>💬 댓글 & 소통 기능</h3>
+  <p>
+    댓글·대댓글, 좋아요, 신고 기능을 제공하여
+    사용자 간 활발한 소통과 안전한 커뮤니티 운영이 가능하도록 설계했습니다.
+    탈퇴 회원의 게시글은 프로필을 미노출 처리해 정보 신뢰도를 유지합니다.
+  </p>
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit2.png" width="210" style="height:auto;"/>
+  </p>
+
 </details>
+
 <details>
   <summary>👤 마이 페이지 / 알림 (담당: 엄재준)</summary>
 
