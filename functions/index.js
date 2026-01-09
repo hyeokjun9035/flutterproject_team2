@@ -162,6 +162,86 @@ setGlobalOptions({ maxInstances: 2 });
    });
  }
 
+ function parsePcpMm(v) {
+   if (v === undefined || v === null) return null;
+   const s = String(v).trim();
+   if (!s || s === '-') return null;
+   if (s.includes('강수없음')) return 0;
+
+   // "1mm 미만"
+   if (s.includes('미만')) return 0.5;
+
+   // "30.0~50.0mm" 같은 범위
+   const r = s.match(/([\d.]+)\s*~\s*([\d.]+)/);
+   if (r) return (Number(r[1]) + Number(r[2])) / 2;
+
+   // "0.7mm" / "2" 등
+   const m = s.match(/([\d.]+)/);
+   if (m) return Number(m[1]);
+
+   return null;
+ }
+
+ function parseKmaMm(v) {
+   if (v === undefined || v === null) return null;
+   const s = String(v).trim();
+   if (!s) return null;
+
+   // "강수없음", "-", "없음"
+   if (s.includes("강수없음") || s === "-" || s.includes("없음")) return 0;
+
+   const nums = s.match(/[\d.]+/g);
+   if (!nums || nums.length === 0) return null;
+
+   const a = Number(nums[0]);
+   if (!Number.isFinite(a)) return null;
+
+   // "1mm 미만" => 0.5
+   if (s.includes("미만")) return a / 2;
+
+   // "30.0~50.0mm" => 평균
+   if (s.includes("~") && nums.length >= 2) {
+     const b = Number(nums[1]);
+     if (Number.isFinite(b)) return (a + b) / 2;
+   }
+
+   return a;
+ }
+
+ function parseKmaSnowCm(v) {
+   if (v === undefined || v === null) return null;
+   const s = String(v).trim();
+   if (!s) return null;
+
+   // "적설없음", "-", "없음"
+   if (s.includes("적설없음") || s === "-" || s.includes("없음")) return 0;
+
+   const nums = s.match(/[\d.]+/g);
+   if (!nums || nums.length === 0) return null;
+
+   const a = Number(nums[0]);
+   if (!Number.isFinite(a)) return null;
+
+   // "1cm 미만" => 0.5
+   if (s.includes("미만")) return a / 2;
+
+   // "1.0~2.0cm" => 평균
+   if (s.includes("~") && nums.length >= 2) {
+     const b = Number(nums[1]);
+     if (Number.isFinite(b)) return (a + b) / 2;
+   }
+
+   return a;
+ }
+
+ function pickMaxInt(a, b) {
+   const na = toNum(a);
+   const nb = toNum(b);
+   if (na == null) return (nb == null) ? null : Math.round(nb);
+   if (nb == null) return Math.round(na);
+   return Math.round(Math.max(na, nb));
+ }
+
 function toNum(v) {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
@@ -877,13 +957,17 @@ function buildHourlyUltraRaw(items) {
   return [...byKey.values()]
     .map((v) => {
       const hh = Number(String(v.fcstTime).slice(0, 2));
+      const rn1 = toNum(v.RN1);
+      const rainMm = rn1 != null ? rn1 : parseKmaMm(v.RN1);
       return {
         _k: `${v.fcstDate}${v.fcstTime}`,
         timeLabel: `${hh}시`,
         sky: v.SKY != null ? Number(v.SKY) : null,
         pty: v.PTY != null ? Number(v.PTY) : null,
-        pop: v.POP != null ? Number(v.POP) : null,      // ✅ 추가
+        pop: v.POP != null ? Number(v.POP) : null,
         temp: v.T1H != null ? Number(v.T1H) : (v.TMP != null ? Number(v.TMP) : null),
+        rainMm: rainMm ?? 0,
+        snowCm: null,
       };
     })
     .filter(x => x.temp !== null)
@@ -901,13 +985,17 @@ function buildHourlyFromVilage(items) {
   return [...byKey.values()]
     .map((v) => {
       const hh = Number(String(v.fcstTime).slice(0, 2));
+      const rainMm = parseKmaMm(v.PCP);
+      const snowCm = parseKmaSnowCm(v.SNO);
       return {
         _k: `${v.fcstDate}${v.fcstTime}`,
         timeLabel: `${hh}시`,
         sky: v.SKY != null ? Number(v.SKY) : null,
         pty: v.PTY != null ? Number(v.PTY) : null,
-        pop: v.POP != null ? Number(v.POP) : null,      // ✅ 추가
+        pop: v.POP != null ? Number(v.POP) : null,
         temp: v.TMP != null ? Number(v.TMP) : null,
+        rainMm: rainMm,
+        snowCm: snowCm,
       };
     })
     .filter(x => x.temp !== null)
@@ -920,14 +1008,25 @@ function mergeHourly(ultra, vilage, take = 24) {
   const put = (x) => {
     if (!x?._k) return;
     const prev = byKey.get(x._k) || { _k: x._k };
-    // 기존 값이 null이면 새 값으로 채우기
+
     byKey.set(x._k, {
       _k: x._k,
       timeLabel: prev.timeLabel ?? x.timeLabel,
-      sky: prev.sky ?? x.sky,
-      pty: prev.pty ?? x.pty,
-      pop: prev.pop ?? x.pop,
+      // ✅ 더 흐린 값(큰 값) 우선
+      sky: pickMaxInt(prev.sky, x.sky),
+
+      // ✅ 강수형태도 0/1 충돌 방지(큰 값 우선)
+      pty: pickMaxInt(prev.pty, x.pty),
+
+      // ✅ 강수확률도 큰 값 우선
+      pop: pickMaxInt(prev.pop, x.pop),
+
+      // temp는 기존 유지(처음 들어온 값 우선)
       temp: prev.temp ?? x.temp,
+
+      // ✅ mm/cm는 큰 값 우선 (0 vs 0.2 해결)
+      rainMm: pickMax(prev.rainMm, x.rainMm),
+      snowCm: pickMax(prev.snowCm, x.snowCm),
     });
   };
 
