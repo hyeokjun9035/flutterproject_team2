@@ -20,22 +20,32 @@ class HourlyForecast {
   final String timeLabel; // "09시"
   final int? sky;
   final int? pty;
+  final int? pop;
   final double? temp;
+  final double? rainMm;
+  final double? snowCm;
 
   const HourlyForecast({
     required this.timeLabel,
     this.sky,
     this.pty,
+    this.pop,
     this.temp,
+    this.rainMm,
+    this.snowCm,
   });
 }
 
 class WeatherAlert {
   final String title;
-  final String? region;
-  final String? timeText;
+  final String region;
+  final String timeText;
 
-  const WeatherAlert({required this.title, this.region, this.timeText});
+  const WeatherAlert({
+    required this.title,
+    required this.region,
+    required this.timeText
+  });
 }
 
 class AirQuality {
@@ -75,6 +85,10 @@ class DailyForecast {
   final int? sky;
   final int? pty;
   final String? wfText;
+  final String? wfAm;
+  final String? wfPm;
+  final int? popAm;
+  final int? popPm;
 
   const DailyForecast({
     required this.date,
@@ -84,5 +98,9 @@ class DailyForecast {
     this.sky,
     this.pty,
     this.wfText,
+    this.wfAm,
+    this.wfPm,
+    this.popAm,
+    this.popPm,
   });
 }

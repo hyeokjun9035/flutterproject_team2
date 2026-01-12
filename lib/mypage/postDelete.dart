@@ -1,52 +1,102 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
-class Postdelete extends StatelessWidget {
-  const Postdelete({super.key});
+class Postdelete extends StatefulWidget {
+  final String postId;
+  final Map<String, dynamic> initialData;
 
-  // 삭제 확인 팝업창 함수
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          content: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Text("게시글을 삭제 하시겠습니까?", textAlign: TextAlign.center),
-          ),
-          actionsAlignment: MainAxisAlignment.center, // 버튼 중앙 정렬
-          actions: [
-            // 취소 버튼
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-              ),
-              child: const Text("취소", style: TextStyle(color: Colors.white)),
-            ),
-            const SizedBox(width: 10),
-            // 삭제하기 버튼
-            ElevatedButton(
-              onPressed: () {
-                // 여기에 삭제 로직 추가 (예: API 호출)
-                Navigator.pop(context); // 팝업 닫기
-                Navigator.pop(context); // 수정 페이지 닫기
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-              ),
-              child: const Text("삭제하기", style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
+  const Postdelete({super.key, required this.postId, required this.initialData});
+
+  @override
+  State<Postdelete> createState() => _PostdeleteState();
+}
+
+class _PostdeleteState extends State<Postdelete> {
+  late TextEditingController _contentController;
+  late String _selectedBoard;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _contentController = TextEditingController(text: widget.initialData['content']?.toString() ?? "");
+    _selectedBoard = widget.initialData['board_type']?.toString() ?? "자유게시판";
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _deletePost() async {
+    setState(() => _isProcessing = true);
+    try {
+
+      var rawUrls = widget.initialData['image_urls'];
+      if (rawUrls is List) {
+        for (var url in rawUrls) {
+          try {
+            await FirebaseStorage.instance.refFromURL(url.toString()).delete();
+          } catch (e) {
+            debugPrint("이미지 삭제 실패: $e");
+          }
+        }
+      }
+
+      await FirebaseFirestore.instance.collection('community').doc(widget.postId).delete();
+
+      if (mounted) {
+        Navigator.pop(context);
+        Navigator.pop(context);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("게시글이 삭제되었습니다.")));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("삭제 중 오류가 발생했습니다.")));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _updatePost() async {
+    if (_contentController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("내용을 입력해주세요.")));
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    try {
+      await FirebaseFirestore.instance.collection('community').doc(widget.postId).update({
+        'content': _contentController.text,
+        'board_type': _selectedBoard,
+        'udate': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("수정이 완료되었습니다.")));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("수정 중 오류가 발생했습니다.")));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+
+    var rawUrls = widget.initialData['image_urls'];
+    String displayUrl = "";
+    if (rawUrls is List && rawUrls.isNotEmpty) {
+      displayUrl = rawUrls[0].toString();
+    } else if (rawUrls is String) {
+      displayUrl = rawUrls;
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -54,96 +104,137 @@ class Postdelete extends StatelessWidget {
         elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text("취소", style: TextStyle(color: Colors.black)),
+          child: const Text("취소", style: TextStyle(color: Colors.grey, fontSize: 16)),
         ),
+        title: const Text("게시글 수정", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 17)),
+        centerTitle: true,
         actions: [
           TextButton(
-            onPressed: () {
-              // 수정 완료 로직
-              Navigator.pop(context);
-            },
-            child: const Text("수정하기", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            onPressed: _isProcessing ? null : _updatePost,
+            child: const Text("완료", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: _isProcessing
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. 이미지 미리보기 (임시 이미지)
-            Container(
-              width: 120,
-              height: 100,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Image.network('https://picsum.photos/200', fit: BoxFit.cover),
-            ),
-            const SizedBox(height: 20),
 
-            // 2. 카테고리 선택 (Dropdown 형식)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(border: Border.all(color: Colors.black54)),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: "자유 게시판",
-                  items: const [
-                    DropdownMenuItem(value: "자유 게시판", child: Text("자유 게시판")),
-                  ],
-                  onChanged: (value) {},
-                ),
-              ),
-            ),
-
-            // 3. 위치 정보
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: const BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: Colors.black54),
-                  right: BorderSide(color: Colors.black54),
-                  bottom: BorderSide(color: Colors.black54),
-                ),
-              ),
-              child: Row(
-                children: const [
-                  Icon(Icons.location_on_outlined, size: 18),
-                  SizedBox(width: 5),
-                  Text("부평역"),
+            Center(
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: displayUrl.isNotEmpty
+                        ? Image.network(displayUrl, width: double.infinity, height: 200, fit: BoxFit.cover)
+                        : Container(
+                      width: double.infinity,
+                      height: 200,
+                      color: Colors.grey[100],
+                      child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                    ),
+                  ),
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                    ),
+                  )
                 ],
               ),
             ),
+            const SizedBox(height: 25),
 
-            // 4. 본문 입력창
-            TextField(
-              maxLines: 5,
-              decoration: InputDecoration(
-                hintText: "내용을 입력하세요",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: Colors.black54),
+
+            const Text("게시판 선택", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Container(
+                color: Colors.white,
+                child: DropdownButtonHideUnderline(
+                  child: Container(
+                    color: Colors.white,
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _selectedBoard,
+                      items: ["자유게시판", "비밀 게시판"].map((String value) {
+                        return DropdownMenuItem<String>(value: value, child: Text(value));
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) setState(() => _selectedBoard = value);
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 20),
 
-            // 5. 삭제하기 버튼
-            GestureDetector(
-              onTap: () => _showDeleteDialog(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(8),
+
+            const Text("내용 수정", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _contentController,
+              maxLines: 8,
+              decoration: InputDecoration(
+                hintText: "소중한 의견을 남겨주세요.",
+                filled: true,
+                fillColor: Colors.grey[50],
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                child: const Text("삭제하기", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.blueAccent),
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+
+
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showDeleteDialog(context),
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                label: const Text("게시글 삭제하기", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  side: const BorderSide(color: Colors.redAccent),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("정말 삭제할까요?", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text("삭제된 게시글은 다시 복구할 수 없습니다."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소", style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: _deletePost, child: const Text("삭제", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+        ],
       ),
     );
   }

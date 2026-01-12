@@ -44,3 +44,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter generated platform files
+linux/flutter/
+windows/flutter/
+macos/Flutter/
+
+# Android / Gradle local files
+android/.gradle/
+android/local.properties
+**/GeneratedPluginRegistrant.java
+
+# Firebase config (DO NOT COMMIT)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

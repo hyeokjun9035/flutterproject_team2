@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/cupertino.dart';
 import 'models.dart';
 import 'dart:io';
 
@@ -8,10 +9,7 @@ class DashboardService {
   final String region;
 
   FirebaseFunctions get _functions {
-    final f = FirebaseFunctions.instanceFor(region: region);
-    // ✅ Android Emulator면 10.0.2.2
-    f.useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
-    return f;
+    return FirebaseFunctions.instanceFor(region: region);
   }
 
   Future<Map<String, dynamic>> ping() async {
@@ -72,6 +70,7 @@ class DashboardService {
         sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
         pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
         temp: m['temp'] is num ? (m['temp'] as num).toDouble() : double.tryParse('${m['temp']}'),
+        rainMm: m['rainMm'] is num ? (m['rainMm'] as num).toDouble() : double.tryParse('${m['rainMm']}'),
       );
     }).toList();
 
@@ -97,7 +96,9 @@ class DashboardService {
     );
 
     // === 업데이트 시각 ===
-    final updatedAt = DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now();
+    final updatedAt =
+    (DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now())
+        .toLocal();
 
     return DashboardData(
       locationName: locationName,
@@ -116,7 +117,10 @@ class DashboardService {
     required String airAddr,
     required String administrativeArea
   }) async {
-    final callable = _functions.httpsCallable('getDashboard');
+    final callable = _functions.httpsCallable(
+        'getDashboard',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 20))
+    );
 
     final res = await callable.call({
       'lat': lat,
@@ -127,7 +131,6 @@ class DashboardService {
     });
 
     final data = Map<String, dynamic>.from(res.data as Map);
-
     // === 아래 파싱 로직은 기존과 동일 ===
     final nowItems = (data['weatherNow'] ?? data['weather'] ?? []) as List;
     final nowMap = <String, String>{};
@@ -141,25 +144,48 @@ class DashboardService {
     double? _d(String k) => double.tryParse(nowMap[k] ?? '');
     int? _i(String k) => int.tryParse(nowMap[k] ?? '');
 
-    final now = WeatherNow(
-      temp: _d('T1H') ?? _d('TMP'),
-      humidity: _d('REH'),
-      wind: _d('WSD'),
-      sky: _i('SKY'),
-      pty: _i('PTY'),
-      rn1: _d('RN1'),
-    );
+    double? _asDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    int? _asInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.round(); // ✅ 1.0 -> 1
+      final s = v.toString();
+      final d = double.tryParse(s);
+      if (d != null) return d.round(); // ✅ "1.0" -> 1
+      return int.tryParse(s);
+    }
 
     final hourlyRaw = (data['hourlyFcst'] ?? []) as List;
     final hourly = hourlyRaw.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
       return HourlyForecast(
         timeLabel: (m['timeLabel'] ?? '').toString(),
-        sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
-        pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
-        temp: m['temp'] is num ? (m['temp'] as num).toDouble() : double.tryParse('${m['temp']}'),
+        sky: _asInt(m['sky']),
+        pty: _asInt(m['pty']),
+        pop: _asInt(m['pop']),
+        temp: _asDouble(m['temp']),
+        rainMm: _asDouble(m['rainMm']),
+        snowCm: _asDouble(m['snowCm']),
       );
     }).toList();
+
+    final h0 = hourly.isNotEmpty ? hourly.first : null;
+
+    final now = WeatherNow(
+      temp: _d('T1H') ?? _d('TMP') ?? h0?.temp,
+      humidity: _d('REH'),
+      wind: _d('WSD'),
+      // ✅ NCST엔 SKY가 없어서 null인 경우가 많음 → hourly NOW에서 보강
+      sky: _i('SKY') ?? h0?.sky,
+      // ✅ PTY는 보통 NCST에 있긴 한데 혹시 없을 때 대비
+      pty: _i('PTY') ?? h0?.pty,
+      rn1: _d('RN1'),
+    );
 
     final alertsRaw = (data['alerts'] ?? []) as List;
     final alerts = alertsRaw.map((e) {
@@ -182,6 +208,10 @@ class DashboardService {
         sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
         pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
         wfText: m['wfText']?.toString(),
+        wfAm: m['wfAm']?.toString(),
+        wfPm: m['wfPm']?.toString(),
+        popAm: m['popAm'] is int ? m['popAm'] as int : int.tryParse('${m['popAm']}'),
+        popPm: m['popPm'] is int ? m['popPm'] as int : int.tryParse('${m['popPm']}'),
       );
     }).toList();
 
@@ -193,7 +223,9 @@ class DashboardService {
       pm25: airRaw['pm25'] is int ? airRaw['pm25'] as int : int.tryParse('${airRaw['pm25']}'),
     );
 
-    final updatedAt = DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now();
+    final updatedAt =
+    (DateTime.tryParse((data['updatedAt'] ?? '').toString()) ?? DateTime.now())
+        .toLocal();
 
     return DashboardData(
       locationName: locationName,

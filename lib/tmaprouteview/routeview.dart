@@ -5,10 +5,15 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../headandputter/putter.dart'; //jgh251226
+import 'dart:ui' as ui; //251229
+import 'package:flutter/services.dart'; //251229
+import 'package:flutter_project/main.dart';
 
 class Routeview extends StatefulWidget {
   final Map<String, dynamic> raw;
-  const Routeview({super.key, required this.raw});
+  final int? initialItineraryIndex;
+  const Routeview({super.key, required this.raw, this.initialItineraryIndex});
 
   @override
   State<Routeview> createState() => _RouteviewState();
@@ -18,6 +23,51 @@ class _RouteviewState extends State<Routeview> {
   List<_LegSegment> segments = const [];
   _LegSummary summary = const _LegSummary.empty();
   String debugMsg = 'init...';
+  BitmapDescriptor? _cctvIcon; //251229
+
+  int _selectedIdx = 0;
+
+  int? _idxFastest;
+  int? _idxMinWalk;
+  int? _idxMinTransfer;
+
+  List<Map<String, dynamic>> _itineraries = const [];
+
+  int _asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  int _toMin(dynamic sec) => ((_asInt(sec) / 60).round()).clamp(0, 1 << 30);
+
+  int _totalMin(Map it) => _toMin(it['totalTime']);
+  int _walkMin(Map it) => _toMin(it['totalWalkTime']);
+  int _transferCount(Map it) => _asInt(it['transferCount'] ?? it['transfer'] ?? it['transfers']);
+
+  bool _showCctv = false;     // 화면에 CCTV 표시 여부
+  bool _cctvLoaded = false;   // 현재 경로 기준으로 한 번이라도 로드했는지(선택)
+
+  //251229
+  Future<BitmapDescriptor> _bmpFromAsset(String path, int targetWidth) async {
+    final data = await rootBundle.load(path);
+    final codec = await ui.instantiateImageCodec(
+      data.buffer.asUint8List(),
+      targetWidth: targetWidth, // ✅ 이 값으로 크기 조절
+    );
+    final frame = await codec.getNextFrame();
+    final bytes = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+
+  //251229
+  Future<void> _loadMarkerIcons() async {
+    try {
+      final icon = await _bmpFromAsset('assets/icons/cctv.png', 40); // ✅ 48~96 사이로 조절 추천
+      if (!mounted) return;
+      setState(() => _cctvIcon = icon);
+    } catch (e) {
+      // 실패시 기본아이콘 사용
+    }
+  }
+
+
 
   // ✅ CCTV  jgh251226
   final Set<Marker> _cctvMarkers = {};
@@ -36,42 +86,90 @@ class _RouteviewState extends State<Routeview> {
   @override
   void initState() {
     super.initState();
-    _buildSegments();
+    _loadMarkerIcons();   // ✅ 추가 251229
+    _initItinerariesAndSelect();
+    _buildSegmentsForSelected();
   }
 
-  void _buildSegments() {
+  void _initItinerariesAndSelect() {
+    // metaData 또는 meta 방어
+    final meta = (widget.raw['metaData'] ?? widget.raw['meta']);
+    if (meta is! Map) {
+      debugMsg = 'raw.metaData/meta 없음\nkeys=${widget.raw.keys.toList()}';
+      return;
+    }
+
+    final plan = meta['plan'];
+    if (plan is! Map) {
+      debugMsg = 'meta.plan 없음\nmeta keys=${(meta as Map).keys.toList()}';
+      return;
+    }
+
+    final its = plan['itineraries'];
+    if (its is! List || its.isEmpty) {
+      debugMsg = 'plan.itineraries 없음/비어있음\nplan keys=${plan.keys.toList()}';
+      return;
+    }
+
+    _itineraries = its.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    if (_itineraries.isEmpty) {
+      debugMsg = 'itineraries가 Map 리스트가 아님';
+      return;
+    }
+
+    // 대표 3개 뽑기
+    int bestFast = 0, bestWalk = 0, bestTr = 0;
+    for (int i = 1; i < _itineraries.length; i++) {
+      final it = _itineraries[i];
+
+      // 최소 시간
+      if (_totalMin(it) < _totalMin(_itineraries[bestFast])) bestFast = i;
+
+      // 최소 도보
+      if (_walkMin(it) < _walkMin(_itineraries[bestWalk])) bestWalk = i;
+
+      // 최소 환승 (tie: 시간 -> 도보)
+      final curTr = _transferCount(it);
+      final bestTrTr = _transferCount(_itineraries[bestTr]);
+      if (curTr < bestTrTr) {
+        bestTr = i;
+      } else if (curTr == bestTrTr) {
+        final curT = _totalMin(it);
+        final bestT = _totalMin(_itineraries[bestTr]);
+        if (curT < bestT) bestTr = i;
+        else if (curT == bestT && _walkMin(it) < _walkMin(_itineraries[bestTr])) bestTr = i;
+      }
+    }
+
+    _idxFastest = bestFast;
+    _idxMinWalk = bestWalk;
+    _idxMinTransfer = bestTr;
+
+    // 카드에서 넘긴 initialItineraryIndex 우선
+    final initIdx = widget.initialItineraryIndex;
+    if (initIdx != null && initIdx >= 0 && initIdx < _itineraries.length) {
+      _selectedIdx = initIdx;
+    } else {
+      _selectedIdx = _idxFastest ?? 0;
+    }
+  }
+
+  void _buildSegmentsForSelected() => _buildSegmentsForIndex(_selectedIdx);
+
+  void _buildSegmentsForIndex(int idx) {
     try {
-      final meta = widget.raw['metaData'];
-      if (meta is! Map) {
-        debugMsg = 'raw.metaData 없음\nkeys=${widget.raw.keys.toList()}';
+      if (_itineraries.isEmpty) {
+        debugMsg = 'itineraries 초기화 안됨';
         setState(() {});
         return;
       }
 
-      final plan = meta['plan'];
-      if (plan is! Map) {
-        debugMsg = 'metaData.plan 없음\nmeta keys=${meta.keys.toList()}';
-        setState(() {});
-        return;
-      }
+      if (idx < 0 || idx >= _itineraries.length) idx = 0;
+      final selected = _itineraries[idx];
 
-      final itineraries = plan['itineraries'];
-      if (itineraries is! List || itineraries.isEmpty) {
-        debugMsg = 'plan.itineraries 없음/비어있음\nplan keys=${plan.keys.toList()}';
-        setState(() {});
-        return;
-      }
-
-      final first = itineraries.first;
-      if (first is! Map) {
-        debugMsg = 'itineraries.first가 Map이 아님';
-        setState(() {});
-        return;
-      }
-
-      final legs = first['legs'];
+      final legs = selected['legs'];
       if (legs is! List || legs.isEmpty) {
-        debugMsg = 'itinerary.legs 없음/비어있음\nitinerary keys=${first.keys.toList()}';
+        debugMsg = 'itinerary[$idx].legs 없음/비어있음\nitinerary keys=${selected.keys.toList()}';
         setState(() {});
         return;
       }
@@ -85,14 +183,41 @@ class _RouteviewState extends State<Routeview> {
 
       segments = segs;
       summary = buildSummaryFromLegs(legs);
+      //알람 추가 코드
+      final itinerary = _itineraries[idx];
+      final totalMin = _totalMin(itinerary);
+      final walkMin = _walkMin(itinerary);
+      final transfers = _transferCount(itinerary);
+
+      // WidgetsBinding.instance.addPostFrameCallback((_) {
+      //   showTransitNotification(
+      //     summary: '총 $totalMin분 (도보 $walkMin분 · 환승 $transfers회)',
+      //     busArrival: '현재 경로 안내 중입니다.', // 실시간 API 연동 전까지는 안내 문구로 표시
+      //   );
+      // });
+
+      _cctvMarkers.clear();
 
       final allPts = segments.expand((e) => e.points).toList();
       debugMsg =
-      'OK: segments=${segments.length}, points=${allPts.length}\n'
-          'walk=${summary.walkMin}m bus=${summary.busMin}m subway=${summary.subwayMin}m transfer=${summary.transferCount}\n'
-          'first=${allPts.first}\nlast=${allPts.last}';
+      'OK idx=$idx / itineraries=${_itineraries.length}\n'
+          'segments=${segments.length}, points=${allPts.length}\n'
+          'walk=${summary.walkMin}m bus=${summary.busMin}m subway=${summary.subwayMin}m transfer=${summary.transferCount}';
+
+      // ✅ 경로 바뀌면 CCTV 마커/상태도 리셋하고 다시 로드
+      _cctvMarkers.clear();
+      _cctvDebug = '';
+      _cctvLoaded = false;
 
       setState(() {});
+
+      // 지도 이미 만들어졌으면 즉시 맞추고 CCTV도 재조회
+      if (_mapCtrl != null) {
+        _fitToRoute();
+        if (_showCctv) {
+          _loadCctvNearRoute();
+        }
+      }
     } catch (e) {
       debugMsg = '예외: $e';
       setState(() {});
@@ -190,9 +315,16 @@ class _RouteviewState extends State<Routeview> {
     });
 
     try {
-      final base = _boundsForPoints(allPts);
+      final LatLngBounds base;
 
-      // ✅ 너무 타이트하면 CCTV가 안 잡힐 수 있어서 약간 확장 (0.01 ≒ 1km 내외)
+      if (_mapCtrl != null) {
+        // ✅ 현재 화면 영역 기준 (줌인하고 누르면 훨씬 적게 뜸)
+        base = await _mapCtrl!.getVisibleRegion();
+      } else {
+        // fallback
+        base = _boundsForPoints(allPts);
+      }
+
       final b = _expandBounds(base, 0.01, 0.01);
 
       final uri = Uri.parse('https://openapi.its.go.kr:9443/cctvInfo').replace(
@@ -230,6 +362,7 @@ class _RouteviewState extends State<Routeview> {
           Marker(
             markerId: MarkerId(markerId),
             position: LatLng(item.coordY, item.coordX),
+            icon: _cctvIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure), // ✅ CCTV 전용
             infoWindow: InfoWindow(title: item.name, snippet: item.format),
             onTap: () async {
               final fresh = await _refreshOneCctvUrl(item) ?? item;
@@ -237,6 +370,7 @@ class _RouteviewState extends State<Routeview> {
             },
           ),
         );
+
       }
 
       setState(() {
@@ -309,7 +443,58 @@ class _RouteviewState extends State<Routeview> {
 
 
   //jgh251226-----------------------------------------E
+  Widget _chips() {
+    if (_itineraries.isEmpty) return const SizedBox.shrink();
 
+    ChoiceChip chip({
+      required String label,
+      required int? idx,
+      required String meta,
+    }) {
+      final valid = idx != null && idx >= 0 && idx < _itineraries.length;
+      return ChoiceChip(
+        label: Text('$label · $meta'),
+        selected: valid && _selectedIdx == idx,
+        onSelected: valid
+            ? (_) {
+          setState(() => _selectedIdx = idx);
+          _buildSegmentsForSelected();
+        }
+            : null,
+      );
+    }
+
+    String metaFast() {
+      final i = _idxFastest!;
+      final it = _itineraries[i];
+      return '${_totalMin(it)}분';
+    }
+
+    String metaWalk() {
+      final i = _idxMinWalk!;
+      final it = _itineraries[i];
+      return '도보 ${_walkMin(it)}분';
+    }
+
+    String metaTr() {
+      final i = _idxMinTransfer!;
+      final it = _itineraries[i];
+      return '환승 ${_transferCount(it)}회';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip(label: '최소 도보', idx: _idxMinWalk, meta: metaWalk()),
+          chip(label: '최소 시간', idx: _idxFastest, meta: metaFast()),
+          chip(label: '최소 환승', idx: _idxMinTransfer, meta: metaTr()),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -330,123 +515,177 @@ class _RouteviewState extends State<Routeview> {
       );
     }
 
+    //251229
     final markers = <Marker>{};
     if (allPoints.isNotEmpty) {
-      markers.add(Marker(markerId: const MarkerId('start'), position: allPoints.first));
-      markers.add(Marker(markerId: const MarkerId('end'), position: allPoints.last));
-    }
-
-    markers.addAll(_cctvMarkers); //jgh251226
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('경로 보기'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+      markers.add(
+        Marker(
+          markerId: const MarkerId('start'),
+          position: allPoints.first,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen), // ✅ 출발: 초록
+          infoWindow: const InfoWindow(title: '출발'),
         ),
-        actions: [
-          IconButton(
-            tooltip: '경로에 맞추기',
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: _fitToRoute,
-          ),
-        ],
-      ),
+      );
 
-      // ✅ 부모 스크롤은 기본 ON, 지도 조작 중에만 OFF
-      body: SingleChildScrollView(
-        physics: _isMapInteracting
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  height: 520, // 지도를 크게 보이게
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        // ✅ 지도 터치 시작하면 부모 스크롤 OFF
-                        child: Listener(
-                          onPointerDown: (_) => setState(() => _isMapInteracting = true),
-                          onPointerUp: (_) => setState(() => _isMapInteracting = false),
-                          onPointerCancel: (_) => setState(() => _isMapInteracting = false),
-                          child: allPoints.isEmpty
-                              ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
+      markers.add(
+        Marker(
+          markerId: const MarkerId('end'),
+          position: allPoints.last,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed), // ✅ 도착: 빨강
+          infoWindow: const InfoWindow(title: '도착'),
+        ),
+      );
+    }
+    if (_showCctv) {
+      markers.addAll(_cctvMarkers);
+    }
+    //251229
+
+    return PutterScaffold(
+      currentIndex: 0,
+      body: Scaffold(
+        appBar: AppBar(
+          title: const Text('경로 보기'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+          actions: [
+            IconButton(
+              tooltip: _showCctv ? 'CCTV 숨기기' : 'CCTV 보기',
+              icon: _loadingCctv
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+                  : Icon(_showCctv ? Icons.visibility_off : Icons.visibility),
+              onPressed: _loadingCctv
+                  ? null
+                  : () async {
+                if (_showCctv) {
+                  setState(() {
+                    _showCctv = false;
+                    _cctvMarkers.clear();
+                    _cctvDebug = '';
+                    _cctvLoaded = false;
+                  });
+                  return;
+                }
+
+                setState(() {
+                  _showCctv = true;
+                  _cctvDebug = 'CCTV 조회중...';
+                });
+
+                await _loadCctvNearRoute();
+                setState(() => _cctvLoaded = true);
+              },
+            ),
+            IconButton(
+              tooltip: '경로에 맞추기',
+              icon: const Icon(Icons.center_focus_strong),
+              onPressed: _fitToRoute,
+            ),
+          ],
+        ),
+
+        // ✅ 부모 스크롤은 기본 ON, 지도 조작 중에만 OFF
+        body: SingleChildScrollView(
+          physics: _isMapInteracting
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _chips(),
+              // ✅ 지도 + 요약바를 겹치기 위해 Stack 사용
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    height: 520, // 지도를 크게 보이게
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          // ✅ 지도 터치 시작하면 부모 스크롤 OFF
+                          child: Listener(
+                            onPointerDown: (_) => setState(() => _isMapInteracting = true),
+                            onPointerUp: (_) => setState(() => _isMapInteracting = false),
+                            onPointerCancel: (_) => setState(() => _isMapInteracting = false),
+                            child: allPoints.isEmpty
+                                ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  '지도 표시 불가\n$debugMsg',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                                : GoogleMap(
+                              initialCameraPosition: CameraPosition(
+                                target: allPoints.first,
+                                zoom: 13,
+                              ),
+                              polylines: polylines,
+                              markers: markers,
+                              onMapCreated: (c) async {
+                                _mapCtrl = c;
+                                await _fitToRoute();
+                                // await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
+                              },
+
+                              // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
+                              scrollGesturesEnabled: true,
+                              zoomGesturesEnabled: true,
+                              rotateGesturesEnabled: true,
+                              tiltGesturesEnabled: true,
+
+                              // ✅ + / - 버튼 (Android에서 표시)
+                              zoomControlsEnabled: true,
+
+                              myLocationButtonEnabled: false,
+                            ),
+                          ),
+                        ),
+
+                        // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
+                        if (_showCctv && _cctvDebug.trim().isNotEmpty)
+                          Positioned(
+                            left: 10,
+                            right: 10,
+                            top: 55,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.45),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                               child: Text(
-                                '지도 표시 불가\n$debugMsg',
-                                textAlign: TextAlign.center,
+                                _cctvDebug,
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          )
-                              : GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: allPoints.first,
-                              zoom: 13,
-                            ),
-                            polylines: polylines,
-                            markers: markers,
-                            onMapCreated: (c) async {
-                              _mapCtrl = c;
-                              await _fitToRoute();
-                              await _loadCctvNearRoute(); // ✅ 추가 //jgh251226
-                            },
-
-                            // ✅ 지도 제스처 ON (이동/줌/회전/기울기)
-                            scrollGesturesEnabled: true,
-                            zoomGesturesEnabled: true,
-                            rotateGesturesEnabled: true,
-                            tiltGesturesEnabled: true,
-
-                            // ✅ + / - 버튼 (Android에서 표시)
-                            zoomControlsEnabled: true,
-
-                            myLocationButtonEnabled: false,
                           ),
-                        ),
-                      ),
-
-                      // ✅ 요약바를 지도 위에 “플로팅 카드”로 올리기
-                      Positioned(
-                        left: 10,
-                        right: 10,
-                        top: 55,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.45),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _cctvDebug,
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // ✅ 아래 구간 리스트 (페이지 스크롤로 내려서 보는 방식)
-            _LegListPage(
-              segments: segments,
-              onTapSegment: (seg) => _focusSegment(seg),
-            ),
+              // ✅ 아래 구간 리스트 (페이지 스크롤로 내려서 보는 방식)
+              _LegListPage(
+                segments: segments,
+                onTapSegment: (seg) => _focusSegment(seg),
+              ),
 
-            const SizedBox(height: 18),
-          ],
+              const SizedBox(height: 18),
+            ],
+          ),
         ),
       ),
     );
@@ -822,9 +1061,47 @@ class _CctvPlayerPage extends StatefulWidget {
 }
 
 class _CctvPlayerPageState extends State<_CctvPlayerPage> {
+
   VideoPlayerController? _ctrl;
   bool _useWebView = false;
   String _msg = 'loading...';
+
+
+  //251229
+  Widget _miniMap() {
+    final pos = LatLng(widget.item.coordY, widget.item.coordX);
+
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: 180,
+          child: AbsorbPointer(
+            child: GoogleMap(
+              key: const ValueKey('mini_map'), // ✅ 중요: 리빌드 안정화
+              initialCameraPosition: CameraPosition(target: pos, zoom: 15),
+              markers: {
+                Marker(markerId: const MarkerId('cctv'), position: pos),
+              },
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              // ✅ 미니맵은 제스처 거의 OFF
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: true,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+
+
 
   @override
   void initState() {
@@ -861,7 +1138,7 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
       if (!mounted) return;
       setState(() {
         _useWebView = true;
-        _msg = 'video_player 재생 실패 → WebView로 전환\n$e';
+        _msg = 'WebView로 재생 중...'; // ✅ reloading... 덮어쓰기
       });
     }
   }
@@ -876,69 +1153,155 @@ class _CctvPlayerPageState extends State<_CctvPlayerPage> {
   Widget build(BuildContext context) {
     final c = _ctrl;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.item.name)),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Expanded(
-              child: _useWebView
-                  ? ClipRRect(
+    String _nowKst() {
+      final kst = DateTime.now().toUtc().add(const Duration(hours: 9));
+      return
+        '${kst.year}-${kst.month.toString().padLeft(2, '0')}-${kst.day.toString().padLeft(2, '0')} '
+            '${kst.hour.toString().padLeft(2, '0')}:${kst.minute.toString().padLeft(2, '0')}:${kst.second.toString().padLeft(2, '0')}';
+    }
+
+    return PutterScaffold(
+      currentIndex: 0, // ✅ 홈 탭이 선택된 상태로(원하면 다른 값)
+      body: Scaffold(
+        appBar: AppBar(title: Text(widget.item.name)),
+        body: Padding(
+          // padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(12),
+          // padding: const EdgeInsets.fromLTRB(12, 12, 12, 180), // ✅ bottomSheet 높이만큼 아래 여백
+          child: Column(
+            children: [
+              ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: WebViewWidget(
-                  controller: WebViewController()
-                    ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                    ..loadRequest(Uri.parse(widget.item.url)),
-                ),
-              )
-                  : (c != null && c.value.isInitialized)
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: c.value.aspectRatio,
-                  child: VideoPlayer(c),
-                ),
-              )
-                  : Center(child: Text(_msg)),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              widget.item.url,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: (_useWebView || c == null) ? null : () => c.value.isPlaying ? c.pause() : c.play(),
-                  child: Text((!_useWebView && c != null && c.value.isPlaying) ? '일시정지' : '재생'),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: () async {
-                    final old = _ctrl;
-                    _ctrl = null;
-                    if (mounted) setState(() => _msg = 'reloading...');
-                    await old?.dispose();
-                    if (mounted) setState(() => _useWebView = false);
-                    await _init();
+                child: Builder(
+                  builder: (context) {
+                    final w = MediaQuery.sizeOf(context).width;
+                    // final h = w * 9 / 16;
+                    final h = MediaQuery.sizeOf(context).height * 0.35;
+
+                    return SizedBox(
+                      width: double.infinity,
+                      height: h,
+                      child: _useWebView
+                          ? WebViewWidget(
+                        controller: WebViewController()
+                          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                          ..loadRequest(Uri.parse(widget.item.url)),
+                      )
+                          : (c != null && c.value.isInitialized)
+                          ? FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: c.value.size.width,
+                          height: c.value.size.height,
+                          child: VideoPlayer(c),
+                        ),
+                      )
+                          : Center(child: Text(_msg)),
+                    );
                   },
-                  child: const Text('새로고침'),
                 ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: (_useWebView || c == null)
+                        ? null
+                        : () => c.value.isPlaying ? c.pause() : c.play(),
+                    child: Text((!_useWebView && c != null && c.value.isPlaying) ? '일시정지' : '재생'),
+                  ),
+                  const SizedBox(width: 10),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final old = _ctrl;
+                      _ctrl = null;
+                      if (mounted) setState(() => _msg = 'reloading...');
+                      await old?.dispose();
+                      if (mounted) setState(() => _useWebView = false);
+                      await _init();
+                    },
+                    child: const Text('새로고침'),
+                  ),
+                ],
+              ),
+              if (_useWebView) ...[
+                const SizedBox(height: 8),
+                Text(_msg, style: const TextStyle(fontSize: 11)),
               ],
-            ),
-            if (_useWebView) ...[
-              const SizedBox(height: 8),
-              Text(_msg, style: const TextStyle(fontSize: 11)),
+              const SizedBox(height: 12),
+
+
+
+              Expanded(
+                child: ListView(
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.item.name,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 6),
+                            Text('형식: ${widget.item.format}'),
+                            Text('좌표: ${widget.item.coordY.toStringAsFixed(6)}, ${widget.item.coordX.toStringAsFixed(6)}'),
+                            const SizedBox(height: 8),
+                            Text('업데이트: ${_nowKst()}',
+                                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ✅ 여기로 넣어야 “카드 아래”에 뜸
+                    _miniMap(),
+
+                    const SizedBox(height: 18),
+                  ],
+                ),
+              ),
+
             ],
-          ],
+
+          ),
+
         ),
+
+        // bottomSheet: Container(
+        //   padding: const EdgeInsets.all(12),
+        //   decoration: BoxDecoration(
+        //     color: Colors.white,
+        //     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        //     boxShadow: [BoxShadow(blurRadius: 12, color: Colors.black26)],
+        //   ),
+        //   child: Column(
+        //     mainAxisSize: MainAxisSize.min,
+        //     crossAxisAlignment: CrossAxisAlignment.start,
+        //     children: [
+        //       Text(widget.item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+        //       const SizedBox(height: 6),
+        //       Text('좌표: ${widget.item.coordY.toStringAsFixed(6)}, ${widget.item.coordX.toStringAsFixed(6)}'),
+        //       const SizedBox(height: 10),
+        //       Row(
+        //         children: [
+        //           Expanded(child: OutlinedButton(onPressed: () {}, child: const Text('지도에서 보기'))),
+        //           const SizedBox(width: 8),
+        //           Expanded(child: ElevatedButton(onPressed: () {}, child: const Text('즐겨찾기'))),
+        //         ],
+        //       ),
+        //     ],
+        //   ),
+        // ),
+
       ),
+
     );
+
   }
+
 }
 
 

@@ -5,180 +5,206 @@ import 'locationSettings.dart';
 import 'communitySettings.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_project/join/login.dart';
 
-class UserMypage extends StatelessWidget {
+import 'package:flutter_project/headandputter/putter.dart';
+import 'package:flutter_project/home/home_page.dart';
+import 'package:flutter_project/widgets/app_drawer_factory.dart';
+
+class UserMypage extends StatefulWidget {
   const UserMypage({super.key});
 
   @override
+  State<UserMypage> createState() => _UserMypageState();
+}
+
+class _UserMypageState extends State<UserMypage> {
+  @override
   Widget build(BuildContext context) {
-
+    // Scaffold 제어를 위한 키
+    final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
     final user = FirebaseAuth.instance.currentUser;
-    return Scaffold(
-      backgroundColor: Colors.white,
-        body: StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(user?.uid) // 아까 넣은 UID 문서번호
-                .snapshots(),
-            builder: (context, snapshot) {
-              // 데이터 로딩 중 처리
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
 
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text("로그인이 필요합니다.")),
+      );
+    }
 
-              if (!snapshot.hasData || !snapshot.data!.exists) {
-                return const Center(child: Text("사용자 정보를 찾을 수 없습니다."));
-              }
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
 
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Scaffold(body: Center(child: Text("사용자 정보를 찾을 수 없습니다.")));
+        }
 
-              var userData = snapshot.data!.data() as Map<String, dynamic>;
+        var userData = snapshot.data!.data() as Map<String, dynamic>;
 
+        // 위치 데이터 (데이터가 없을 경우를 대비해 기본값 설정)
+        double lat = userData['latitude'] ?? 37.5665;
+        double lon = userData['longitude'] ?? 126.9780;
+        String locationLabel = userData['locationLabel'] ?? "위치 정보 없음";
 
+        return PutterScaffold(
+          scaffoldKey: _scaffoldKey,
+          currentIndex: 2,
 
-              return Column(
-                children: [
-                  // 상단 프로필 영역
-                  Container(
-                    padding: const EdgeInsets.only(
-                        top: 60, bottom: 40, left: 20, right: 20),
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.limeAccent,
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: const [
-                            Icon(Icons.format_list_bulleted, size: 24,
-                                color: Colors.black54),
-                            Icon(Icons.person, size: 35, color: Colors.black),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            const CircleAvatar(
-                              radius: 60,
-                              backgroundColor: Color(0xFFE0E0E0),
-                              child: Text("프로필", style: TextStyle(
-                                  color: Colors.black54, fontSize: 16)),
-                            ),
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) => const UserEdit()),
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [BoxShadow(color: Colors.black12,
-                                      blurRadius: 4)
-                                  ],
-                                ),
-                                child: const Icon(
-                                    Icons.edit, size: 20, color: Colors.grey),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          userData['name'] ?? "이름 없음",
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent,
-                              decoration: TextDecoration.underline),
-                        ),
-                        const SizedBox(height: 8),
-                        // 5. Firestore의 'nickname' 데이터 출력
-                        Text(
-                          userData['nickname'] ?? "닉네임 없음",
-                          style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.blueAccent,
-                              decoration: TextDecoration.underline),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // 하단 리스트 영역
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 20),
-                      children: [
-                        // 수정 포인트 1: context를 인자로 전달함
-                        _buildMenuButton(
-                            context, Icons.description_outlined, "내가 작성한 게시글"),
-                        _buildMenuButton(
-                            context, Icons.location_on_outlined, "위치 설정"),
-                        _buildMenuButton(
-                            context, Icons.settings_outlined, "커뮤니티 설정"),
-
-                        TextButton(
-                          onPressed: () async {
-                            await FirebaseAuth.instance.signOut(); //
-                            Navigator.pop(context); // 로그인 페이지로 돌아가기
-                          },
-                          child: const Text(
-                              "로그아웃", style: TextStyle(color: Colors.red)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+          drawer: AppDrawerFactory.buildWithNearbyMap(
+            context: context,
+            userStream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+            locationLabel: locationLabel,
+            isHome: false,
+            onGoHome: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomePage()),
+                    (route) => false,
               );
-            }, // builder 끝
-        ), // StreamBuilder 끝
+            },
+            myLat: lat,
+            myLng: lon,
+            getNearbyTopPosts: () async {
+              // 마이페이지에서는 빈 리스트를 반환하거나
+              // 별도의 이슈 스트림이 있다면 연결 (없으면 기본 빈 리스트)
+              return const [];
+            },
+          ),
+          body: Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.only(top: 60, bottom: 40, left: 20, right: 20),
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFF29B6F6), Color(0xFFB3E5FC)],
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // ✅ 아이콘 클릭 시 Drawer 열기
+                          GestureDetector(
+                            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                            child: const Icon(Icons.format_list_bulleted, size: 24, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _buildProfileImage(userData, context),
+                      const SizedBox(height: 16),
+                      Text(
+                        userData['name'] ?? "이름 없음",
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        userData['nickName'] ?? "닉네임 없음",
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                    children: [
+                      _buildMenuButton(context, Icons.description_outlined, "내가 작성한 게시글", userData),
+                      _buildMenuButton(context, Icons.location_on_outlined, "위치 설정", userData),
+                      _buildMenuButton(context, Icons.settings_outlined, "커뮤니티 설정", userData),
+                      TextButton(
+                        onPressed: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const LoginPage()),
+                                  (route) => false,
+                            );
+                          }
+                        },
+                        child: const Text("로그아웃", style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  // 수정 포인트 2: BuildContext 인자를 추가함
-  Widget _buildMenuButton(BuildContext context, IconData icon, String title) {
+  // 프로필 이미지 위젯 분리
+  Widget _buildProfileImage(Map<String, dynamic> userData, BuildContext context) {
+    return Stack(
+      alignment: Alignment.bottomRight,
+      children: [
+        CircleAvatar(
+          radius: 60,
+          backgroundColor: const Color(0xFF4FC3F7),
+          backgroundImage: (userData['profile_image_url'] != null &&
+              userData['profile_image_url'].toString().isNotEmpty)
+              ? NetworkImage(userData['profile_image_url'])
+              : null,
+          child: (userData['profile_image_url'] == null ||
+              userData['profile_image_url'].toString().isEmpty)
+              ? const Icon(Icons.person, size: 60, color: Colors.white)
+              : null,
+        ),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const UserEdit()));
+          },
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+            child: const Icon(Icons.edit, size: 20, color: Colors.grey),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMenuButton(BuildContext context, IconData icon, String title, Map<String, dynamic> userData) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1.2),
+        color: Colors.grey[50],
+        border: Border.all(color: Colors.white, width: 1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: ListTile(
         leading: Icon(icon, color: Colors.black87),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         trailing: const Icon(Icons.arrow_forward, color: Colors.black),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
         onTap: () {
           if (title == "내가 작성한 게시글") {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const MyPosts()),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPosts()));
           } else if (title == "위치 설정") {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const LocationSettings()),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const LocationSettings()));
           } else if (title == "커뮤니티 설정") {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const CommunitySettings()),
-            );
-                }
-            },
+            Navigator.push(context, MaterialPageRoute(builder: (context) => CommunitySettings(user: userData)));
+          }
+        },
       ),
     );
   }

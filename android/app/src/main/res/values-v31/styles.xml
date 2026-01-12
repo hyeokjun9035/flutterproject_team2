@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        
+        <!-- 로고에 여백을 준 Drawable을 사용하여 동그랗게 잘리는 것을 방지 -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_icon_inset</item>
+        <item name="android:windowSplashScreenBackground">@android:color/white</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>
