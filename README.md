@@ -481,11 +481,11 @@
   <tbody>
     <tr>
       <td>PPT</td>
-      <td>
-        <a href="https://drive.google.com/file/d/1MflzwTxsz12m3_7Uxb8mugYE3K3NxP2q/view?usp=sharing">
-          <img src=""/>
-        </a>
-      </td>
+       <td>
+          <a href="https://drive.google.com/file/d/1J33n29mHH3Y-PE5e6APIRJh1lJOY-JoS/view?usp=sharing" target="_blank">
+            <img src="https://img.shields.io/badge/PPT-Download-EA4335?style=for-the-badge&logo=google-slides&logoColor=white"/>
+          </a>
+        </td>
     </tr>
     <tr>
       <td>피그마</td>
