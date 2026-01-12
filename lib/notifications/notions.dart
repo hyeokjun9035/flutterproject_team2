@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_project/community/CommunityView.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -50,6 +51,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Center(child: Text("로그인이 필요합니다."));
     return PutterScaffold(
       currentIndex: 3,
       body: Container(
@@ -98,9 +101,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   : StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
+                    .where('receiverUid', isEqualTo: user.uid)
                     .orderBy('createdAt', descending: true) // 👈 필터링 없이 정렬만 함
                     .snapshots(),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('알림 로드 오류: ${snapshot.error}'));
+                  }
                   // ... (기존 snapshot 처리 로직 동일)
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -156,7 +163,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => Detailmypost(postId: pId, imageUrl: '', postData: const {}),
+              builder: (context) => Communityview(docId: pId),
             ),
           );
         } else {

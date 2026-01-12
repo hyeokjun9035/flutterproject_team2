@@ -9,10 +9,7 @@ class DashboardService {
   final String region;
 
   FirebaseFunctions get _functions {
-    final f = FirebaseFunctions.instanceFor(region: region);
-    // ✅ Android Emulator면 10.0.2.2
-    f.useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
-    return f;
+    return FirebaseFunctions.instanceFor(region: region);
   }
 
   Future<Map<String, dynamic>> ping() async {
