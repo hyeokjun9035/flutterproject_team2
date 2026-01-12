@@ -1756,7 +1756,8 @@ exports.sendPostNotification = onDocumentCreated({ // 이름을 'sendPostNotific
             const userLon = parseFloat(uLon);
 
             if (!isNaN(userLat) && !isNaN(userLon)) {
-                const distance = calculateDistance(postLat, postLon, userLat, userLon);
+                const distance =
+                (postLat, postLon, userLat, userLon);
                 if (distance <= 10.0) { // 10km 이내
                     targetTokens.add(token);
                 }

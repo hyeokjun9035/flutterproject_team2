@@ -50,6 +50,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Center(child: Text("로그인이 필요합니다."));
     return PutterScaffold(
       currentIndex: 3,
       body: Container(
@@ -98,9 +100,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   : StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
+                    .where('receiverUid', isEqualTo: user.uid)
                     .orderBy('createdAt', descending: true) // 👈 필터링 없이 정렬만 함
                     .snapshots(),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('알림 로드 오류: ${snapshot.error}'));
+                  }
                   // ... (기존 snapshot 처리 로직 동일)
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
