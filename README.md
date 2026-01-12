@@ -483,7 +483,7 @@
       <td>PPT</td>
       <td>
         <a href="https://drive.google.com/file/d/1MflzwTxsz12m3_7Uxb8mugYE3K3NxP2q/view?usp=sharing">
-          <img src="https://img.shields.io/badge/PPT-Download-EA4335?style=for-the-badge&logo=google-drive&logoColor=white"/>
+          <img src=""/>
         </a>
       </td>
     </tr>
