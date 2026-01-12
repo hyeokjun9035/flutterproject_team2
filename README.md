@@ -506,7 +506,8 @@
     <tr>
       <td>시연 영상</td>
       <td>
-        <a href="https://drive.google.com/file/d/1U0dRbVpy90aU06-juUYx2DO42H5qlFkh/view?usp=sharing">
+        <!-- <a href="https://drive.google.com/file/d/1U0dRbVpy90aU06-juUYx2DO42H5qlFkh/view?usp=sharing"> --> <!--4개합침-->
+        <a href="https://drive.google.com/file/d/1osKzwcHkPIzH1dTqaBfjKxU_OIib-B2q/view?usp=drive_link"> <!--5개합침-->
           <img src="https://img.shields.io/badge/Demo-Play-0F9D58?style=for-the-badge&logo=google-drive&logoColor=white"/>
         </a>
       </td>
