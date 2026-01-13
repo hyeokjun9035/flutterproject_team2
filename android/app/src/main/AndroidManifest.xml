@@ -41,10 +41,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-        <!-- ✅ 여기에 추가 (Google Maps 키) jgh251224-->
+        
+        <!-- 2025-01-14: .env 파일에서 읽어온 Google Maps API KEY 사용 -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBi6-xais7rn3QW3fH9A5xVz7zHK4FqHV4" />
+            android:value="${googleMapsApiKey}" />
+            
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -52,10 +54,6 @@
             android:name="com.google.android.gms.client.id"
             android:value="@string/default_web_client_id"/>
 
-        <!--jgh260102 23:42
-             송화씨가 금일 18시20분경 하단 내용 59~61줄 지우고 푸쉬하라고해서 일단 지우고 푸쉬했으나
-             느낌이 쌔~하여 다시 확인후 찾아서 일단 강제로 추가함
-             파일 히스토리상 재준씨가 추가했던 커밋메모(1-2 notion 알람 게시글 이동 수정) 확인 -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="community_notification" />
