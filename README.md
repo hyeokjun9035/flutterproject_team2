@@ -249,11 +249,23 @@
     거리가 너무 가까운 경우에는 대중교통 대신 도보 추천 UI로 폴백 처리했습니다.
   </p>
 
-  <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" style="height:600px; width:auto; max-width:31%;" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" style="height:600px; width:auto; max-width:31%;" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" style="height:600px; width:auto; max-width:31%;" />
-  </p>
+  <table align="center">
+    <tr>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png"
+             style="height:600px; width:auto; max-width:100%;" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png"
+             style="height:600px; width:auto; max-width:100%;" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif"
+             style="height:600px; width:auto; max-width:100%;" />
+      </td>
+    </tr>
+  </table>
+
 
 
   <ul>
