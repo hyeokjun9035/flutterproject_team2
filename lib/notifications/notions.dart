@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_project/mypage/DetailMypost.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_project/community/CommunityView.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -51,6 +50,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Center(child: Text("로그인이 필요합니다."));
     return PutterScaffold(
       currentIndex: 3,
       body: Container(
@@ -99,10 +100,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   : StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
-                    .where('receiverUid', whereIn: [uid, 'all', 'system']) //자기 관련 알림 관련 필터
+                    .where('receiverUid', isEqualTo: user.uid)
                     .orderBy('createdAt', descending: true) // 👈 필터링 없이 정렬만 함
                     .snapshots(),
                 builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('알림 로드 오류: ${snapshot.error}'));
+                  }
                   // ... (기존 snapshot 처리 로직 동일)
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -147,46 +151,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     return GestureDetector(
       onTap: () async {
-        // 1. 읽음 처리
-        try {
-          await FirebaseFirestore.instance
-              .collection('notifications')
-              .doc(docId)
-              .update({'isRead': true});
-        } catch (e) {
-          debugPrint("읽음 처리 실패: $e");
-        }
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(docId)
+            .update({'isRead': true});
 
-        // 2. 중요: 보내주신 데이터 구조에 맞춰 postId 추출
-        // toString()을 확실히 하고 trim()으로 공백 제거
-        final String pId = (
-            data['postId'] ??    // 대문자 I
-                data['postid'] ??    // 소문자 i
-                data['postID'] ??    // 전체 대문자 ID
-                data['id'] ??        // 그냥 id
-                ''
-        ).toString().trim();
+        final pId = (data['postId'] ?? '').toString().trim();
 
-        debugPrint("📍 클릭한 알림의 postId 값: '$pId'");
-
-        // 3. 이동 로직 (조건문 강화)
-        if (pId.isNotEmpty && pId != 'null' && pId != 'undefined') {
-          debugPrint("🚀 상세 페이지(Communityview)로 이동합니다. ID: $pId");
-
-          // context가 살아있는지 확인 후 이동
-          if (!context.mounted) return;
-
+        if (pId.isNotEmpty) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => Communityview(docId: pId),
+              builder: (context) => Detailmypost(postId: pId, imageUrl: '', postData: const {}),
             ),
           );
         } else {
-          // postId가 진짜로 없을 때만 홈으로 이동
-          debugPrint("⚠️ postId가 데이터에 없어서 홈으로 이동합니다. data내용: $data");
-
-          if (!context.mounted) return;
+          // ✅ postId 없는(날씨/아침/저녁) 알림은 홈으로
           Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
         }
       },

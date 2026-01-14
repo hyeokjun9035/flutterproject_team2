@@ -47,7 +47,7 @@ class _PutterScaffoldState extends State<PutterScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       body: widget.body,
       key: widget.scaffoldKey,
@@ -74,9 +74,11 @@ class _PutterScaffoldState extends State<PutterScaffold> {
           ),
           BottomNavigationBarItem(
             icon: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
+              stream: (uid == null)
+                ? const Stream.empty()
+                : FirebaseFirestore.instance
                   .collection('notifications')
-                  // .where('receiverUid', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                  .where('receiverUid', isEqualTo: uid)
                   .where('isRead', isEqualTo: false)
                   .snapshots(),
               builder: (context, snapshot) {
