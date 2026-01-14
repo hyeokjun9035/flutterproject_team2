@@ -731,13 +731,24 @@ class _HourlyStrip extends StatelessWidget {
         : items;
 
     final temps = list.map((e) => e.temp).toList();
-    final rain = list.map((e) => ((e.pty ?? 0) != 0) ? 1.0 : 0.0).toList();
+    final precip = list.map((e) {
+      final rainMm = (e.rainMm ?? 0);
+      final snowCm = (e.snowCm ?? 0);
+      final pty = (e.pty ?? 0);
+      return _PrecipPoint(rainMm: rainMm, snowCm: snowCm, pty: pty);
+    }).toList();
+
+    final hasPrecip = precip.any((p) => p.rainMm > 0 || p.snowCm > 0 || p.pty != 0);
 
     const tileW = 64.0;
     const gap = 10.0;
     final n = list.length;
     final rowW = n * tileW + (n - 1) * gap;
-    final hasRain = rain.any((v) => v > 0);
+    const labelStyle = TextStyle(
+      color: Colors.white70,
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
@@ -785,6 +796,11 @@ class _HourlyStrip extends StatelessWidget {
 
                 const SizedBox(height: 10),
 
+                const Padding(
+                  padding: EdgeInsets.only(left: 2),
+                  child: Text('기온', style: labelStyle),
+                ),
+
                 // ✅ 2) 온도 텍스트 아래쪽에 “온도 라인 그래프”
                 SizedBox(
                   width: rowW,
@@ -792,13 +808,20 @@ class _HourlyStrip extends StatelessWidget {
                   child: _MiniTempLine(values: temps, tileW: tileW, gap: gap),
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
+
+                const Padding(
+                  padding: EdgeInsets.only(left: 2),
+                  child: Text('강수량', style: labelStyle),
+                ),
 
                 // ✅ 3) 그 아래에 “강수 막대 그래프(임시: pty 기반)”
                 SizedBox(
                   width: rowW,
-                  height: 24,
-                  child: hasRain ? _MiniRainBars(values: rain, tileW: tileW, gap: gap) : const _MiniRainEmpty(),
+                  height: 44,
+                  child: hasPrecip
+                      ? _MiniPrecipBars(points: precip, tileW: tileW, gap: gap)
+                      : const _MiniRainEmpty(),
                 ),
               ],
             ),
@@ -806,6 +829,135 @@ class _HourlyStrip extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _PrecipPoint {
+  const _PrecipPoint({
+    required this.rainMm,
+    required this.snowCm,
+    required this.pty,
+  });
+
+  final double rainMm; // mm
+  final double snowCm; // cm
+  final int pty;
+
+  bool get isSnowType => pty == 3 || pty == 7; // 눈/눈날림
+  bool get isMixedType => pty == 2;            // 비/눈
+  bool get isRainType => pty == 1 || pty == 4 || pty == 5 || pty == 6; // 비계열
+
+  // ✅ 눈인데 SNO가 비어있으면 "추정 적설"로라도 cm 표시(원치 않으면 0으로)
+  double get snowCmEffective {
+    if (snowCm > 0) return snowCm;
+    if (isSnowType && rainMm > 0) return rainMm; // 1mm 수분량 ≈ 1cm 적설(간단 추정)
+    return 0;
+  }
+
+  // ✅ 막대 높이도 눈이면 cm 기반으로
+  double get visualValue {
+    if (isSnowType) return snowCmEffective;
+    if (isMixedType) return (snowCm > 0) ? snowCm : rainMm; // 비/눈이면 있는 쪽
+    return rainMm;
+  }
+
+  String get label {
+    if (isSnowType) {
+      final v = snowCmEffective > 0 ? snowCmEffective : snowCm;
+      return v > 0 ? '${v.toStringAsFixed(1)}cm' : '';
+    }
+    if (rainMm > 0) return '${rainMm.toStringAsFixed(1)}mm';
+    if (snowCm > 0) return '${snowCm.toStringAsFixed(1)}cm';
+    return '';
+  }
+}
+
+class _MiniPrecipBars extends StatelessWidget {
+  const _MiniPrecipBars({
+    required this.points,
+    required this.tileW,
+    required this.gap,
+  });
+
+  final List<_PrecipPoint> points;
+  final double tileW;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _MiniPrecipPainter(points: points, tileW: tileW, gap: gap),
+    );
+  }
+}
+
+class _MiniPrecipPainter extends CustomPainter {
+  _MiniPrecipPainter({
+    required this.points,
+    required this.tileW,
+    required this.gap,
+  });
+
+  final List<_PrecipPoint> points;
+  final double tileW;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const labelH = 14.0;
+    final barH = (size.height - labelH).clamp(10.0, size.height);
+
+    final barPaint = Paint()..color = Colors.white.withOpacity(0.35);
+
+    // ✅ 스케일(최대값 기준)
+    double maxV = 0;
+    for (final p in points) {
+      if (p.visualValue > maxV) maxV = p.visualValue;
+    }
+    if (maxV <= 0) maxV = 1; // divide-by-zero 방지
+
+    for (int i = 0; i < points.length; i++) {
+      final p = points[i];
+      final v = (p.visualValue / maxV).clamp(0.0, 1.0);
+      final h = v * barH;
+
+      final left = i * (tileW + gap) + tileW * 0.22;
+      final w = tileW * 0.56;
+
+      // ✅ bar
+      final r = Rect.fromLTWH(left, barH - h, w, h);
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(6)), barPaint);
+
+      // ✅ label
+      final text = p.label;
+      if (text.isNotEmpty) {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.75),
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          ellipsis: '…',
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: tileW);
+
+        final x = (i * (tileW + gap)) + (tileW - tp.width) / 2;
+        final y = barH + 1; // label 영역 시작
+        tp.paint(canvas, Offset(x, y));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniPrecipPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.tileW != tileW ||
+        oldDelegate.gap != gap;
   }
 }
 
@@ -1288,49 +1440,85 @@ class _MiniLinePainter extends CustomPainter {
       oldDelegate.values != values || oldDelegate.tileW != tileW || oldDelegate.gap != gap;
 }
 
-class _MiniRainBars extends StatelessWidget {
-  const _MiniRainBars({
+class _MiniRainBarsMm extends StatelessWidget {
+  const _MiniRainBarsMm({
     required this.values,
     required this.tileW,
     required this.gap,
   });
 
-  final List<double> values;
+  final List<double?> values;
   final double tileW;
   final double gap;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(painter: _MiniBarsPainter(values, tileW, gap));
+    return CustomPaint(
+      painter: _MiniRainMmPainter(values, tileW, gap),
+    );
   }
 }
 
-class _MiniBarsPainter extends CustomPainter {
-  _MiniBarsPainter(this.values, this.tileW, this.gap);
+class _MiniRainMmPainter extends CustomPainter {
+  _MiniRainMmPainter(this.values, this.tileW, this.gap);
 
-  final List<double> values;
+  final List<double?> values;
   final double tileW;
   final double gap;
 
+  String _fmt(double v) {
+    if (v == 0) return '';
+    if (v < 1) return '${v.toStringAsFixed(1)}mm'; // 0.7mm
+    return '${v.toStringAsFixed(0)}mm';            // 2mm
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Colors.white.withOpacity(0.35);
+    final barPaint = Paint()..color = Colors.white.withOpacity(0.35);
+    final textColor = Colors.white.withOpacity(0.60);
+
+    const labelH = 12.0;                 // ✅ 텍스트 영역
+    final barAreaH = size.height - labelH;
+
+    final maxV = values
+        .where((v) => v != null)
+        .map((v) => v!.clamp(0.0, double.infinity))
+        .fold<double>(0, (a, b) => a > b ? a : b);
+
+    final scaleMax = (maxV <= 0) ? 1.0 : maxV;
 
     for (int i = 0; i < values.length; i++) {
-      final v = values[i].clamp(0.0, 1.0);
-      final h = v * size.height;
+      final v = (values[i] ?? 0).clamp(0.0, double.infinity);
+      final h = (v / scaleMax) * barAreaH;
 
-      // ✅ 각 타일 영역 안에 bar 배치
       final left = i * (tileW + gap) + tileW * 0.22;
       final w = tileW * 0.56;
 
-      final r = Rect.fromLTWH(left, size.height - h, w, h);
-      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(6)), p);
+      // ✅ bar
+      final r = Rect.fromLTWH(left, barAreaH - h, w, h);
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(6)), barPaint);
+
+      // ✅ label (비/눈/강수 있을 때만)
+      final label = _fmt(v);
+      if (label.isNotEmpty) {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: TextStyle(fontSize: 10, color: textColor, fontWeight: FontWeight.w600),
+          ),
+          textDirection: TextDirection.ltr,
+          textAlign: TextAlign.center,
+        )..layout(maxWidth: tileW);
+
+        final cx = i * (tileW + gap) + tileW / 2 - tp.width / 2;
+        final cy = barAreaH + (labelH - tp.height) / 2;
+        tp.paint(canvas, Offset(cx, cy));
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _MiniBarsPainter oldDelegate) =>
+  bool shouldRepaint(covariant _MiniRainMmPainter oldDelegate) =>
       oldDelegate.values != values || oldDelegate.tileW != tileW || oldDelegate.gap != gap;
 }
 

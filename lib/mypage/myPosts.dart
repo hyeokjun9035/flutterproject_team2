@@ -44,65 +44,132 @@ class MyPosts extends StatelessWidget {
     );
   }
 
+  // --- 유저 문서(users/{uid})에서 위치 읽기 ---
+  Future<Map<String, dynamic>> _fetchUserLocationForWeather() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw Exception("로그인이 필요합니다.");
+    }
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    if (!doc.exists || doc.data() == null) {
+      throw Exception("유저 문서를 찾을 수 없습니다.");
+    }
+
+    final data = doc.data()!;
+    final lastLocation = (data['lastLocation'] as Map<String, dynamic>?) ?? {};
+
+    // lastLocation이 없을 때 대비해서 기본값(서울) 넣어둠
+    final lat = (lastLocation['latitude'] as num?)?.toDouble() ?? 37.5665;
+    final lon = (lastLocation['longitude'] as num?)?.toDouble() ?? 126.9780;
+
+    // 문서 구조 기준: locationName / notiArea / administrativeArea / addr 등
+    final locationName = (data['locationName'] as String?) ?? '현재 위치';
+    final airAddr = (data['notiArea'] as String?) ?? (data['addr'] as String?) ?? '';
+    final administrativeArea = (data['administrativeArea'] as String?) ?? '';
+
+    return {
+      'lat': lat,
+      'lon': lon,
+      'locationName': locationName,
+      'airAddr': airAddr,
+      'administrativeArea': administrativeArea,
+    };
+  }
+
   // --- 날씨 정보 위젯 ---
   Widget _buildRealTimeWeather(DashboardService service) {
-    return FutureBuilder<DashboardData>(
-      future: service.fetchDashboardByLatLon(
-        lat: 37.5665,
-        lon: 126.9780,
-        locationName: "서울",
-        airAddr: "서울 중구",
-        administrativeArea: "서울특별시",
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _fetchUserLocationForWeather(),
+      builder: (context, userSnap) {
+        if (userSnap.connectionState == ConnectionState.waiting) {
           return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
         }
-        if (snapshot.hasError || !snapshot.hasData) {
-          return const Text("날씨 데이터를 가져올 수 없습니다.");
+        if (userSnap.hasError || !userSnap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text("사용자 위치 정보를 가져올 수 없습니다."),
+          );
         }
 
-        final data = snapshot.data!;
-        final now = data.now;
+        final user = userSnap.data!;
+        final double lat = user['lat'] as double;
+        final double lon = user['lon'] as double;
+        final String locationName = user['locationName'] as String;
+        final String airAddr = user['airAddr'] as String;
+        final String administrativeArea = user['administrativeArea'] as String;
 
-        return Container(
-          margin: const EdgeInsets.all(20),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF4A90E2), Color(0xFF50E3C2)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(25),
+        return FutureBuilder<DashboardData>(
+          future: service.fetchDashboardByLatLon(
+            lat: lat,
+            lon: lon,
+            locationName: locationName,
+            airAddr: airAddr,
+            administrativeArea: administrativeArea,
           ),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text("날씨 데이터를 가져올 수 없습니다."),
+              );
+            }
+
+            final data = snapshot.data!;
+            final now = data.now;
+
+            return Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4A90E2), Color(0xFF50E3C2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: Column(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(data.locationName, style: const TextStyle(color: Colors.white, fontSize: 18)),
-                      Text("${now.temp?.toStringAsFixed(1)}°",
-                          style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data.locationName,
+                            style: const TextStyle(color: Colors.white, fontSize: 18),
+                          ),
+                          Text(
+                            "${now.temp?.toStringAsFixed(1)}°",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Icon(_getWeatherIcon(now.pty, now.sky), size: 70, color: Colors.white),
                     ],
                   ),
-                  Icon(_getWeatherIcon(now.pty, now.sky), size: 70, color: Colors.white),
+                  const Divider(color: Colors.white24, thickness: 1),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _weatherInfoItem(Icons.air, "미세먼지", "${data.air.gradeText}"),
+                      _weatherInfoItem(Icons.water_drop, "습도", "${now.humidity?.toInt()}%"),
+                      _weatherInfoItem(Icons.wind_power, "바람", "${now.wind}m/s"),
+                    ],
+                  )
                 ],
               ),
-              const Divider(color: Colors.white24, thickness: 1),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _weatherInfoItem(Icons.air, "미세먼지", "${data.air.gradeText}"),
-                  _weatherInfoItem(Icons.water_drop, "습도", "${now.humidity?.toInt()}%"),
-                  _weatherInfoItem(Icons.wind_power, "바람", "${now.wind}m/s"),
-                ],
-              )
-            ],
-          ),
+            );
+          },
         );
       },
     );

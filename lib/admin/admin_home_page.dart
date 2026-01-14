@@ -828,6 +828,25 @@ class _AdminReportPageState extends State<_AdminReportPage> {
     return '-';
   }
 
+  // jgh260109----S 신고 결과 텍스트 변환 함수
+  String _getResolutionText(String? res) {
+    switch (res) {
+      case 'dismissed':
+        return '무혐의';
+      case 'deleted_post':
+        return '게시글 삭제';
+      case 'blocked_user':
+        return '사용자 제재';
+      case 'both':
+        return '삭제+제재';
+      case 'hidden_post':
+        return '숨김 처리';
+      default:
+        return '처리됨';
+    }
+  }
+  // jgh260109----E 신고 결과 텍스트 변환 함수
+
   @override
   Widget build(BuildContext context) {
     final stream = _query().snapshots();
@@ -890,6 +909,7 @@ class _AdminReportPageState extends State<_AdminReportPage> {
                 final category = (r['category'] ?? '').toString();
                 final postId = (r['postId'] ?? '').toString();
                 final status = (r['status'] ?? 'open').toString();
+                final resolution = r['resolution'] as String?;
                 final createdAt = r['createdAt']; // 없을 수도 있음
 
                 final isOpen = status == 'open';
@@ -949,7 +969,7 @@ class _AdminReportPageState extends State<_AdminReportPage> {
                         ],
                       ),
                       subtitle: Text(
-                        '[$category] 사유: $reason\n${_fmt(createdAt)}',
+                        '[$category] 사유: $reason\n${isOpen ? "" : "[결과: ${_getResolutionText(resolution)}] "}${_fmt(createdAt)}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

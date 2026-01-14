@@ -78,6 +78,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _rebuildNearbyIssuesStream() {
+    if (_lat == null || _lon == null) return;
+    _nearbyIssuesStream = _nearbyIssuesService.watchNearbyIssueTop3(
+      myLat: _lat!,
+      myLng: _lon!,
+      radiusMeters: 1000,
+      maxCandidates: 200,
+      daysBack: 7,
+    );
+  }
+
   Future<void> _openAirKoreaWeb() async {
     await openExternal(airKoreaHomeUrl());
   }
@@ -553,6 +564,7 @@ class _HomePageState extends State<HomePage> {
         return _Card(
           child: isFirstLoading ? const _Skeleton(height: 120) : _NearbyIssuesCard(
               stream: _nearbyIssuesStream ?? const Stream.empty(),
+              initialIssues: _nearbyIssuesLatest3,
             onData: (issues) {
                 _nearbyIssuesLatest3 = issues;
             },
@@ -634,11 +646,11 @@ class _HomePageState extends State<HomePage> {
     _nearbyIssuesService = NearbyIssuesService();
     // 2025-12-23 jgh251223---E
     if (DashboardCache.isFresh()) {
-      // ✅ 위치 라벨도 즉시 복원(화면 상단 빨리 뜸)
       _lat = DashboardCache.lat;
       _lon = DashboardCache.lon;
       _locationLabel = DashboardCache.locationLabel ?? _locationLabel;
       _airAddr = DashboardCache.airAddr ?? _airAddr;
+      _rebuildNearbyIssuesStream();
       _future = Future.value(DashboardCache.data!);
     } else {
       _future = _initLocationAndFetch();
@@ -936,13 +948,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    _nearbyIssuesStream = _nearbyIssuesService.watchNearbyIssueTop3(
-      myLat: _lat!,
-      myLng: _lon!,
-      radiusMeters: 1000,
-      maxCandidates: 200,
-      daysBack: 7,
-    );
+    _rebuildNearbyIssuesStream();
     if (mounted) setState(() {});
 
     final nowTime = DateTime.now();
@@ -1097,12 +1103,7 @@ class _HomePageState extends State<HomePage> {
 
               myLat: _lat!, // ✅ hasCoord라 안전
               myLng: _lon!, // ✅ hasCoord라 안전
-              getNearbyTopPosts: () async {
-                final s = _nearbyIssuesStream;
-                if (s == null) return const <NearbyIssuePost>[];
-                return await s.first;
-              },
-
+              getNearbyTopPosts: () async => _nearbyIssuesLatest3,
               // background: ... (원하면)
             )
                 : AppDrawerFactory.buildBasic(
@@ -1165,6 +1166,7 @@ class _HomePageState extends State<HomePage> {
                                   (context, index) {
                                 final id = _order[index];
                                 return Padding(
+                                  key: ValueKey('home-card-${id.name}'),
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: _buildHomeCard(id, safeData, isFirstLoading),
                                 );
@@ -1184,16 +1186,4 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-}
-Future<void> testAdminPush() async {
-  final functions = FirebaseFunctions.instanceFor(region: 'asia-northeast3');
-  final callable = functions.httpsCallable('sendAdminNotification');
-
-  final res = await callable.call({
-    "title": "테스트 푸시",
-    "body": "Flutter에서 callable 호출 테스트",
-    "topic": "community_topic",
-  });
-
-  print("callable result: ${res.data}");
 }

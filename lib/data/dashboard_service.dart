@@ -9,10 +9,7 @@ class DashboardService {
   final String region;
 
   FirebaseFunctions get _functions {
-    final f = FirebaseFunctions.instanceFor(region: region);
-    // ✅ Android Emulator면 10.0.2.2
-    f.useFunctionsEmulator(Platform.isAndroid ? '10.0.2.2' : 'localhost', 5001);
-    return f;
+    return FirebaseFunctions.instanceFor(region: region);
   }
 
   Future<Map<String, dynamic>> ping() async {
@@ -73,6 +70,7 @@ class DashboardService {
         sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
         pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
         temp: m['temp'] is num ? (m['temp'] as num).toDouble() : double.tryParse('${m['temp']}'),
+        rainMm: m['rainMm'] is num ? (m['rainMm'] as num).toDouble() : double.tryParse('${m['rainMm']}'),
       );
     }).toList();
 
@@ -146,14 +144,33 @@ class DashboardService {
     double? _d(String k) => double.tryParse(nowMap[k] ?? '');
     int? _i(String k) => int.tryParse(nowMap[k] ?? '');
 
+    double? _asDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    int? _asInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.round(); // ✅ 1.0 -> 1
+      final s = v.toString();
+      final d = double.tryParse(s);
+      if (d != null) return d.round(); // ✅ "1.0" -> 1
+      return int.tryParse(s);
+    }
+
     final hourlyRaw = (data['hourlyFcst'] ?? []) as List;
     final hourly = hourlyRaw.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
       return HourlyForecast(
         timeLabel: (m['timeLabel'] ?? '').toString(),
-        sky: m['sky'] is int ? m['sky'] as int : int.tryParse('${m['sky']}'),
-        pty: m['pty'] is int ? m['pty'] as int : int.tryParse('${m['pty']}'),
-        temp: m['temp'] is num ? (m['temp'] as num).toDouble() : double.tryParse('${m['temp']}'),
+        sky: _asInt(m['sky']),
+        pty: _asInt(m['pty']),
+        pop: _asInt(m['pop']),
+        temp: _asDouble(m['temp']),
+        rainMm: _asDouble(m['rainMm']),
+        snowCm: _asDouble(m['snowCm']),
       );
     }).toList();
 
