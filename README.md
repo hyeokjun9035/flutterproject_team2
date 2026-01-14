@@ -249,22 +249,11 @@
     거리가 너무 가까운 경우에는 대중교통 대신 도보 추천 UI로 폴백 처리했습니다.
   </p>
 
-  <table align="center">
-    <tr>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png"
-             style="height:600px; width:auto; max-width:100%;" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png"
-             style="height:600px; width:auto; max-width:100%;" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif"
-             style="height:600px; width:auto; max-width:100%;" />
-      </td>
-    </tr>
-  </table>
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeRoute.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeRouteDetail.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctv.gif" style="height:600px; width:auto; max-width:32%;" />
+  </p>
 
   <ul>
     <li>옵션 선택(최소 도보/시간/환승) + 경로 요약 플로우 표시</li>
@@ -285,19 +274,11 @@
     (지원되지 않는 케이스는 사용자에게 안내 문구로 처리)
   </p>
 
-  <table align="center">
-    <tr>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" height="600" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" height="600" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" height="600" />
-      </td>
-    </tr>
-  </table>
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/dobo.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/jiwonX.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeRoute.png" style="height:600px; width:auto; max-width:32%;" />
+  </p>
 
   <ul>
     <li>경로 RAW에서 버스 구간 정보 추출 → 정류장 후보 탐색 → 노선 매칭</li>
@@ -316,19 +297,11 @@
     또한 홈 카드 순서 편집과 공통 Drawer 메뉴를 통해 사용성이 좋아지도록 했습니다.
   </p>
 
-  <table align="center">
-    <tr>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" height="600" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" height="600" />
-      </td>
-      <td align="center" width="33%">
-        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" height="600" />
-      </td>
-    </tr>
-  </table>
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeNearbyIssue.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeNearbyMarker.png" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/homeNearbyMap.png" style="height:600px; width:auto; max-width:32%;" />
+  </p>
 
   <ul>
     <li>내 주변 1km 사건/이슈 Top 3 미리보기 + 지도 화면 연동</li>
