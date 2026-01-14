@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -6,6 +9,13 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 2025-01-14 .env 파일에서 Google Maps API KEY 읽기 설정 추가
+val dotenv = Properties()
+val dotenvFile = rootProject.file("../.env")
+if (dotenvFile.exists()) {
+    dotenvFile.inputStream().use { dotenv.load(it) }
 }
 
 android {
@@ -34,6 +44,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+
+        // 2025-01-14 AndroidManifest에서 사용할 변수 등록
+        manifestPlaceholders["googleMapsApiKey"] = dotenv.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
     }
 
     buildTypes {
