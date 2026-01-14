@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_project/community/CommunityView.dart';
+
+import '../community/CommunityView.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -162,7 +163,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => Communityview(docId: pId),
+              builder: (context) => Communityview(docId: 'pId',),
             ),
           );
         } else {
