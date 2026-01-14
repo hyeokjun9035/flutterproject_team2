@@ -102,13 +102,19 @@ Future<void> main() async {
     await dotenv.load(fileName: '.env');
   } catch (_) {}
 
-  // 1) Firebase 먼저 초기화
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // 1) Firebase 초기화 (2025-01-14 수정: 중복 초기화 방지 로직 적용)
+  // 1) Firebase 초기화 (에러가 나도 앱은 실행되도록 try-catch 추가)
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    debugPrint('Firebase 초기화 에러 무시: $e');
+  }
 
   // 2) AppCheck는 "가능한 빨리" 활성화 (중요)
-  //    + getToken(true) 같은 강제 갱신은 제거 (Too many attempts 방지)
   try {
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.debug,

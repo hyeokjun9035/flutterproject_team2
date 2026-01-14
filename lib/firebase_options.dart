@@ -31,7 +31,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
         throw UnsupportedError(
@@ -41,7 +41,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBdTwDo9KVPF_w3WiOSeQRHnupXVXh8B-I',
+    apiKey: 'AIzaSyCU1vBzvfczxLFMciM_-_Trp_HcLSVzArA',
     appId: '1:361819871944:web:85ec36b0097702b5e5a3fd',
     messagingSenderId: '361819871944',
     projectId: 'team2project-4b7f5',
@@ -50,7 +50,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAtwbWPpaLieggM3L0bzpEa5a-ldBV_has',
+    apiKey: 'AIzaSyAvKp_1tmshSQBEH20gyhxPJOrjO0eJEPc',
     appId: '1:361819871944:android:fc8922a58f3c91a7e5a3fd',
     messagingSenderId: '361819871944',
     projectId: 'team2project-4b7f5',
@@ -58,25 +58,29 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDQnKeO528QGmUkfdfUlU5dTL4K0tnTVFs',
+    apiKey: 'AIzaSyD7k_hNR83Sp9eNgESoTq5IWPEoF9c09Ms',
     appId: '1:361819871944:ios:68db9a2d70cbb0cae5a3fd',
     messagingSenderId: '361819871944',
     projectId: 'team2project-4b7f5',
     storageBucket: 'team2project-4b7f5.firebasestorage.app',
+    androidClientId: '361819871944-qhinbjhr9b4vlb5p63ij2di7de68qpe2.apps.googleusercontent.com',
+    iosClientId: '361819871944-25m3baji3bgcg19qublb457stfl87igi.apps.googleusercontent.com',
     iosBundleId: 'com.example.flutterProject',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDQnKeO528QGmUkfdfUlU5dTL4K0tnTVFs',
+    apiKey: 'AIzaSyD7k_hNR83Sp9eNgESoTq5IWPEoF9c09Ms',
     appId: '1:361819871944:ios:68db9a2d70cbb0cae5a3fd',
     messagingSenderId: '361819871944',
     projectId: 'team2project-4b7f5',
     storageBucket: 'team2project-4b7f5.firebasestorage.app',
+    androidClientId: '361819871944-qhinbjhr9b4vlb5p63ij2di7de68qpe2.apps.googleusercontent.com',
+    iosClientId: '361819871944-25m3baji3bgcg19qublb457stfl87igi.apps.googleusercontent.com',
     iosBundleId: 'com.example.flutterProject',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBdTwDo9KVPF_w3WiOSeQRHnupXVXh8B-I',
+    apiKey: 'AIzaSyCU1vBzvfczxLFMciM_-_Trp_HcLSVzArA',
     appId: '1:361819871944:web:a43fc9519a57394ee5a3fd',
     messagingSenderId: '361819871944',
     projectId: 'team2project-4b7f5',
