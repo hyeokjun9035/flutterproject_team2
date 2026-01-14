@@ -250,9 +250,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" style="height:600px; width:auto; max-width:32%;" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" style="height:600px; width:auto; max-width:32%;" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" style="height:600px; width:auto; max-width:32%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" style="height:600px; width:auto; max-width:31%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" style="height:600px; width:auto; max-width:31%;" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" style="height:600px; width:auto; max-width:31%;" />
   </p>
 
 
