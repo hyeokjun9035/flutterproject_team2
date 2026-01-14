@@ -186,13 +186,17 @@
 
 <br>
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/login%20(2).PNG" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join1.PNG" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join2.PNG" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join4.PNG" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join5.PNG" width="220"/>
-    
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/login%20(2).png" height=600/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join1.png" height=600/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join2.png" height=600/>
   </p>
+
+  <p align="center">
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join3.png" height=600/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join4.png" height=600/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/login/join5.png" height=600/>
+   </p> 
+  
 
   <ul>
     <li>회원가입시 firestore DB, Authentication에 정보를 저장합니다. </li>
