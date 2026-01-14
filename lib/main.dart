@@ -102,9 +102,15 @@ Future<void> main() async {
   } catch (_) {}
 
   // 1) Firebase 먼저 초기화
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('✅ Firebase 초기화 완료');
+  } else {
+    Firebase.app(); // 이미 초기화된 경우 기존 앱 사용
+    debugPrint('ℹ️ Firebase가 이미 초기화되어 있습니다.');
+  }
 
   // 2) AppCheck는 "가능한 빨리" 활성화 (중요)
   //    + getToken(true) 같은 강제 갱신은 제거 (Too many attempts 방지)
