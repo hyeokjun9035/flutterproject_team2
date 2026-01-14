@@ -227,8 +227,8 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/home_page1.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/snow.gif" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/home_page1.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/snow.gif" height="600" />
   </p>
 
   <ul>
@@ -250,9 +250,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" width="220"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" width="220"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeDetail.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/cctvmove.gif" height="600" />
   </p>
 
   <ul>
@@ -275,9 +275,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" width="230"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" width="230"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" width="230"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" height="600" />
   </p>
 
   <ul>
@@ -298,9 +298,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" width="210"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" height="600" />
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" height="600" />
   </p>
 
   <ul>
