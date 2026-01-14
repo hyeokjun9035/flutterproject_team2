@@ -266,8 +266,6 @@
     </tr>
   </table>
 
-
-
   <ul>
     <li>옵션 선택(최소 도보/시간/환승) + 경로 요약 플로우 표시</li>
     <li>가까운 거리 자동 감지 → 도보 추천 카드로 전환</li>
@@ -287,11 +285,19 @@
     (지원되지 않는 케이스는 사용자에게 안내 문구로 처리)
   </p>
 
-  <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" height="600" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" height="600" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" height="600" />
-  </p>
+  <table align="center">
+    <tr>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/route.png" height="600" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/notroute.png" height="600" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/walk.png" height="600" />
+      </td>
+    </tr>
+  </table>
 
   <ul>
     <li>경로 RAW에서 버스 구간 정보 추출 → 정류장 후보 탐색 → 노선 매칭</li>
@@ -310,11 +316,19 @@
     또한 홈 카드 순서 편집과 공통 Drawer 메뉴를 통해 사용성이 좋아지도록 했습니다.
   </p>
 
-  <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" height="600" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" height="600" />
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" height="600" />
-  </p>
+  <table align="center">
+    <tr>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/routeANDissue.png" height="600" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/nearbyissuemap.png" height="600" />
+      </td>
+      <td align="center" width="33%">
+        <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/homepage/drawer.png" height="600" />
+      </td>
+    </tr>
+  </table>
 
   <ul>
     <li>내 주변 1km 사건/이슈 Top 3 미리보기 + 지도 화면 연동</li>
