@@ -85,8 +85,13 @@ class _UserEditState extends State<UserEdit> {
       // usernames 컬렉션 중복 방지 로직
       if (oldNickname != newNickname && newNickname.isNotEmpty) {
         if (oldNickname.isNotEmpty) {
-          batch.delete(FirebaseFirestore.instance.collection('usernames').doc(oldNickname));
+
+          var oldDoc = await FirebaseFirestore.instance.collection('usernames').doc(oldNickname).get();
+          if (oldDoc.exists) {
+            batch.delete(oldDoc.reference);
+          }
         }
+        // 새로운 닉네임 등록
         batch.set(FirebaseFirestore.instance.collection('usernames').doc(newNickname), {
           'uid': user!.uid
         });

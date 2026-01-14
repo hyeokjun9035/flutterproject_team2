@@ -247,7 +247,7 @@ class _LocationSettingsState extends State<LocationSettings> {
   Widget _buildModeButton(String docId, String label, String mode, IconData icon, Color color) {
     bool isSelected = (_selectedMode[docId] ?? 'time') == mode;
     return Expanded(
-      child: InkWell(
+      child: GestureDetector(
         onTap: () => setState(() => _selectedMode[docId] = mode),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -286,15 +286,15 @@ class _LocationSettingsState extends State<LocationSettings> {
   Widget _buildSubwayArrivalInfo(FavoriteRoute route) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)),
-      child: const Row(
-        children: [
-          Icon(Icons.subway, size: 14, color: Colors.indigo),
-          SizedBox(width: 6),
-          Text("최소 시간 경로 검색 중...", style: TextStyle(fontSize: 12, color: Colors.indigo, fontWeight: FontWeight.bold)),
-        ],
-      ),
+      // padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)),
+      // child: const Row(
+      //   children: [
+      //     // Icon(Icons.subway, size: 14, color: Colors.indigo),
+      //     // SizedBox(width: 6),
+      //     // Text("최소 시간 경로 검색 중...", style: TextStyle(fontSize: 12, color: Colors.indigo, fontWeight: FontWeight.bold)),
+      //   ],
+      // ),
     );
   }
 
@@ -320,12 +320,12 @@ class _LocationSettingsState extends State<LocationSettings> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.directions_bus, size: 14, color: Colors.orange),
-                  const SizedBox(width: 4),
-                  Text("인근 정류장: ${stop.name}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
+                  // const Icon(Icons.directions_bus, size: 14, color: Colors.orange),
+                  // const SizedBox(width: 4),
+                  // Text("인근 정류장: ${stop.name}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
                 ],
               ),
-              const Text("정류장 도착 정보를 확인하세요.", style: TextStyle(fontSize: 11, color: Colors.orange)),
+              // const Text("정류장 도착 정보를 확인하세요.", style: TextStyle(fontSize: 11, color: Colors.orange)),
             ],
           ),
         );

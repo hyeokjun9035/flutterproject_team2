@@ -151,14 +151,35 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     return GestureDetector(
       onTap: () async {
-        await FirebaseFirestore.instance
-            .collection('notifications')
-            .doc(docId)
-            .update({'isRead': true});
+        // 1. 읽음 처리
+        try {
+          await FirebaseFirestore.instance
+              .collection('notifications')
+              .doc(docId)
+              .update({'isRead': true});
+        } catch (e) {
+          debugPrint("읽음 처리 실패: $e");
+        }
 
-        final pId = (data['postId'] ?? '').toString().trim();
+        // 2. 중요: 보내주신 데이터 구조에 맞춰 postId 추출
+        // toString()을 확실히 하고 trim()으로 공백 제거
+        final String pId = (
+            data['postId'] ??    // 대문자 I
+                data['postid'] ??    // 소문자 i
+                data['postID'] ??    // 전체 대문자 ID
+                data['id'] ??        // 그냥 id
+                ''
+        ).toString().trim();
 
-        if (pId.isNotEmpty) {
+        debugPrint("📍 클릭한 알림의 postId 값: '$pId'");
+
+        // 3. 이동 로직 (조건문 강화)
+        if (pId.isNotEmpty && pId != 'null' && pId != 'undefined') {
+          debugPrint("🚀 상세 페이지(Communityview)로 이동합니다. ID: $pId");
+
+          // context가 살아있는지 확인 후 이동
+          if (!context.mounted) return;
+
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -166,7 +187,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
           );
         } else {
-          // ✅ postId 없는(날씨/아침/저녁) 알림은 홈으로
+          // postId가 진짜로 없을 때만 홈으로 이동
+          debugPrint("⚠️ postId가 데이터에 없어서 홈으로 이동합니다. data내용: $data");
+
+          if (!context.mounted) return;
           Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
         }
       },
