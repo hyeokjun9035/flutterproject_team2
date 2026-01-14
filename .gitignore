@@ -58,3 +58,5 @@ android/local.properties
 # Firebase config (DO NOT COMMIT)
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+# Firebase configuration
+lib/firebase_options.dart
