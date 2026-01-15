@@ -372,7 +372,7 @@
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view11.png" style="height:500px; width:auto; max-width:20%;"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view211.png" style="height:500px; width:auto; max-width:20%;"/>
     <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_report.png" style="height:500px; width:auto; max-width:20%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view_play.gif" style="height:500px; width:auto; max-width:20%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view_play.gif" style="height:500px; width:auto; max-width:15%;"/>
   </p>
 
   <br/>
