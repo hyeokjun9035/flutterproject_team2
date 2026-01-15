@@ -353,9 +353,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add11.png" style="height:600px; width:auto; max-width:32%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/location.png" style="height:600px; width:auto; max-width:32%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add_play.gif" style="height:600px; width:auto; max-width:32%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add11.png" style="height:500px; width:auto; max-width:30%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/location11.png" style="height:500px; width:auto; max-width:30%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_add_play.gif" style="height:500px; width:auto; max-width:30%;"/>
   </p>
 
   <br/>
@@ -369,10 +369,10 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view11.png" style="height:500px; width:auto; max-width:25%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view211.png" style="height:500px; width:auto; max-width:25%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_report.png" style="height:500px; width:auto; max-width:25%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view_play.gif" style="height:500px; width:auto; max-width:25%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view11.png" style="height:500px; width:auto; max-width:23%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view211.png" style="height:500px; width:auto; max-width:23%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_report.png" style="height:500px; width:auto; max-width:23%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_view_play.gif" style="height:500px; width:auto; max-width:23%;"/>
   </p>
 
   <br/>
@@ -385,9 +385,9 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit11.png" style="height:600px; width:auto; max-width:32%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit211.png" style="height:600px; width:auto; max-width:32%;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit_play.gif" style="height:600px; width:auto; max-width:32%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit11.png" style="height:500px; width:auto; max-width:30%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit211.png" style="height:500px; width:auto; max-width:30%;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_edit_play.gif"style="height:500px; width:auto; max-width:30%;"/>
   </p>
 
 </details>
