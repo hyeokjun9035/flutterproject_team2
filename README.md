@@ -338,8 +338,8 @@
   </p>
 
   <p align="center">
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_main.png" width="210" style="height:auto;"/>
-    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_list.png" width="210" style="height:auto;"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_main.png" width="210"/>
+    <img src="https://github.com/hyeokjun9035/flutter_image/blob/main/community/community_list.png" width="210"/>
   </p>
 
   <br/>
